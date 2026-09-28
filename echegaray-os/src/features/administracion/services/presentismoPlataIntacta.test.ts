@@ -80,22 +80,25 @@ test('media jornada: cumple cobra el 0425 en el blanco; el perdido lo pierde UNA
   assert.equal(cumple.porBanco, cumple.neto)
   assert.equal(cumple.total, Math.round((cumple.neto! + 350000) * 100) / 100)
   // Perdido: el par en el blanco (como las quincenas pasadas) y el negro entero. MUTACIÓN: descontarlo también del
-  // negro (`descontarDelNegro` sin `blancoYaLoAnula`) → negro 286.520 → rojo.
+  // negro → negro 286.520 → rojo.
   assert.deepEqual(plata(aplicarOverrides(obrero(100), {}, 'obreros', null, BLANCO, TARDE)), {
     presentismo: ['perdido', 63480], ...RECIBO_MEDIA, negro: 350000, totalSueldo: 580240.12,
     cobra: 580240.12, porBanco: 230240.12, enEfectivo: 350000, total: 580240.12,
   })
 })
 
-test('jornada completa: el 0425 es 20 % del 0401 y el perdido se descuenta UNA vez, del negro', () => {
+test('jornada completa: cumple cobra el 0425 (20 % del 0401); el perdido lo pierde en el blanco y el negro no se toca', () => {
   assert.deepEqual(plata(aplicarOverrides(obrero(100), COMPLETA, 'obreros', null, BLANCO, CUMPLE)), {
     presentismo: ['aplica', 63480], ...RECIBO_COMPLETA, negro: 84000, totalSueldo: 607365.37,
     cobra: 607365.37, porBanco: 523365.37, enEfectivo: 84000, total: 607365.37,
   })
-  assert.deepEqual(plata(aplicarOverrides(obrero(100), COMPLETA, 'obreros', null, BLANCO, TARDE)), {
-    presentismo: ['perdido', 63480], ...RECIBO_COMPLETA, negro: 20520, totalSueldo: 543885.37,
-    cobra: 543885.37, porBanco: 523365.37, enEfectivo: 20520, total: 543885.37,
-  })
+  // Perdido: 0426 = −0425 (hasta el 28/09 no existía en completa y el perdido salía del negro: 20.520).
+  const perdido = plata(aplicarOverrides(obrero(100), COMPLETA, 'obreros', null, BLANCO, TARDE))
+  assert.deepEqual(perdido.asistencia, [['0425', 111724.8], ['0426', -111724.8]])
+  assert.equal(perdido.remunerativo, 558624)
+  assert.equal(perdido.negro, 84000, 'MUTACIÓN: volver a descontar el perdido del negro → 20.520')
+  assert.ok(perdido.neto! < 523365.37)
+  assert.equal(perdido.total, Math.round((perdido.neto! + 84000) * 100) / 100)
 })
 
 test('mensual y sin horas: nada que cobrar ni descontar', () => {
@@ -110,10 +113,9 @@ test('mensual y sin horas: nada que cobrar ni descontar', () => {
   })
 })
 
-// AUDITOR 28/09: la guarda miraba de dónde salía el neto. Con neto de nómina, escrito a mano o de un recibo real sin
-// detalle, el mismo perdido de media jornada se volvía a descontar del negro (516.760 contra 580.240). Lo decide el
-// recibo: si trae el 0426, el blanco ya lo sacó. Jornada completa no tiene 0426: ahí sigue saliendo del negro.
-test('el perdido sale UNA vez sea cual sea el origen del neto', () => {
+// DUEÑO 28/09: «el presentismo es para la parte en blanco no toques nada del negro». Sea cual sea el origen del neto
+// —nómina, a mano, recibo real sin detalle— el negro del perdido es horas × $/h, entero.
+test('el perdido no toca el negro, sea cual sea el origen del neto', () => {
   const negro = (b: EntradaDeBlanco, ov = {}, extra = {}) =>
     plata(aplicarOverrides(obrero(100), { ...ov, ...extra }, 'obreros', null, b, TARDE)).negro
   assert.equal(negro({ ...BLANCO, netoDeNomina: 230000 }), 350000, 'neto de nómina')
@@ -123,6 +125,5 @@ test('el perdido sale UNA vez sea cual sea el origen del neto', () => {
     bruto: 317400, neto: 230240.12, driveFileId: null,
   }
   assert.equal(negro({ ...BLANCO, recibo: real }), 350000, 'recibo real sin detalle de conceptos')
-  // Jornada completa, neto de nómina: sin 0426 en el recibo, el perdido sigue saliendo del negro (84.000 − 63.480).
-  assert.equal(negro({ ...BLANCO, netoDeNomina: 523000 }, COMPLETA), 20520)
+  assert.equal(negro({ ...BLANCO, netoDeNomina: 523000 }, COMPLETA), 84000, 'jornada completa con neto de nómina')
 })

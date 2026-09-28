@@ -80,14 +80,14 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
       : ''
     return (
       <div data-testid={testid} data-presentismo="perdido" data-sin-motivo={recuperable ? '1' : undefined}
-        title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · se descuenta del negro${recuperable}`}
+        title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · el 0426 lo anula en el recibo en blanco; el negro no se toca${recuperable}`}
         style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.warn, fontWeight: 500 }}>
         perdido {fechasCortas(p.perdido)}
       </div>
     )
   }
   return (
-    <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Es parte del cobra: cumple y cobra lo de siempre.`}
+    <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Cumple: se cobra en el recibo en blanco (0425).`}
       style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>{pesos(p.importe)}</div>
   )
 }

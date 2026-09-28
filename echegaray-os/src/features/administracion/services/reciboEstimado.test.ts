@@ -153,15 +153,20 @@ test('jornada completa (su último recibo ≥ 88 h): sin 0426 ni 92 ter', () => 
 // recibos): ahí el 0425 va solo y es plata del recibo. Salteado, el remunerativo bajaba un 20 % del
 // básico y el neto estimado con él, que en `sueldoBlancoNegro` ES el banco preliminar de la fila.
 // Medido en los dos de jornada completa: −$115.395,84 cada uno, ~$221.000 por quincena.
-test('jornada completa: el 0425 NO se saca con el presentismo del OS, porque ahí nada lo anula', () => {
+test('jornada completa con presentismo del OS: cumple → 0425 sin 0426 (igual que antes); perdido → el 0426 lo anula', () => {
   const completa = RECIBOS.find((r) => r.periodo === 'Q1-08/2026' && (r.horasNormales ?? 0) >= 88)!
   const base = { persona: completa.persona, periodo: 'Q2-08/2026', valorHora: completa.valorHora, horasRecibo: null, feriados: 0, recibosPropios: RECIBOS.filter((r) => r.persona === completa.persona) }
-  const sinBandera = estimarRecibo(REGLAS, base)!
-  const conBandera = estimarRecibo(REGLAS, { ...base, presentismoPropio: true })!
-  assert.equal(conBandera.jornada, 'completa')
-  assert.ok(conBandera.lineas.some((l) => l.codigo === '0425'), 'MUTACIÓN: se llevó el 0425 de jornada completa y con él el neto')
-  assert.equal(conBandera.remunerativo, sinBandera.remunerativo)
-  assert.equal(conBandera.neto, sinBandera.neto, 'el arreglo del panel no puede mover el banco')
+  const antes = estimarRecibo(REGLAS, base)!
+  const cumple = estimarRecibo(REGLAS, { ...base, presentismoPropio: true, presentismoCobra: true })!
+  const perdido = estimarRecibo(REGLAS, { ...base, presentismoPropio: true })!
+  assert.equal(cumple.jornada, 'completa')
+  assert.ok(!antes.lineas.some((l) => l.codigo === '0426'), 'en los recibos de completa el 0426 no existía')
+  assert.equal(cumple.remunerativo, antes.remunerativo, 'MUTACIÓN: se llevó el 0425 del que cumple')
+  assert.equal(cumple.neto, antes.neto)
+  // Dueño 28/09: el presentismo vive sólo en el blanco; el perdido lo pierde ahí, con el 0426.
+  const m = (c: string) => perdido.lineas.find((l) => l.codigo === c)?.monto
+  assert.equal(m('0426'), -m('0425')!)
+  assert.equal(perdido.remunerativo, Math.round((antes.remunerativo! - m('0425')!) * 100) / 100)
 })
 
 test('real contra estimado: la única diferencia de Rosales Q2-08 es el seguro de vida', () => {

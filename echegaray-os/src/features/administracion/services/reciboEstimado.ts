@@ -108,7 +108,8 @@ function horasDeLaPersona(reglas: ReglasDelRecibo, p: PersonaDelEstimado): { jor
  * anula»*. Hasta la 1–15/09 el estudio ponía 0425 ASISTENCIA PERFECTA y, pegado, 0426 AJUSTE COD.0425 anulándolo
  * (media jornada: 263 de 263 recibos). Desde `quincenaConPresentismo` el 0425 va en el mismo lugar —detrás del
  * 0401— y SUMA cuando `presentismo.ts` dice que cumple. Si lo perdió —o no se sabe— va el 0426 que lo anula, que
- * es para lo que el estudio lo usa («INASIST. Y/O TARD.»). Jornada completa no cambia: el 0426 no existe ahí (0 de 29).
+ * es para lo que el estudio lo usa («INASIST. Y/O TARD.»). También en jornada completa, donde hasta ahora el 0426 no
+ * existía (0 de 29): el presentismo vive sólo en el blanco y el negro no se toca (dueño 28/09).
  *
  * El 21/09 se había sacado el par del estimado porque sumaba cero y el panel lo decía dos veces. Eso quedó atrás:
  * ahora es plata del blanco y se dice una vez, como un concepto más.
@@ -135,8 +136,10 @@ function haberes(
     const monto = a.dudosa ? null : r2(a.tasa * basico)
     out.push({ codigo: '0425', descripcion: 'ASISTENCIA PERFECTA (ART. 52 CCT)', seccion: 'remunerativo', unidad: null, base: null, monto, fuente: `${pct(a.tasa)} del 0401 · reproduce ${a.evidencia.aciertos} de ${a.evidencia.recibos} recibos (${ventanaDe(reglas)})` })
     const aj = a.ajuste[jornada]
-    // Con el presentismo del OS el 0426 no va cuando cumple; si va, anula el 0425 entero.
-    if (aj.anula !== false && !(presentismoPropio && presentismoCobra)) {
+    // Con el presentismo del OS lo decide `presentismo.ts`, en cualquier jornada: cumple → sin 0426; si no, el 0426
+    // anula el 0425 entero. El negro no se toca (dueño 28/09: «el presentismo es para la parte en blanco no toques
+    // nada del negro»).
+    if (presentismoPropio ? !presentismoCobra : aj.anula !== false) {
       out.push({
         codigo: '0426', descripcion: 'AJUSTE COD.0425 (INASIST. Y/O TARD.)', seccion: 'remunerativo', unidad: null, base: null,
         monto: (aj.anula || presentismoPropio) && monto != null ? -monto : null,

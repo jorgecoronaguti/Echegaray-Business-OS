@@ -368,15 +368,14 @@ export function aplicarOverrides(
   const presentismo = entradaPresentismo && grupo === 'obreros'
     ? presentismoDeLinea(entradaPresentismo, horas)
     : base.modalidad === 'mensual' ? presentismoNoAplica() : null
-  const sinDescuento = conModelo
+  // EL PRESENTISMO VIVE SÓLO EN EL BLANCO (dueño 28/09: «el presentismo es para la parte en blanco no toques nada del
+  // negro»): cumple → 0425 en el recibo; perdido → 0426 lo anula ahí. El negro queda horas × $/h, sin descuento.
+  const sueldo = conModelo
     ? sueldoBlancoNegro({
       ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco,
       presentismoCobra: presentismo?.estado === 'aplica',
     })
     : null
-  // UN NEGRO ESCRITO A MANO NO SE DESCUENTA: manual gana, como en todas las celdas. El presentismo se
-  // publica igual —la marca existe— y quien escribió el importe lo ve al lado.
-  const sueldo = sinDescuento && descontarDelNegro(sinDescuento, manual.negro ? null : presentismo)
   const cobraCalc = sueldo
     ? sueldo.total
     : cobraConPresentismo(
@@ -464,30 +463,6 @@ function referenciaDe(
   if (r.horas == null && r.cobra == null && r.enEfectivo == null && r.porBanco == null) return null
   const distinto = (a: number | null, b: number | null) => a != null && b != null && a !== redondear2(b)
   return { ...r, difiere: distinto(r.horas, horas) || (!conModelo && distinto(r.cobra, cobra)) }
-}
-
-/**
- * EL BLANCO YA LO SACÓ: el recibo trae el 0426 (media jornada desde la 16–30/09, donde el presentismo se cobra en el
- * blanco — dueño 28/09). Descontarlo además del negro lo haría perder dos veces. Lo dice el recibo, no de dónde
- * salió el neto: nómina, a mano o por proporción es el mismo recibo del estudio (auditor 28/09: con neto de nómina
- * el mismo perdido cobraba 516.760 o 580.240 según el dato cargado). Con conceptos reales mandan ellos; sin
- * detalle, el estimado.
- */
-function blancoYaLoAnula(s: SueldoBlancoNegro): boolean {
-  const lleva = (cs: readonly { codigo: string }[] | null | undefined): boolean => (cs ?? []).some((c) => c.codigo === '0426')
-  return s.conceptosReales?.length ? lleva(s.conceptosReales) : lleva(s.reciboEstimado?.lineas)
-}
-
-/**
- * EL PRESENTISMO PERDIDO SALE DEL NEGRO. El neto es lo que el estudio liquidó y el banco giró: no se
- * toca. Lo que la persona deja de cobrar es efectivo, y Neto + Negro = Total sigue cerrando exacto.
- * Si el negro no alcanza queda negativo y la pantalla lo muestra: es plata que ya salió por el banco.
- */
-function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): SueldoBlancoNegro {
-  if (p == null || p.estado !== 'perdido' || p.importe == null || s.negro == null) return s
-  if (blancoYaLoAnula(s)) return s
-  const negro = redondear2(s.negro - p.importe)
-  return { ...s, negro, total: s.neto == null ? null : redondear2(s.neto + negro) }
 }
 
 /**
