@@ -31,8 +31,8 @@ import { tituloDeJornales } from './estadoDelPago'
 import { ALTO_LIQ } from '../solapas/tabla'
 import { cierreDeLaFila, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
-import { fechasCortas, PRESENTISMO_PCT } from '../../../services/presentismo'
-import { motivosDePerdida } from './CeldasDelEspejo'
+import { renglonDePresentismo } from './presentismoEnElPanel'
+import { presentismoNoAplica } from '../../../services/presentismo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
@@ -168,11 +168,12 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={s.horasNegro} unidad="horas" />
       </Renglon>
       <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
+      {/* EL PRESENTISMO, UN CONCEPTO MÁS DEL NEGRO (dueño, 28/09/2026): va antes del importe porque ya está
+          adentro —cobrado o descontado—, no se le suma. */}
+      <RenglonDelPresentismo fila={fila} />
       <Renglon rotulo="Importe">
         <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
-
-      <PresentismoDelPanel fila={fila} />
 
       <PagadoYSaldo fila={fila} quincena={quincena} camposEditables={camposEditables} />
 
@@ -193,61 +194,19 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
 
 
 /**
- * EL PRESENTISMO, CONCEPTO POR CONCEPTO (dueño, 16/09/2026): *«mostrar por empleado: Base presentismo
- * (50 % blanco) · % 20 · Presentismo $ · Estado (Cumple / Perdido) · motivo si lo perdió»*.
- *
- * LA BASE ES LA MITAD EN BLANCO Y SE DICE EN LA PANTALLA, no sólo en un tooltip: es la pregunta que el
- * dueño hizo dos veces (sobre qué corre el 20 %). El 50 % en efectivo no entra, y el renglón lo aclara.
- * Nada se calcula acá: los cuatro números salen de `presentismo.ts`, que es donde vive la regla.
+ * EL PRESENTISMO COMO RENGLÓN (dueño, 28/09/2026: «no quiero que se discrimine tanto»). El mismo `Renglon` que
+ * cualquier otro concepto: sin rótulo de sección, sin negrita, sin ámbar. La base, el %, el estado y las fechas
+ * a revisar van en la nota, en pantalla —no en un `title`, que en el teléfono no se ve—. El texto lo arma
+ * `renglonDePresentismo`; los números son los de `presentismo.ts`.
  */
-function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
-  const p = fila.linea.presentismo
-  if (!p || p.estado === 'no_rige' || p.estado === 'no_aplica') return null
-  const testid = `panel-presentismo-${fila.personaId}`
-  if (p.estado === 'sin_categoria') {
-    return (
-      <>
-        <div style={{ height: 16 }} />
-        <Rotulo>Presentismo</Rotulo>
-        <Renglon rotulo="Estado" nota="sin categoría en el legajo: no hay básico con qué calcularlo">
-          <span data-testid={testid} style={{ fontSize: '12px', color: V.apagado }}>sin categoría</span>
-        </Renglon>
-      </>
-    )
-  }
-  // ═══ «CUMPLE» ES UNA AFIRMACIÓN, Y SIN HORAS NO SE PUEDE HACER (QA, 16/09/2026) ═══
-  //
-  // El defecto que esto corrige: `sin_horas` caía en el `else` y la pantalla decía «Cumple · sin faltas
-  // injustificadas, tardanzas ni retiros» sobre alguien que todavía no tiene NINGUNA jornada cargada. No
-  // es que cumplió: es que no hay dato. Pasa todos los días 16 de cada quincena mientras se cargan las
-  // horas —el día del QA eran 2 de 15 obreros— y un jefe de obra lo lee como un visto bueno.
-  const estado = p.estado === 'perdido' ? 'Perdido'
-    : p.estado === 'sin_horas' ? 'Sin horas'
-    : 'Cumple'
-  const color = p.estado === 'aplica' ? V.tinta : p.estado === 'sin_horas' ? V.apagado : V.warn
+function RenglonDelPresentismo({ fila, mensual = false }: { fila: FilaDelEspejo; mensual?: boolean }) {
+  // El mensual lo dice siempre, aunque la línea venga sin evaluar: «no aplica» es una afirmación, no un vacío.
+  const r = renglonDePresentismo(fila.linea.presentismo ?? (mensual ? presentismoNoAplica() : null))
+  if (!r) return null
   return (
-    <>
-      <div style={{ height: 16 }} />
-      <Rotulo>Presentismo</Rotulo>
-      <Renglon rotulo="Base presentismo" nota="50 % en blanco · el 50 % en efectivo no entra en la base">
-        <Leida valor={p.base} />
-      </Renglon>
-      <Renglon rotulo="%" nota="art. 52 CCT 76/75">
-        <span style={{ fontSize: '12.5px', color: V.tinta }}>{`${Math.round(PRESENTISMO_PCT * 100)} %`}</span>
-      </Renglon>
-      <Renglon rotulo="Presentismo" fuerte
-        nota={p.estado === 'perdido' ? 'se descuenta del cobra' : undefined} alerta={p.estado === 'perdido'}>
-        <Leida valor={p.importe} />
-      </Renglon>
-      <Renglon rotulo="Estado"
-        nota={p.estado === 'perdido'
-          ? `${motivosDePerdida(p)}${p.aRevisar.length > 0 ? ` · cargá el motivo de ${fechasCortas(p.aRevisar)}: si lo justifica, lo recupera` : ''}`
-          : p.estado === 'sin_horas' ? 'sin horas cargadas en la quincena: todavía no hay presentismo que calcular'
-          : 'sin faltas injustificadas, tardanzas ni retiros'}
-        alerta={p.estado !== 'aplica' && p.estado !== 'sin_horas'}>
-        <span data-testid={testid} data-estado={p.estado} style={{ fontSize: '12.5px', fontWeight: 600, color }}>{estado}</span>
-      </Renglon>
-    </>
+    <Renglon rotulo={r.rotulo} nota={r.nota}>
+      <span data-testid={`panel-presentismo-${fila.personaId}`} data-estado={r.estado}><Leida valor={r.valor} /></span>
+    </Renglon>
   )
 }
 
@@ -283,7 +242,7 @@ function PagadoYSaldo({ fila, quincena, camposEditables }: PropsDeCadena) {
 
 /**
  * EL MENSUAL, EN EL ORDEN DE SU CUADRO: sueldo del mes · recibo blanco (banco, pagado, saldo) · efectivo fuera del
- * recibo (importe, pagado, saldo) · presentismo «no aplica» · total, pagado y saldo. Sin recibo, los lados dicen «falta
+ * recibo (importe, pagado, saldo, presentismo «no aplica») · total, pagado y saldo. Sin recibo, los lados dicen «falta
  * recibo» y el saldo total se afirma igual (`pagoDelMensual`). La asistencia va como referencia: no se paga por ella.
  */
 function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
@@ -321,12 +280,7 @@ function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Escribible campo="pagadoEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="Saldo efectivo" nota={p.saldoEfectivo == null ? faltaRecibo : undefined}><Leida valor={p.saldoEfectivo} /></Renglon>
-
-      <div style={{ height: 16 }} />
-      <Rotulo>Presentismo</Rotulo>
-      <Renglon rotulo="Estado" nota="cobra por mes: el presentismo es del convenio de obreros">
-        <span data-testid={`panel-presentismo-${fila.personaId}`} data-estado="no_aplica" style={{ fontSize: '12.5px', color: V.apagado }}>No aplica · mensual</span>
-      </Renglon>
+      <RenglonDelPresentismo fila={fila} mensual />
 
       <div style={{ height: 16 }} />
       <Renglon rotulo="Cobra total" fuerte

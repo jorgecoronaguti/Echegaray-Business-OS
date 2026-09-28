@@ -59,12 +59,16 @@ test('EL BOTÓN LLAMA A LA ACCIÓN DEL SERVIDOR CON LA VENTANA, EL GRUPO Y LA PE
 // ni retiros». Es una afirmación que el dato no sostiene: no cumplió, no hay con qué calcular.
 // MUTACIÓN: sacar la rama de `sin_horas` → rojo.
 test('el panel distingue «sin horas» de «Cumple»: no afirma lo que no puede', () => {
-  const panel = readFileSync(new URL('./PanelDeLaPersona.tsx', import.meta.url), 'utf8')
-  const bloque = panel.slice(panel.indexOf('function PresentismoDelPanel('))
-  assert.match(bloque, /p\.estado === 'sin_horas' \? 'Sin horas'/, 'sin horas tiene su propio rótulo')
-  assert.match(bloque, /sin horas cargadas en la quincena/, 'y su propia explicación')
+  // CAMBIÓ EL 28/09/2026: el presentismo dejó de ser una sección del panel y es un renglón del negro; el texto lo
+  // arma `renglonDePresentismo`. Lo que se controla es lo mismo.
+  const texto = readFileSync(new URL('./presentismoEnElPanel.ts', import.meta.url), 'utf8')
+  const bloque = texto.slice(texto.indexOf('export function renglonDePresentismo('))
+  assert.match(bloque, /\['Sin horas', 'sin horas cargadas en la quincena/, 'sin horas tiene su propio rótulo y su propia explicación')
   // EL ORDEN IMPORTA: si «Cumple» se evaluara antes, la rama nueva no se alcanzaría nunca.
-  assert.ok(bloque.indexOf("'Sin horas'") < bloque.indexOf("'Cumple'"), 'Cumple sigue siendo el último recurso')
-  // Y NO SE PINTA EN ÁMBAR: no hay nada que corregir, sólo falta cargar horas.
-  assert.match(bloque, /alerta=\{p\.estado !== 'aplica' && p\.estado !== 'sin_horas'\}/)
+  assert.ok(bloque.indexOf("'Sin horas'") > 0 && bloque.indexOf("'Sin horas'") < bloque.indexOf("'Cumple'"), 'Cumple sigue siendo el último recurso')
+  // Y NO SE PINTA EN ÁMBAR: el renglón no lleva `alerta` en ningún estado (dueño, 28/09/2026: sin color especial).
+  const panel = readFileSync(new URL('./PanelDeLaPersona.tsx', import.meta.url), 'utf8')
+  const renglon = panel.slice(panel.indexOf('function RenglonDelPresentismo('), panel.indexOf('function PagadoYSaldo('))
+  assert.match(renglon, /<Renglon rotulo=\{r\.rotulo\} nota=\{r\.nota\}>/)
+  assert.doesNotMatch(renglon, /alerta|V\.warn|fontWeight/)
 })

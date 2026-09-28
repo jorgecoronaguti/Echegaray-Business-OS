@@ -21,6 +21,7 @@ import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJo
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
 import { fechasCortas, type PresentismoDeLinea } from '../../../services/presentismo'
+import { motivosDePerdida } from './presentismoEnElPanel'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
@@ -91,11 +92,6 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
   )
 }
 
-/** «18/09 Faltó sin avisar · 22/09 Llegó tarde». La foto vieja no guardó causas: quedan las fechas. */
-export function motivosDePerdida(p: PresentismoDeLinea): string {
-  if (p.causas.length === 0) return fechasCortas(p.perdido)
-  return p.causas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)} ${c.etiqueta}`).join(' · ')
-}
 
 /** El glifo de tardanza sobre un día trabajado: ▲ ámbar chico, con el detalle en el `title`. */
 function MarcaDeTardanza({ celda }: { celda: CeldaDelEspejo }) {
