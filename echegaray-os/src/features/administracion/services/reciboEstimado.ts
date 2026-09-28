@@ -61,6 +61,12 @@ export interface ReciboEstimado {
   contribuciones: number | null
   costoTotal: number | null
   avisos: string[]
+  /**
+   * El par 0425/0426 tal como lo pone el estudio, cuando el panel lo saca (media jornada con presentismo del
+   * OS: el 0426 anula el 0425, suman cero). Lo usa sólo el recibo impreso con forma del estudio (dueño 28/09:
+   * «¿por qué no pusiste el presentismo en el modelo de recibo en blanco?»). No entra en ningún total.
+   */
+  presentismoDelEstudio?: LineaEstimada[]
 }
 
 const pct = (t: number): string => `${(t * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} %`
@@ -189,6 +195,10 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
   else if (p.feriados > 0 && porDia == null) avisos.push('hay feriados en la quincena y ningún recibo de la ventana dice cuántas horas vale cada uno')
   const feriado = Math.min(h.total, (p.feriados ?? 0) * (porDia ?? 0))
   const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, p.presentismoPropio === true)
+  const par = p.presentismoPropio === true
+    ? haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, false)
+      .filter((l) => (l.codigo === '0425' || l.codigo === '0426') && !lineas.some((x) => x.codigo === l.codigo))
+    : []
   const remunerativo = sumaONull(lineas)
   // UNA REGLA DE UNA SOLA MITAD DEL MES SE DECIDE POR LA QUINCENA QUE SE ESTIMA, no por la que se generó: las reglas
   // congeladas para Q1-09 tienen el seguro de vida en «no aplica», y en Q2-09 aplica.
@@ -206,7 +216,7 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
     lineas, remunerativo, descuentos,
     neto: remunerativo == null || descuentos == null ? null : r2(remunerativo - descuentos),
     contribuciones, costoTotal: remunerativo == null || contribuciones == null ? null : r2(remunerativo + contribuciones),
-    avisos,
+    avisos, ...(par.length > 0 ? { presentismoDelEstudio: par } : {}),
   }
 }
 

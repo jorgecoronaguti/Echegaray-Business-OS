@@ -167,3 +167,19 @@ test('el período de pago como lo escribe el recibo', () => {
   assert.equal(periodoDePago('2026-08-16').texto, 'SEGUNDA QUINCENA 08/2026')
   assert.equal(periodoDePago('2026-09-01').q, 1)
 })
+
+// DUEÑO 28/09: «¿por qué no pusiste el presentismo en el modelo de recibo en blanco?». Con el presentismo del
+// OS el panel saca el par 0425/0426 de media jornada; el papel lo lleva como el estudio, y los totales no se mueven.
+test('media jornada con presentismo del OS: el papel lleva 0425 y 0426 como el estudio, sin mover el neto', () => {
+  const conOS = estimarRecibo(REGLAS, { persona: P22, periodo: 'Q2-08/2026', valorHora: 6348, horasRecibo: null, feriados: 1, recibosPropios: RECIBOS.filter((r) => r.persona === P22), presentismoPropio: true })!
+  assert.ok(!conOS.lineas.some((l) => l.codigo === '0425'), 'el panel no lo muestra (21/09)')
+  const r = armar(sueldo({ reciboEstimado: conOS, bruto: conOS.remunerativo, neto: conOS.neto }))
+  const cods = r.remunerativo.map((l) => l.codigo)
+  assert.deepEqual(cods.slice(0, 3), ['0401', '0425', '0426'])
+  const m = (c: string) => r.remunerativo.find((l) => l.codigo === c)!.monto!
+  assert.ok(m('0425') > 0)
+  assert.equal(m('0426'), -m('0425'))
+  assert.equal(r.totalRemunerativo, conOS.remunerativo)
+  assert.equal(r.neto, conOS.neto)
+  assert.equal(r.cuadra, true)
+})
