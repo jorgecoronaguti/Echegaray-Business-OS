@@ -149,7 +149,7 @@ function haberes(
     if (va0426) {
       out.push({
         codigo: '0426', descripcion: 'AJUSTE COD.0425 (INASIST. Y/O TARD.)', seccion: 'remunerativo', unidad: null, base: null,
-        monto: (aj.anula || presentismoPropio) && monto != null ? -monto : null,
+        monto: (aj.anula === true || (presentismoPropio && presentismoPierde)) && monto != null ? -monto : null,
         fuente: `anula el 0425 en ${aj.conAjuste} de ${aj.recibos} recibos de jornada ${jornada} (${ventanaDe(reglas)})${aj.anula == null ? ' · DUDOSA' : ''}`,
       })
     }
