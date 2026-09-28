@@ -203,6 +203,11 @@ const OCRE = { red: 0.45, green: 0.40, blue: 0.30 }
 // Y EL GRIS CLARO ES EL DE LO QUE YA PASÓ. Un color apagado no es decoración: en esta pila significa
 // "esto no se decide", y por eso es el único que no está en la escala de la paleta viva.
 const GRIS_CLARO = { red: 0.85, green: 0.85, blue: 0.85 }
+// EL BALDE «ESTIMADO (SIN FACTURA)» (28/09/2026) ES OTRO GRIS Y NO EL MISMO: si compartiera el gris
+// claro de «Ya salió» se leería como "esto tampoco se decide", y sí se decide —es plan de obra y
+// Estructura esperada, información real que puede cambiar—. Tampoco es el gris de «Cheques», que sí
+// tiene aval. Un gris intermedio, propio, entre los dos.
+const GRIS_ESTIMADO = { red: 0.74, green: 0.74, blue: 0.76 }
 // LAS DOS MITADES DEL SALDO DEL PLAN: verde el efectivo, celeste el banco. Distintos del azul del plan
 // (ACENTO) y del rojo del piso, para que las cuatro curvas se lean sin confundirse.
 const VERDE = { red: 0.18, green: 0.49, blue: 0.34 }
@@ -281,7 +286,7 @@ function base(titulo, subtitulo, basicChart, sheetId, posicion) {
 function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
   const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
   // UN COLOR POR BALDE, EN EL ORDEN DE `SALIDAS`. El gris claro es el de lo ejecutado: ver arriba.
-  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
+  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, estimado: GRIS_ESTIMADO, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
   return base(titulo, subtitulo, {
     chartType: 'COMBO',
     stackedType: 'STACKED',
@@ -329,7 +334,7 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
 function efectivoVsBanco({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
   const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
   // El mismo color por rubro que la necesidad diaria: un rubro es del mismo color en los dos gráficos.
-  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
+  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, estimado: GRIS_ESTIMADO, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
   return base(titulo, subtitulo, {
     chartType: 'COMBO',
     stackedType: 'STACKED',

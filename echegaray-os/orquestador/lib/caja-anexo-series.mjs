@@ -215,11 +215,16 @@ const filtrosDe = (b) => ({
 })
 
 /**
- * Los baldes ESPECÍFICOS que comparten grupo de estados con `b` — los que hay que restarle a un
- * residual. Se comparan los estados y no la clave: es lo que hace que «Proveedores» le reste
- * únicamente los cheques/sueldos/cargas/impuestos PENDIENTES y no los que ya se pagaron.
+ * Los baldes ESPECÍFICOS que hay que restarle a un residual `b` — los que PODRÍAN tener una fila en
+ * el grupo de estados de `b`. Se compara por CONTENCIÓN y no por igualdad desde el 28/09/2026: antes
+ * «Proveedores» y los cuatro específicos declaraban el mismo `NO_REAL` y la igualdad alcanzaba. Ahora
+ * «Proveedores» (`DEUDA`) y «Estimado» (`PLAN`) parten ese `NO_REAL` en dos, y los específicos lo
+ * siguen declarando ENTERO —un sueldo puede estar COMPROMETIDO o todavía ser PROYECTADO—, así que la
+ * pregunta correcta es «¿el balde específico puede tener algo en MI grupo?», no «¿tiene el mismo
+ * grupo que yo?». Sin este cambio «Estimado» sumaría también los sueldos/cargas PROYECTADOS que
+ * «Sueldos»/«Cargas» ya muestran — la misma plata en dos barras.
  */
-const hermanosDe = (b) => SALIDAS.filter((x) => !x.resto && String(x.estados) === String(b.estados))
+const hermanosDe = (b) => SALIDAS.filter((x) => !x.resto && b.estados.every((e) => x.estados.includes(e)))
 
 /**
  * NÚCLEO PURO: cuánta plata sale de UN balde el día `d`, y cuánta entra por cobranzas.
@@ -239,6 +244,12 @@ const hermanosDe = (b) => SALIDAS.filter((x) => !x.resto && String(x.estados) ==
  * UN BALDE RESIDUAL SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS: se le restan sus hermanos
  * específicos sobre la MISMA ventana y los MISMOS estados. Restarle un cheque ya pagado a los
  * proveedores pendientes daría un negativo inventado.
+ *
+ * Y CUANDO UN HERMANO DECLARA UN GRUPO MÁS ANCHO QUE `b` (28/09/2026: «Sueldos» sigue siendo
+ * `NO_REAL` entero, «Proveedores» ahora es sólo `DEUDA`), lo que se le resta NO es su fórmula propia
+ * —eso restaría también su parte `PLAN`, que nunca estuvo sumada en el total de `b`— sino la MISMA
+ * pregunta con los estados de `b`: «¿cuánto de Sueldos cae en el grupo de Proveedores?». Por eso
+ * `filtrosDe(x)` se pisa con `estados: b.estados` acá y no adentro de `filtrosDe`.
  */
 export function necesidadDelDia(d, balde) {
   const ventana = { desde: dia(d), hasta: dia(d + 1), medida: 'magnitud' }
@@ -251,7 +262,7 @@ export function necesidadDelDia(d, balde) {
   if (!b) throw new Error(`necesidadDelDia: no existe el balde "${balde}"`)
   const suma = (f) => terminoLibro({ ...ventana, ...f })
   if (!b.resto) return `=${suma(filtrosDe(b))}`
-  const otros = hermanosDe(b).map((x) => suma(filtrosDe(x)))
+  const otros = hermanosDe(b).map((x) => suma({ ...filtrosDe(x), estados: [...b.estados] }))
   // EFECTIVO A RENDIR (22/09/2026): el ticket rendido es una salida REAL en su rubro, pero ese día no
   // salió plata — salió con la entrega. Su espejo en la línea de fondos (ENTRADA REAL, instrumento
   // `a_rendir`) se resta de «Ya salió». Sólo el espejo: una devolución no es un pago negativo.

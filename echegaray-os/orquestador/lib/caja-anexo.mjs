@@ -58,7 +58,13 @@ export { PESTANA_ANEXO }
 // Y DIECIOCHO DESDE EL 01/09/2026: la necesidad diaria agregó dos curvas —«Saldo efectivo» y «Saldo
 // banco»— que parten el saldo del plan por dónde va a estar la plata. Dos columnas más, contadas por
 // `COL_NECESIDAD.saldoEfectivo/saldoBanco` sobre `SALIDAS`, no escritas a mano.
-export const ANCHO_ANEXO = 18
+//
+// Y DIECINUEVE DESDE EL 28/09/2026: «Proveedores» se partió en «Proveedores» (deuda con comprobante)
+// y «Estimado (sin factura)» (plan de obra, Estructura esperada) — un balde nuevo en `SALIDAS`, una
+// columna más para `COL_NECESIDAD`. ESTE NÚMERO NO SE DEDUCE SOLO: es el techo de la grilla real de
+// Sheets, y `caja-anexo-series.test.mjs` lo verifica contra `COL_NECESIDAD` para que agregar un balde
+// sin subirlo vuelva a devolver el 400 que borra los cuatro gráficos.
+export const ANCHO_ANEXO = 19
 /** La columna de prosa y contadores. Era «la última»; con la serie nueva atrás, hay que nombrarla. */
 export const COL_NOTA = 7
 
@@ -263,7 +269,7 @@ export const HISTORICO_EFECTIVO = HISTORICO_EFECTIVO_BASE
 export const claveDeRotulo = (r) => String(r ?? '').trim()
 
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
-export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 124, 124, 124, 124, 124, 124, 140, 140, 140, 140]
+export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 124, 124, 124, 124, 124, 124, 124, 140, 140, 140, 140]
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 

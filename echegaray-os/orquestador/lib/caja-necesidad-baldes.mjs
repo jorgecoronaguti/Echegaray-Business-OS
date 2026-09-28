@@ -10,7 +10,7 @@
 // UNA SOLA DEFINICIÓN. La fórmula del anexo, el gráfico y la vista leen `SALIDAS`. Si alguien agrega
 // un balde acá, la columna, la barra, el color y el reparto se mueven juntos o falla un test.
 
-import { NO_REAL } from './caja-tarjetas.mjs'
+import { NO_REAL, DEUDA, PLAN } from './caja-tarjetas.mjs'
 
 /**
  * ═══ LOS CINCO BALDES DE LA SALIDA (20/08/2026) ═══
@@ -48,7 +48,7 @@ export const BALDES = Object.freeze({
  *
  *   · YA SALIÓ    → `REAL`. Pasó por el banco (o por la caja física) y por lo tanto YA ESTÁ ADENTRO
  *                   de `CAJA_TOTAL_DISPONIBLE`. Es contexto —qué pasó ese día—, no necesidad.
- *   · FALTA PAGAR → `NO_REAL` (COMPROMETIDO · PROYECTADO · VENCIDO), abierto en los cinco rubros.
+ *   · FALTA PAGAR → `NO_REAL` (COMPROMETIDO · PROYECTADO · VENCIDO), abierto en los rubros de abajo.
  *                   ESTA es la parte que se compara contra el saldo, y la única que mueve las curvas.
  *
  * Es la regla absoluta de la skill de tesorería, literal: *"nunca se suman dos categorías distintas
@@ -79,7 +79,32 @@ export const SALIDAS = Object.freeze([
   // Cheques Emitidos (cartera viva), y la factura a pagar con cheque sigue siendo deuda de
   // Proveedores hasta que el cheque exista.
   Object.freeze({ clave: 'cheques', rotulo: 'Cheques', estados: NO_REAL, rubros: Object.freeze(['Cheques emitidos']) }),
-  Object.freeze({ clave: 'proveedores', rotulo: 'Proveedores', estados: NO_REAL, resto: true }),
+  // ═══ «PROVEEDORES» ERA EL RESTO DE TODO `NO_REAL`, Y AHÍ ENTRABA EL PLAN SIN FACTURA (28/09/2026) ═══
+  //
+  // El dueño vio $14.266.137 de «Proveedores» para HOY sin un pago ni un cheque que lo explicara. Las
+  // filas eran `PROYECTADO`, rubro «Materiales de obra proyectados» y «Estructura» — la explosión del
+  // plan de obra (`libro-extractores-obras.mjs`) y la provisión de Estructura
+  // (`libro-extractores-estructura.mjs`): estimaciones con fecha, no facturas. Ninguna tiene proveedor
+  // con comprobante cargado.
+  //
+  // La misma regla del dueño del 02/09 («no podés mostrar información errada si no hay algo que
+  // AVALE el egreso») ya se había aplicado a Cheques; acá faltaba aplicarla a Proveedores. Y el corte
+  // YA EXISTÍA, hecho el 16/08 para las tarjetas ejecutivas (`DEUDA` / `PLAN` en `caja-tarjetas.mjs`):
+  // `esFacturaCargada` en `libro-extractores-compras.mjs` decide `COMPROMETIDO` (factura con
+  // comprobante, "Pendiente") en vez de `PROYECTADO` (sin comprobante: estimación) mirando la propia
+  // fila. `VENCIDO` hereda de cuál de las dos era — nunca inventa aval.
+  //
+  //   · «Proveedores» ahora es `DEUDA` = COMPROMETIDO + VENCIDO — SIEMPRE con un comprobante o una
+  //     obligación ya vencida detrás (la factura Pendiente con N° de comprobante, el cheque librado y
+  //     no debitado, el plan de pago de ARCA comprometido).
+  //   · «Estimado (sin factura)» es `PLAN` = PROYECTADO — el plan de obra, la Estructura esperada, los
+  //     recurrentes sin facturar todavía. Es información real (el dueño la pidió: "que todo esté
+  //     contemplado"), pero no se puede mostrar en la misma barra que una deuda con comprobante.
+  //
+  // Los dos siguen siendo RESTO de su propio grupo de estados —ninguno enumera rubros—, y el reparto
+  // sigue siendo exhaustivo: `DEUDA ∪ PLAN = NO_REAL` (fijado por test en `factura-no-es-plan.test.mjs`).
+  Object.freeze({ clave: 'proveedores', rotulo: 'Proveedores', estados: DEUDA, resto: true }),
+  Object.freeze({ clave: 'estimado', rotulo: 'Estimado (sin factura)', estados: PLAN, resto: true }),
   Object.freeze({ clave: 'sueldos', rotulo: 'Sueldos', estados: NO_REAL, rubros: BALDES.sueldos }),
   Object.freeze({ clave: 'cargas', rotulo: 'Cargas sociales', estados: NO_REAL, rubros: BALDES.cargas }),
   Object.freeze({ clave: 'impuestos', rotulo: 'Impuestos', estados: NO_REAL, rubros: BALDES.impuestos }),

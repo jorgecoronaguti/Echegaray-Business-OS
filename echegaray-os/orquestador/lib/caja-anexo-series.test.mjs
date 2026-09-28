@@ -17,7 +17,7 @@ import {
   COL_NECESIDAD, SALIDAS, PENDIENTES, BALDES, EJECUTADO, baldeDeSalida, repartirSalidas,
 } from './caja-necesidad-baldes.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
-import { NO_REAL } from './caja-tarjetas.mjs'
+import { NO_REAL, DEUDA, PLAN } from './caja-tarjetas.mjs'
 import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { ANCHO_ANEXO, ANCHOS_ANEXO } from './caja-anexo.mjs'
 
@@ -263,16 +263,35 @@ test('EL BALDE DE LO EJECUTADO SUMA SÓLO REAL, Y LOS CINCO RUBROS SÓLO LO QUE 
 })
 
 test('EL RESTO SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS', () => {
-  // «Proveedores» es el resto de lo PENDIENTE, no el resto de todo: restarle un cheque ya debitado
-  // daría un negativo inventado, y una barra negativa en una pila apilada corrompe el día entero.
+  // «Proveedores» es el resto de la DEUDA (COMPROMETIDO+VENCIDO: factura con comprobante, cheque
+  // librado, plan de ARCA comprometido) — desde el 28/09 ya NO es el resto de todo `NO_REAL`, porque
+  // ahí entraba el plan sin factura. Restarle un cheque ya debitado daría un negativo inventado, y una
+  // barra negativa en una pila apilada corrompe el día entero.
   const f = necesidadDelDia(0, 'proveedores')
-  const ventana = { desde: 'TODAY()', hasta: 'TODAY()+1', medida: 'magnitud', signo: -1, estados: NO_REAL }
+  const ventana = { desde: 'TODAY()', hasta: 'TODAY()+1', medida: 'magnitud', signo: -1, estados: DEUDA }
   const esperado = `=${terminoLibro(ventana)}`
     + `-${terminoLibro({ ...ventana, rubros: ['Cheques emitidos'] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.sueldos] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.cargas] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.impuestos] })}`
   assert.equal(f, esperado)
+})
+
+test('«ESTIMADO (SIN FACTURA)» ES EL RESTO DEL PLAN, NUNCA DE LA DEUDA (28/09/2026)', () => {
+  // EL DEFECTO QUE ESTE TEST ATRAPA: el gráfico mostró $14.266.137 de «Proveedores» un día sin pagos
+  // ni cheques — eran «Materiales de obra proyectados» y «Estructura esperada», estado PROYECTADO,
+  // sin comprobante. Van a su propio balde, resto de `PLAN` (sólo PROYECTADO), nunca al de la deuda.
+  const f = necesidadDelDia(0, 'estimado')
+  const ventana = { desde: 'TODAY()', hasta: 'TODAY()+1', medida: 'magnitud', signo: -1, estados: PLAN }
+  const esperado = `=${terminoLibro(ventana)}`
+    + `-${terminoLibro({ ...ventana, rubros: ['Cheques emitidos'] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.sueldos] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.cargas] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.impuestos] })}`
+  assert.equal(f, esperado)
+  // Y NI UNA CELDA DE LA FÓRMULA DICE «=COMPROMETIDO» O «=VENCIDO»: si «Estimado» llegara a sumar
+  // deuda con comprobante, la contaría dos veces con «Proveedores».
+  assert.ok(!f.includes('"=COMPROMETIDO"') && !f.includes('"=VENCIDO"'))
 })
 
 test('UN BALDE QUE NO EXISTE FALLA FUERTE: una barra que falta se lee como un día sin vencimientos', () => {
@@ -296,9 +315,16 @@ test('LAS BARRAS QUE SE COMPARAN CONTRA EL SALDO SON EXACTAMENTE LAS QUE LO MUEV
   // Si una barra usara un grupo de estados distinto del de la curva, el día que la línea cruza el
   // cero no sería el día que muestran las barras, y no habría forma de darse cuenta mirando.
   const filtroDeEstados = (f) => [...f.matchAll(/\$H\$2:\$H;"=([A-Z]+)"/g)].map((m) => m[1]).sort()
+  // CADA BARRA REFERENCIA EXACTAMENTE SU PROPIO GRUPO (28/09/2026, tras partir «Proveedores»): antes
+  // los cinco eran `NO_REAL`; ahora «Proveedores» es `DEUDA` y «Estimado» es `PLAN`, y una barra que
+  // se saliera de su grupo —«Estimado» sumando COMPROMETIDO, por ejemplo— contaría plata dos veces.
   for (const b of PENDIENTES) {
-    assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, b.clave))), new Set(NO_REAL), b.clave)
+    assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, b.clave))), new Set(b.estados), b.clave)
   }
+  // Y LA UNIÓN DE TODAS SIGUE SIENDO EXACTAMENTE `NO_REAL`, lo que descuentan las dos curvas: la
+  // partición no se llevó ningún estado y no inventó uno nuevo.
+  const union = PENDIENTES.reduce((s, b) => { for (const e of b.estados) s.add(e); return s }, new Set())
+  assert.deepEqual(union, new Set(NO_REAL))
   assert.deepEqual(new Set(filtroDeEstados(saldoSinCobrar(0))), new Set(NO_REAL))
   assert.deepEqual(new Set(filtroDeEstados(saldoProyectado(0))), new Set(NO_REAL))
   assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, EJECUTADO))), new Set(['REAL']))
@@ -345,6 +371,14 @@ test('EL REPARTO NO DEJA UNA SALIDA AFUERA NI LA CUENTA DOS VECES', () => {
     [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Nómina · Cargas sociales', instrumento: '' }, 'cargas'],
     [{ signo: -1, importe: 1, estado: 'REAL', rubro: 'Impuestos', instrumento: 'cheque' }, EJECUTADO],
     [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Un rubro que nadie enumeró', instrumento: '' }, 'proveedores'],
+    // EL CASO DEL 28/09/2026: $14.266.137 de «Materiales de obra proyectados» (el plan de la obra,
+    // `libro-extractores-obras.mjs`) y de «Estructura» (la provisión esperada,
+    // `libro-extractores-estructura.mjs`) aparecieron en «Proveedores» sin un pago ni un cheque atrás.
+    // Las dos son PROYECTADO —sin comprobante— y van a «Estimado (sin factura)», nunca a Proveedores.
+    [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Materiales de obra proyectados', instrumento: '' }, 'estimado'],
+    [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Estructura', instrumento: '' }, 'estimado'],
+    // Y CUALQUIER OTRO PROYECTADO sin rubro específico también es «Estimado» — el resto, no enumera.
+    [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Un rubro que nadie enumeró', instrumento: '' }, 'estimado'],
     // Un sueldo A PAGAR con cheque sigue en SUELDOS mientras el cheque no exista (regla 02/09):
     // el aval del balde Cheques es el cheque emitido, que llega con rubro 'Cheques emitidos'.
     [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'cheque' }, 'sueldos'],
@@ -377,7 +411,10 @@ test('EL BLOQUE PUBLICA UNA COLUMNA POR BALDE Y EL ANEXO ES LO BASTANTE ANCHO', 
   // La identidad que no se puede romper: efectivo + banco parte del mismo saldo del plan (saldoProyectado).
   assert.ok(saldoBancoProyectado(0).includes(saldoEfectivoProyectado(0).slice(1)),
     'el banco se define como el plan menos el efectivo: comparten el término del efectivo')
-  assert.ok(ANCHO_ANEXO >= COL_NECESIDAD.saldoSinCobrar,
-    `el anexo tiene ${ANCHO_ANEXO} columnas y el bloque llega a la ${COL_NECESIDAD.saldoSinCobrar}`)
+  // `saldoBanco` es la ÚLTIMA columna del bloque (Día, los baldes, las cuatro curvas): si el ancho no
+  // llega hasta ahí, `addChart` devuelve «exceeds grid limits» y el lote entero se cae sin dibujar
+  // NINGÚN gráfico — el modo de falla que agregar «Estimado» sin subir `ANCHO_ANEXO` reproduciría.
+  assert.ok(ANCHO_ANEXO >= COL_NECESIDAD.saldoBanco,
+    `el anexo tiene ${ANCHO_ANEXO} columnas y el bloque llega a la ${COL_NECESIDAD.saldoBanco}`)
   assert.equal(ANCHOS_ANEXO.length, ANCHO_ANEXO, 'cada columna declara su ancho en píxeles')
 })
