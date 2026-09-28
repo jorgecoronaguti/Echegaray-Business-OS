@@ -173,7 +173,7 @@ test('el período de pago como lo escribe el recibo', () => {
 test('media jornada con presentismo del OS: el papel lleva el 0425 detrás del 0401, con o sin el 0426', () => {
   const base = { persona: P22, periodo: 'Q2-08/2026', valorHora: 6348, horasRecibo: null, feriados: 1, recibosPropios: RECIBOS.filter((r) => r.persona === P22), presentismoPropio: true }
   for (const [cobra, esperado] of [[true, ['0401', '0425']], [false, ['0401', '0425', '0426']]] as const) {
-    const est = estimarRecibo(REGLAS, { ...base, presentismoCobra: cobra })!
+    const est = estimarRecibo(REGLAS, { ...base, presentismoCobra: cobra, presentismoPierde: !cobra })!
     const r = armar(sueldo({ reciboEstimado: est, bruto: est.remunerativo, neto: est.neto }))
     assert.deepEqual(r.remunerativo.map((l) => l.codigo).slice(0, esperado.length), [...esperado])
     const m = (c: string) => r.remunerativo.find((l) => l.codigo === c)?.monto

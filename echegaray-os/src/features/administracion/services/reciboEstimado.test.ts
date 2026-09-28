@@ -107,7 +107,7 @@ test('Rosales Q2-08 estimado: 45 + 5 feriado a $6.348, cada concepto igual al re
 test('con el presentismo del OS: cumple cobra el 0425 en el blanco; si no, el 0426 lo anula como antes', () => {
   const antes = estimarRecibo(REGLAS, ROSALES)!
   const cumple = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true, presentismoCobra: true })!
-  const noCumple = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true })!
+  const noCumple = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true, presentismoPierde: true })!
   const codigos = (e: typeof antes) => e.lineas.map((l) => l.codigo)
   const monto = (e: typeof antes, c: string) => e.lineas.find((l) => l.codigo === c)?.monto
   assert.deepEqual(codigos(antes).slice(0, 3), ['0401', '0425', '0426'], 'quincenas pasadas: el par, detrás del 0401')
@@ -158,8 +158,11 @@ test('jornada completa con presentismo del OS: cumple → 0425 sin 0426 (igual q
   const base = { persona: completa.persona, periodo: 'Q2-08/2026', valorHora: completa.valorHora, horasRecibo: null, feriados: 0, recibosPropios: RECIBOS.filter((r) => r.persona === completa.persona) }
   const antes = estimarRecibo(REGLAS, base)!
   const cumple = estimarRecibo(REGLAS, { ...base, presentismoPropio: true, presentismoCobra: true })!
-  const perdido = estimarRecibo(REGLAS, { ...base, presentismoPropio: true })!
+  const perdido = estimarRecibo(REGLAS, { ...base, presentismoPropio: true, presentismoPierde: true })!
+  const sinDato = estimarRecibo(REGLAS, { ...base, presentismoPropio: true })!
   assert.equal(cumple.jornada, 'completa')
+  // Sin cumple ni perdido (sin categoría, sin evaluar): completa lo sigue cobrando. MUTACIÓN: 0426 con cualquier «no cumple».
+  assert.equal(sinDato.neto, antes.neto)
   assert.ok(!antes.lineas.some((l) => l.codigo === '0426'), 'en los recibos de completa el 0426 no existía')
   assert.equal(cumple.remunerativo, antes.remunerativo, 'MUTACIÓN: se llevó el 0425 del que cumple')
   assert.equal(cumple.neto, antes.neto)

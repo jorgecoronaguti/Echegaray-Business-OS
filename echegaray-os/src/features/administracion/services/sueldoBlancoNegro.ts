@@ -111,6 +111,8 @@ export interface EntradaDeSueldo extends EntradaDeBlanco {
   manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null; negro?: number | null; horasNegro?: number | null }
   /** `presentismo.ts` dice que cumple: el estimado cobra el 0425 sin el 0426 (ver `reciboEstimado`). */
   presentismoCobra?: boolean
+  /** `presentismo.ts` dice «perdido»: el estimado lleva el 0426 en cualquier jornada. */
+  presentismoPierde?: boolean
 }
 
 export type EstadoDelBlanco = 'recibo' | 'estimado'
@@ -201,7 +203,7 @@ function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valor
   return estimarRecibo(est.base.reglas, {
     persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria), horasRecibo,
     feriados: est.base.feriados, recibosPropios: est.persona ? est.base.recibos.filter((r) => r.persona === est.persona) : [],
-    presentismoPropio: est.base.presentismoPropio === true, presentismoCobra: e.presentismoCobra === true,
+    presentismoPropio: est.base.presentismoPropio === true, presentismoCobra: e.presentismoCobra === true, presentismoPierde: e.presentismoPierde === true,
   })
 }
 

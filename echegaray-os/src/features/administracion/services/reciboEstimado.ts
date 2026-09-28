@@ -39,6 +39,12 @@ export interface PersonaDelEstimado {
    * sin categoría o no evaluado— el 0426 lo anula, como siempre.
    */
   presentismoCobra?: boolean
+  /**
+   * `presentismo.ts` dice «perdido»: el 0426 va en cualquier jornada. Sin cumple ni perdido (sin horas, sin categoría,
+   * sin evaluar) queda la costumbre del estudio: media jornada lo anula, completa lo paga (auditor 28/09: un estado
+   * que no es «perdido» no puede sacarle el 0425 a alguien de completa que no faltó).
+   */
+  presentismoPierde?: boolean
 }
 
 export interface LineaEstimada {
@@ -116,7 +122,7 @@ function horasDeLaPersona(reglas: ReglasDelRecibo, p: PersonaDelEstimado): { jor
  */
 function haberes(
   reglas: ReglasDelRecibo, jornada: 'parcial' | 'completa', normales: number, feriado: number, vh: number,
-  presentismoPropio = false, presentismoCobra = false,
+  presentismoPropio = false, presentismoCobra = false, presentismoPierde = false,
 ): LineaEstimada[] {
   const ev = `${reglas.recibos} recibos (${ventanaDe(reglas)})`
   const basico = r2(normales * vh)
@@ -136,10 +142,11 @@ function haberes(
     const monto = a.dudosa ? null : r2(a.tasa * basico)
     out.push({ codigo: '0425', descripcion: 'ASISTENCIA PERFECTA (ART. 52 CCT)', seccion: 'remunerativo', unidad: null, base: null, monto, fuente: `${pct(a.tasa)} del 0401 · reproduce ${a.evidencia.aciertos} de ${a.evidencia.recibos} recibos (${ventanaDe(reglas)})` })
     const aj = a.ajuste[jornada]
-    // Con el presentismo del OS lo decide `presentismo.ts`, en cualquier jornada: cumple → sin 0426; si no, el 0426
+    // Con el presentismo del OS lo decide `presentismo.ts`, en cualquier jornada: cumple → sin 0426; perdido → el 0426
     // anula el 0425 entero. El negro no se toca (dueño 28/09: «el presentismo es para la parte en blanco no toques
-    // nada del negro»).
-    if (presentismoPropio ? !presentismoCobra : aj.anula !== false) {
+    // nada del negro»). Sin ninguno de los dos, la costumbre del estudio.
+    const va0426 = presentismoPropio && presentismoCobra ? false : presentismoPropio && presentismoPierde ? true : aj.anula !== false
+    if (va0426) {
       out.push({
         codigo: '0426', descripcion: 'AJUSTE COD.0425 (INASIST. Y/O TARD.)', seccion: 'remunerativo', unidad: null, base: null,
         monto: (aj.anula || presentismoPropio) && monto != null ? -monto : null,
@@ -193,7 +200,7 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
   if (p.feriados == null) avisos.push('el calendario de feriados no tiene cargado este año: se estima sin feriados')
   else if (p.feriados > 0 && porDia == null) avisos.push('hay feriados en la quincena y ningún recibo de la ventana dice cuántas horas vale cada uno')
   const feriado = Math.min(h.total, (p.feriados ?? 0) * (porDia ?? 0))
-  const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, p.presentismoPropio === true, p.presentismoCobra === true)
+  const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, p.presentismoPropio === true, p.presentismoCobra === true, p.presentismoPierde === true)
   const remunerativo = sumaONull(lineas)
   // UNA REGLA DE UNA SOLA MITAD DEL MES SE DECIDE POR LA QUINCENA QUE SE ESTIMA, no por la que se generó: las reglas
   // congeladas para Q1-09 tienen el seguro de vida en «no aplica», y en Q2-09 aplica.

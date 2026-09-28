@@ -159,9 +159,8 @@ export interface LineaConOverrides extends LineaLiquidada {
   sello: SelloDeLaQuincena | null
   /**
    * PRESENTISMO (dueño, 15/09/2026): la parte del cobra que se pierde con una sola tardanza. Se calcula
-   * sobre las HORAS QUE QUEDARON (manuales o de la app) y se descuenta del cobra ANTES de la resta de
-   * adelantos, así En efectivo y Total lo siguen. Con blanco + negro sale del negro: el neto es el
-   * recibo del estudio y no cambia. `null` fuera del modelo (Oficina, finales, cuadro cerrado sin
+   * sobre las HORAS QUE QUEDARON (manuales o de la app). Con blanco + negro vive sólo en el blanco (dueño
+   * 28/09): cumple → 0425 en el recibo; perdido → 0426 lo anula; el negro no se toca. `null` fuera del modelo (Oficina, finales, cuadro cerrado sin
    * sello, llamador viejo). La regla entera vive en `presentismo.ts`.
    */
   presentismo: PresentismoDeLinea | null
@@ -373,7 +372,7 @@ export function aplicarOverrides(
   const sueldo = conModelo
     ? sueldoBlancoNegro({
       ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco,
-      presentismoCobra: presentismo?.estado === 'aplica',
+      presentismoCobra: presentismo?.estado === 'aplica', presentismoPierde: presentismo?.estado === 'perdido',
     })
     : null
   const cobraCalc = sueldo
