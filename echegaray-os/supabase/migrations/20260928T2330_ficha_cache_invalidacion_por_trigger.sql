@@ -1,334 +1,381 @@
--- LA CACHÉ DE LA FICHA SE INVALIDA POR ESCRITURA, NO POR RELOJ (28/09/2026, «optimización máxima»).
+-- LA CACHÉ DE LA FICHA SE INVALIDA CUANDO CAMBIA EL DATO, NO AL VENCER NI AL SINCRONIZAR (28/09/2026).
 --
 -- ═══ LO MEDIDO ═══
 --
--- `pg_stat_statements`: `select public.refrescar_ficha_cliente_cache()` es el 88 % del tiempo total
--- de Postgres — 2.298 llamadas, 3.130 ms de media, 7.193 s acumulados desde el último reset
--- (25/09 16:56). `cron.job_run_details` de las últimas 24 h: 720 corridas (cada 2 min, como está
--- programado) y ~95 s de trabajo por hora — casi todo en las corridas donde algo venció (55 filas en
--- total: 30 `pantalla_cliente` de 5 clientes × 6 solapas, 25 `hh_de_obra`). Con el vencimiento a 7 min
--- (20260917T1700) TODO vence junto cada ~8 min y esa corrida recalcula las 55 filas aunque nada haya
--- cambiado: eso es el costo — no la frecuencia del cron, que ya está en 2 min.
+-- `pg_stat_statements`: `select public.refrescar_ficha_cliente_cache()` es el 88 % del tiempo total de
+-- Postgres (2.298 llamadas, 3.130 ms de media). `cron.job_run_details`, 24 h: 720 corridas y ~95 s de
+-- trabajo por hora, casi todo en las corridas donde algo venció (55 filas: 30 `pantalla_cliente`, 25
+-- `hh_de_obra`). Con el vencimiento a 7 min (20260917T1700) TODO vence junto cada ~8 min y se recalcula
+-- aunque nada haya cambiado.
 --
--- ═══ POR QUÉ NO SE PUEDE INVALIDAR TODO POR TRIGGER, HONESTAMENTE ═══
+-- ═══ POR QUÉ HAY DOS MECANISMOS, Y NO UN TRIGGER POR FILA EN TODO ═══
 --
--- Se inventariaron las tablas fuente por el grafo real de dependencias de `pantalla_cliente_en_vivo`
--- y `hh_de_obra_en_vivo` (`pg_depend` recursivo sobre las vistas que leen, no lectura a ojo). El
--- resultado tiene DOS familias:
+-- Las sincronizaciones REESCRIBEN tablas enteras sin que cambie nada: `sync-compras.mjs` borra y
+-- reinserta `compra_sheet` y `costos_obra` cada 10 min, `sync-cobranzas.mjs` hace lo mismo con
+-- `cobranzas`, `refrescar_obra_papel()` con `obra_papel`, y `jornales-espejo-bloques.mjs` actualiza
+-- cada hora las 353 filas de `jornales_bloque_persona` sólo para mover `leido_en` (pg_stat_user_tables:
+-- 540 k inserciones en `costos_obra` para 947 filas vivas). Un trigger por fila invalidaría la caché
+-- entera en cada corrida y el ahorro real caería a ~20 %. Por eso:
 --
---   · Tablas con una columna de cliente/obra que el CUERPO REALMENTE USA para resolver —verificado
---     contra el código de la función, no contra el nombre de la columna: `costos_obra.obra_id` EXISTE
---     y tiene FK a `obra_canonica`, pero el cuerpo NO lo usa — resuelve la obra por
---     `obra_alias.alias = norm_obra(c.obra_texto)`, y medido en la base real el 45 % de las filas con
---     `obra_id` DISCREPA de lo que ese join resuelve (426 de 947). Un trigger que confiara en la
---     columna FK invalidaría la caché del cliente equivocado casi la mitad de las veces. El trigger de
---     `costos_obra` usa el MISMO join que el cuerpo.
---   · Tablas del motor de cotización y de planificación (`cotizacion_partida`, `analisis`,
---     `analisis_linea`, `recurso`, `recurso_precio`, `tipo_cambio`, `obra_actividad`,
---     `obra_actividad_nota`, `obra_actividad_paso`, `obra_ejecucion`, `obra_ejecucion_equipo`,
---     `obra_documento`, `tarea_tipo`, `cuadrilla`) que `cotizacion_cascada` y `obra_plan_vs_real`
---     arrastran varias vistas adentro. Cambiar una PARTIDA sin tocar la fila de `cotizaciones`, o el
---     avance de una TAREA sin tocar `obra_actividad`, no dispara ningún trigger de este cambio.
---     LÍMITE DECLARADO: esas tablas quedan CUBIERTAS SÓLO por el vencimiento por tiempo, que por eso
---     no baja de una red de seguridad razonable (abajo). No se armó trigger ahí por el mismo motivo
---     que `costos_obra` casi sale mal: una resolución barata y CORRECTA no está disponible sin
---     replicar la cascada entera de vistas dentro del trigger, y una resolución barata pero
---     INCORRECTA es peor que no tener trigger.
+--   A · POR FILA (`tr_ficha_inv_fila`, FOR EACH ROW) en las tablas que se escriben de a una — la web,
+--       los scripts con `on conflict ... where ... is distinct from`. Un UPDATE que no cambia nada no
+--       invalida; uno que MUEVE la fila de cliente u obra invalida al dueño viejo (OLD) y al nuevo (NEW).
+--   B · POR HUELLA AL COMMIT en las tablas que las sincronizaciones reescriben. Un trigger por
+--       SENTENCIA marca la tabla como tocada en esta transacción; un constraint trigger DIFERIDO, al
+--       commit, calcula la huella del contenido por clave (cliente, obra o toda la tabla), la compara
+--       con la guardada e invalida SÓLO las claves cuya huella cambió. Un `delete` + `insert` idéntico
+--       adentro de UNA transacción no invalida nada. Las columnas que excluye la huella (`id`,
+--       `sincronizado_en`, `leido_en`, `refrescado_en`) se verificaron en la base el 28/09: reescribir
+--       con ids y sellos nuevos deja el JSON de las 55 filas idéntico (0 de 55 distintas).
+--       Por qué no tablas de transición: sólo ven UNA sentencia, y el `delete` y el `insert` de una
+--       sincronización son dos.
 --
--- `compra_sheet` tiene `obra_id` (FK a `obra_canonica`) pero el cuerpo tampoco lo usa: la junta con
--- `costos_obra` es por `referencia_externa`, no por obra. Blanket a propósito, no por costo sino
--- porque el join real no resuelve un cliente.
+-- `costos_obra` resuelve la obra por `obra_alias.alias = norm_obra(obra_texto)` —el camino de
+-- `pantalla_cliente_en_vivo`— y no por su columna `obra_id`, que discrepa en el 45 % de las filas.
+-- `compra_sheet` no tiene resolución barata y correcta a cliente (se junta por `referencia_externa`):
+-- su huella es de toda la tabla, así que un cambio REAL en Compras invalida todo — uno por cambio,
+-- no uno por sincronización. `jornales_bloque_persona` sólo entra a `hh_de_obra_en_vivo` por los
+-- límites de quincena de cada persona: su huella es esa proyección y sólo invalida los `hh_de_obra`.
 --
--- ═══ EL DISEÑO ═══
+-- ═══ LO QUE QUEDA CUBIERTO SÓLO POR EL VENCIMIENTO (60 min, más la ventana de lectura) ═══
 --
--- Un helper `ficha_cliente_cache_invalidar_lote(clientes, obras, todo)` hace el `delete` real
--- (SECURITY DEFINER: dispara desde triggers que corren con el rol de quien escribe, y la tabla no
--- tiene policies). Cinco funciones de trigger, statement-level con TABLAS DE TRANSICIÓN
--- (`old_rows`/`new_rows`: una sola consulta por lote de filas, no una por fila) para no repetir el
--- mismo cuerpo 22 veces:
+--   · Motor de cotización y planificación: `cotizacion_partida`, `analisis`, `analisis_linea`,
+--     `recurso`, `recurso_precio`, `tipo_cambio`, `obra_actividad`, `obra_actividad_nota`,
+--     `obra_actividad_paso`, `obra_ejecucion`, `obra_ejecucion_equipo`, `obra_documento`,
+--     `tarea_tipo`, `cuadrilla`, `pedidos_materiales`: entran por varias vistas y no hay resolución
+--     barata y correcta sin replicar la cascada adentro del trigger.
+--   · `personas` fuera de `nombre_completo`/`nombre_para_mostrar` (que sí tienen trigger), y las
+--     tablas `compras` y `obras` que aparecen en el grafo de vistas.
+--   · La carrera cron/escritura: si el cron calcula una fila con la foto de ANTES de un commit que la
+--     invalida y la inserta DESPUÉS del borrado, queda vieja hasta el vencimiento. La ventana es lo que
+--     tarda un cálculo (~0,3 s); era igual antes de este cambio.
 --
---   · `tr_ficha_inv_cliente_col(col)`  — tablas con columna de cliente directa y CONFIRMADA por FK.
---   · `tr_ficha_inv_obra_col(col)`     — tablas con columna de obra directa y CONFIRMADA contra el
---                                        cuerpo de la vista que la usa (no contra el nombre).
---   · `tr_ficha_inv_costos_obra()`     — el join real (`obra_alias` + `norm_obra`), no la columna FK.
---   · `tr_ficha_inv_obra_canonica()`   — caso especial: en un DELETE la fila ya no está para hacer
---                                        join, así que toma `cliente_id` y `id` DE LA MISMA fila.
---   · `tr_ficha_inv_blanket()`         — no hay resolución barata y correcta: borra toda la caché.
+-- ═══ AHORRO ESTIMADO (ESTIMACIÓN sobre los `ms` medidos, no una medición del efecto) ═══
 --
--- `ficha_cliente_cache_invalidar_lote` con un `obra_ids` no vacío borra la fila `pantalla_cliente` del
--- cliente dueño de esa obra Y la fila `hh_de_obra` de esa obra, aunque la tabla que disparó (p. ej.
--- `obra_papel`) sólo afecte a `pantalla_cliente`: invalidar de más es barato (recalcular `hh_de_obra`
--- de una obra son ~33 ms medidos) e invalidar de menos deja la ficha vieja.
---
--- ═══ FRESCURA Y EL VENCIMIENTO QUE QUEDA ═══
---
--- El cron sigue cada 2 min (20260917T1700) y recalcula sólo lo que falta: con los triggers cubriendo
--- las escrituras de negocio, lo que falta la mayoría de las corridas es NADA. El vencimiento por
--- tiempo sube de 7 a 60 min: ya no es la vía principal de frescura (eso son los triggers, con un
--- cambio visible en ≤ 2 min: se borra al escribir, la corrida siguiente del cron —a lo sumo 2 min
--- después— la repone) sino la red de seguridad para lo declarado arriba y para cualquier escritura que
--- este inventario no haya visto.
---
--- ═══ AHORRO ESTIMADO (medido + calculado, no una promesa) ═══
---
--- Hoy: ~95 s/hora, ~2.280 s/día (medido, arriba). Con vencimiento a 60 min sin ningún trigger
--- disparando, el lote completo (55 filas, ~12 s medidos) correría 1 vez/hora en vez de cada ~8 min:
--- ~12 s/hora de piso por el solo cambio de TTL. Las escrituras reales (documentos, compras, cobranzas,
--- horas: unas 100-150/día por el conteo de filas vivas de sus tablas) agregan invalidaciones
--- puntuales de ~230-380 ms cada una (medido en `ficha_cliente_cache.ms`): ~30-55 s/día más. ESTIMADO
--- total ~300-350 s/día contra ~2.280 s/día medidos — una baja del orden del 85 %, ~1.950 s/día de
--- tiempo de Postgres liberados. Es una ESTIMACIÓN sobre los `ms` ya medidos, no una proyección nueva.
+-- Hoy ~2.280 s/día. Sin cambios reales, el lote completo (~12 s) corre una vez por hora: ~290 s/día
+-- de piso. Comparar huellas al commit, medido con ROLLBACK: 110-180 ms por sincronización (incluye
+-- ida y vuelta), ≤ ~50 s/día con las corridas de hoy. Cada cambio real agrega su recálculo (~0,3 s
+-- por fila de cliente; ~12 s si el cambio es en Compras, `perfiles` o `drive_index`). Del orden de
+-- −75 % a −85 % según cuántos cambios reales de Compras haya por día.
 
--- ── EL HELPER QUE BORRA (SECURITY DEFINER: los triggers corren con el rol de quien escribe) ────────
+set lock_timeout = '3s';
+
+-- La versión de 3 argumentos (primer borrador de esta migración) haría ambiguas las llamadas cortas.
+drop function if exists public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean);
+
+-- ── EL VENCIMIENTO, DEFINIDO UNA VEZ ──────────────────────────────────────────────────────────────
+-- Lo leen el cron (qué recalcula) y la lectura (qué sirve). La lectura sirve hasta 10 min más que el
+-- vencimiento: el cron corre cada 2 min, corta a los 12 s y cede con carga, así que una fila recién
+-- vencida puede tardar algunas corridas en reponerse — y mientras tanto no se sirve en vivo.
+create or replace function public.ficha_cliente_cache_vigencia() returns interval
+language sql immutable as $function$ select interval '60 minutes' $function$;
+
+comment on function public.ficha_cliente_cache_vigencia() is
+  'Edad a la que refrescar_ficha_cliente_cache recalcula una fila (20260928T2330). La lectura sirve '
+  'hasta vigencia + 10 min. La frescura normal la dan los triggers trg_ficha_inv*; esto es la red.';
+
+-- ── EL HELPER QUE BORRA ───────────────────────────────────────────────────────────────────────────
+-- Sólo lo llaman los triggers (SECURITY DEFINER, dueños de la tabla). No es una RPC: con
+-- `p_todo = true` cualquiera con EXECUTE vaciaría la caché y cargaría el recálculo entero.
 create or replace function public.ficha_cliente_cache_invalidar_lote(
   p_cliente_ids uuid[] default null,
   p_obra_ids text[] default null,
-  p_todo boolean default false
+  p_todo boolean default false,
+  p_todo_hh boolean default false
 ) returns void
 language sql
 volatile
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $function$
   delete from public.ficha_cliente_cache c
    where p_todo
-      or (p_cliente_ids is not null and c.rpc = 'pantalla_cliente'
+      or (p_todo_hh and c.rpc = 'hh_de_obra')
+      or (c.rpc = 'pantalla_cliente'
           and c.clave in (select k.slug from public.clientes k where k.id = any(p_cliente_ids)))
-      or (p_obra_ids is not null and c.rpc = 'hh_de_obra' and c.clave = any(p_obra_ids))
-      -- LA FICHA DEL CLIENTE TAMBIÉN SE ENSUCIA: sin esto, invalidar por obra sólo limpiaría el
-      -- desglose de horas y la ficha (que también muestra HH y costo por obra) quedaría vieja hasta
-      -- el vencimiento por tiempo.
-      or (p_obra_ids is not null and c.rpc = 'pantalla_cliente'
+      or (c.rpc = 'hh_de_obra' and c.clave = any(p_obra_ids))
+      -- LA FICHA DEL CLIENTE DUEÑO TAMBIÉN SE ENSUCIA: muestra HH y costo por obra.
+      or (c.rpc = 'pantalla_cliente'
           and c.clave in (select k.slug from public.clientes k
                             join public.obra_canonica o on o.cliente_id = k.id
                            where o.id = any(p_obra_ids)))
 $function$;
 
-revoke all on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean) from public, anon;
-grant execute on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean) to authenticated;
+revoke all on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean)
+  from public, anon, authenticated;
 
-comment on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean) is
-  'Borra de ficha_cliente_cache lo que un cambio real puede haber ensuciado: por cliente, por obra '
-  '(ficha del cliente dueño + su desglose de horas) o todo. La llaman los triggers tr_ficha_inv_* '
-  '(20260928T2330), nunca directo.';
+comment on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean) is
+  'Borra de ficha_cliente_cache lo que un cambio real ensució: por cliente, por obra (ficha del dueño + '
+  'su desglose de horas), todos los desgloses de horas, o todo. Sólo desde los triggers de 20260928T2330.';
 
--- ── LAS CINCO FORMAS DE RESOLVER ──────────────────────────────────────────────────────────────────
---
--- FILA POR FILA, NO TABLAS DE TRANSICIÓN: Postgres las prohíbe en un trigger que combina INSERT,
--- UPDATE y DELETE en una sola declaración («transition tables cannot be specified for triggers with
--- more than one event» — se probó al ensayar esta migración, no es una elección de estilo). Separar
--- cada tabla en tres triggers (uno por evento) para poder usarlas hubiera triplicado el archivo sin
--- necesidad real: medidas, las tablas que las necesitarían son chicas (`registros_hh` 3.873 filas,
--- `costos_obra` 947, el resto por debajo de 250) — hasta un `delete` + `insert` completo de la más
--- grande es un lote de miles de filas, no de cientos de miles, y cada llamada del helper es un
--- `delete` por clave primaria. Una sola declaración por tabla, `for each row`.
-
--- Tablas con columna de cliente directa y confirmada por FK (`clientes`, `cliente_contacto`,
--- `cliente_documento`, `cliente_nota`, `cliente_orden`, `cotizaciones`, `cobranzas`). `TG_ARGV[0]` es
--- el nombre de esa columna («id» para `clientes`, «cliente_id» para el resto).
-create or replace function public.tr_ficha_inv_cliente_col() returns trigger
-language plpgsql as $function$
+-- ── A · POR FILA ──────────────────────────────────────────────────────────────────────────────────
+-- TG_ARGV: [0] modo (`cliente` | `obra` | `obra_canonica` | `todo`), [1] columna de la clave,
+-- [2] columnas que no cuentan como cambio, separadas por coma (sellos de tiempo del indexador).
+create or replace function public.tr_ficha_inv_fila() returns trigger
+language plpgsql
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
 declare
-  v_col text := TG_ARGV[0];
-  v_id  uuid;
+  v_modo text   := TG_ARGV[0];
+  v_col  text   := TG_ARGV[1];
+  v_ign  text[] := string_to_array(coalesce(TG_ARGV[2], ''), ',');
+  v_old  jsonb  := case when TG_OP <> 'INSERT' then to_jsonb(OLD) end;
+  v_new  jsonb  := case when TG_OP <> 'DELETE' then to_jsonb(NEW) end;
+  v_ids  text[];
 begin
-  v_id := (case when TG_OP = 'DELETE' then to_jsonb(OLD) else to_jsonb(NEW) end ->> v_col)::uuid;
-  if v_id is not null then
-    perform public.ficha_cliente_cache_invalidar_lote(array[v_id], null, false);
+  -- UN UPDATE QUE NO CAMBIA NADA NO ENSUCIA NADA (`set x = x`, o un upsert que sólo mueve el sello).
+  if TG_OP = 'UPDATE' and (v_old - v_ign) = (v_new - v_ign) then
+    return null;
+  end if;
+  if v_modo = 'todo' then
+    perform public.ficha_cliente_cache_invalidar_lote(null, null, true);
+    return null;
+  end if;
+  -- EL DUEÑO VIEJO Y EL NUEVO: un UPDATE que mueve la fila de cliente u obra ensucia a los dos.
+  v_ids := array(select distinct x from unnest(array[v_old ->> v_col, v_new ->> v_col]) x
+                  where x is not null);
+  if v_modo = 'cliente' then
+    perform public.ficha_cliente_cache_invalidar_lote(v_ids::uuid[], null);
+  elsif v_modo = 'obra' then
+    perform public.ficha_cliente_cache_invalidar_lote(null, v_ids);
+  elsif v_modo = 'obra_canonica' then
+    -- En un DELETE la obra ya no está para hacer join: el cliente sale de la fila misma.
+    perform public.ficha_cliente_cache_invalidar_lote(
+      array(select distinct x::uuid
+              from unnest(array[v_old ->> 'cliente_id', v_new ->> 'cliente_id']) x
+             where x is not null),
+      v_ids);
   end if;
   return null;
 end
 $function$;
 
--- Tablas con columna de obra directa Y CONFIRMADA contra el cuerpo de la vista que la lee (no contra
--- el nombre): `registros_hh`, `certificados`, `obra_contrato`, `obra_economia_sheet`, `obra_papel`,
--- `obra_carpeta_drive`, `obra_restriccion`.
-create or replace function public.tr_ficha_inv_obra_col() returns trigger
-language plpgsql as $function$
-declare
-  v_col text := TG_ARGV[0];
-  v_id  text;
-begin
-  v_id := case when TG_OP = 'DELETE' then to_jsonb(OLD) else to_jsonb(NEW) end ->> v_col;
-  if v_id is not null then
-    perform public.ficha_cliente_cache_invalidar_lote(null, array[v_id], false);
-  end if;
-  return null;
-end
-$function$;
+revoke all on function public.tr_ficha_inv_fila() from public, anon, authenticated;
 
--- `costos_obra`: la obra no sale de su columna `obra_id` (discrepa en el 45 % de las filas medidas):
--- sale del MISMO join que usa `pantalla_cliente_en_vivo` — `obra_alias.alias = norm_obra(obra_texto)`.
--- En un UPDATE que cambia `obra_texto` se invalidan las DOS obras (la vieja y la nueva).
-create or replace function public.tr_ficha_inv_costos_obra() returns trigger
-language plpgsql as $function$
-declare
-  v_ids text[];
-begin
-  select array_agg(distinct a.obra_id) filter (where a.obra_id is not null)
-    into v_ids
-    from public.obra_alias a
-   where a.alias in (
-     public.norm_obra(case when TG_OP <> 'INSERT' then OLD.obra_texto end),
-     public.norm_obra(case when TG_OP <> 'DELETE' then NEW.obra_texto end)
-   );
-  if v_ids is not null then
-    perform public.ficha_cliente_cache_invalidar_lote(null, v_ids, false);
-  end if;
-  return null;
-end
-$function$;
+comment on function public.tr_ficha_inv_fila() is
+  'Trigger FOR EACH ROW (20260928T2330): invalida por la clave de OLD y de NEW; un UPDATE sin cambios '
+  '(fuera de las columnas de TG_ARGV[2]) no invalida.';
 
--- `obra_canonica`: en un DELETE la fila ya no existe para resolver el cliente por join (la obra
--- desaparecida no tiene con qué reencontrar a su dueño); `cliente_id` sale de la MISMA fila que
--- cambió, antes o después según el caso. En un UPDATE que reasigna la obra a otro cliente (o cambia
--- su `id`, que no pasa en la práctica pero el trigger no lo asume) invalida a los dos.
-create or replace function public.tr_ficha_inv_obra_canonica() returns trigger
-language plpgsql as $function$
-declare
-  v_clientes uuid[];
-  v_obras text[];
+-- ── B · POR HUELLA AL COMMIT ──────────────────────────────────────────────────────────────────────
+create table if not exists public.ficha_cliente_cache_huella (
+  tabla  text not null,
+  clave  text not null,
+  huella text not null,
+  primary key (tabla, clave)
+);
+create table if not exists public.ficha_cliente_cache_pendiente (
+  txid  bigint not null default txid_current(),
+  tabla text   not null,
+  primary key (txid, tabla)
+);
+-- Sin policies a propósito: sólo las escriben las funciones SECURITY DEFINER de abajo.
+alter table public.ficha_cliente_cache_huella enable row level security;
+alter table public.ficha_cliente_cache_pendiente enable row level security;
+revoke all on public.ficha_cliente_cache_huella, public.ficha_cliente_cache_pendiente
+  from public, anon, authenticated;
+
+comment on table public.ficha_cliente_cache_huella is
+  'Huella del contenido, por clave, de las tablas que las sincronizaciones reescriben enteras. Clave: '
+  '«cliente:<uuid>», «obra:<id>», «hh:*» (sólo desgloses de horas) o «*» (todo). 20260928T2330.';
+
+-- Qué cuenta como contenido de cada tabla y a qué clave pertenece cada fila. Una fila puede aportar a
+-- más de una clave (`cobranzas`: su cliente y su obra; invalidar de más es barato).
+create or replace function public.ficha_cliente_cache_huellas(p_tabla text)
+returns table (clave text, huella text)
+language plpgsql
+stable
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
 begin
-  select array_agg(distinct x.cliente_id) filter (where x.cliente_id is not null),
-         array_agg(distinct x.id) filter (where x.id is not null)
-    into v_clientes, v_obras
+  return query
+  select x.k, md5(string_agg(x.h, '' order by x.h))
     from (
-      select (case when TG_OP <> 'INSERT' then OLD.cliente_id end) as cliente_id,
-             (case when TG_OP <> 'INSERT' then OLD.id end)         as id
+      select '*'::text as k, md5((to_jsonb(t) - 'sincronizado_en')::text) as h
+        from public.compra_sheet t where p_tabla = 'compra_sheet'
       union all
-      select (case when TG_OP <> 'DELETE' then NEW.cliente_id end),
-             (case when TG_OP <> 'DELETE' then NEW.id end)
-    ) x;
-  if v_clientes is not null or v_obras is not null then
-    perform public.ficha_cliente_cache_invalidar_lote(v_clientes, v_obras, false);
-  end if;
-  return null;
+      select 'cliente:' || coalesce(t.cliente_id::text, '*'), md5((to_jsonb(t) - 'id' - 'sincronizado_en')::text)
+        from public.cobranzas t where p_tabla = 'cobranzas'
+      union all
+      select 'obra:' || t.obra_id, md5((to_jsonb(t) - 'id' - 'sincronizado_en')::text)
+        from public.cobranzas t where p_tabla = 'cobranzas' and t.obra_id is not null
+      union all
+      select 'obra:' || a.obra_id, md5((to_jsonb(t) - 'id' - 'sincronizado_en')::text)
+        from public.costos_obra t
+        join public.obra_alias a on a.alias = public.norm_obra(t.obra_texto)
+       where p_tabla = 'costos_obra' and a.obra_id is not null
+      union all
+      select 'obra:' || t.obra_id, md5((to_jsonb(t) - 'refrescado_en')::text)
+        from public.obra_papel t where p_tabla = 'obra_papel'
+      union all
+      select 'obra:' || coalesce(t.obra_canonica_id, '*'), md5((to_jsonb(t) - 'leido_en')::text)
+        from public.obra_economia_sheet t where p_tabla = 'obra_economia_sheet'
+      union all
+      select 'hh:*', md5(concat_ws('|', t.persona_id, t.quincena_desde, t.quincena_hasta))
+        from public.jornales_bloque_persona t where p_tabla = 'jornales_bloque_persona'
+    ) x
+   group by x.k;
 end
 $function$;
 
--- Sin resolución barata Y CORRECTA disponible (ver la cabecera): `compra_sheet`, `perfiles`,
--- `persona_tarifa`, `costo_hora_alicuota`, `drive_index`, `obra_alias`. Todas de escritura rara o
--- chica (medido: perfiles 2 ins/12 upd/2 del, obra_alias 4 ins, en lo que corre pg_stat_statements).
-create or replace function public.tr_ficha_inv_blanket() returns trigger
-language plpgsql as $function$
+revoke all on function public.ficha_cliente_cache_huellas(text) from public, anon, authenticated;
+
+-- POR SENTENCIA: marca la tabla como tocada en esta transacción (una fila por tabla y transacción;
+-- las sentencias siguientes chocan con el `on conflict` y no encolan otra comparación).
+create or replace function public.tr_ficha_inv_marcar() returns trigger
+language plpgsql
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
 begin
-  perform public.ficha_cliente_cache_invalidar_lote(null, null, true);
+  insert into public.ficha_cliente_cache_pendiente (txid, tabla)
+  values (txid_current(), TG_TABLE_NAME)
+  on conflict do nothing;
   return null;
 end
 $function$;
 
-comment on function public.tr_ficha_inv_cliente_col() is
-  'Trigger FOR EACH ROW: invalida por el id de cliente de TG_ARGV[0] de la fila que cambió.';
-comment on function public.tr_ficha_inv_obra_col() is
-  'Trigger FOR EACH ROW: invalida por el id de obra de TG_ARGV[0] de la fila que cambió.';
-comment on function public.tr_ficha_inv_costos_obra() is
-  'Trigger de costos_obra: resuelve la obra por obra_alias + norm_obra(obra_texto), el mismo camino '
-  'que pantalla_cliente_en_vivo — no por la columna obra_id, que discrepa en el 45% de las filas.';
-comment on function public.tr_ficha_inv_obra_canonica() is
-  'Trigger de obra_canonica: toma cliente_id y id de la fila misma (un DELETE no puede hacer join).';
-comment on function public.tr_ficha_inv_blanket() is
-  'Trigger de tablas sin resolución barata y correcta: borra toda la caché (20260928T2330).';
+-- AL COMMIT (constraint trigger diferido sobre la marca): compara y guarda la huella nueva.
+create or replace function public.tr_ficha_inv_comparar() returns trigger
+language plpgsql
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
+declare
+  v_claves  text[];
+  v_huellas text[];
+begin
+  delete from public.ficha_cliente_cache_pendiente p where p.txid = NEW.txid and p.tabla = NEW.tabla;
+  -- Las claves cuya huella cambió; `huella` null = la clave desapareció.
+  select array_agg(coalesce(n.clave, v.clave)), array_agg(n.huella)
+    into v_claves, v_huellas
+    from public.ficha_cliente_cache_huellas(NEW.tabla) n
+    full join (select h.clave, h.huella from public.ficha_cliente_cache_huella h
+                where h.tabla = NEW.tabla) v on v.clave = n.clave
+   where n.huella is distinct from v.huella;
+  if v_claves is null then
+    return null;                            -- la sincronización no cambió nada: la caché queda intacta
+  end if;
+  perform public.ficha_cliente_cache_invalidar_lote(
+    array(select substr(k, 9)::uuid from unnest(v_claves) k where k like 'cliente:%' and k <> 'cliente:*'),
+    array(select substr(k, 6) from unnest(v_claves) k where k like 'obra:%' and k <> 'obra:*'),
+    v_claves && array['*', 'cliente:*', 'obra:*'],
+    'hh:*' = any(v_claves));
+  delete from public.ficha_cliente_cache_huella h
+   using unnest(v_claves, v_huellas) d(clave, huella)
+   where h.tabla = NEW.tabla and h.clave = d.clave and d.huella is null;
+  insert into public.ficha_cliente_cache_huella (tabla, clave, huella)
+  select NEW.tabla, d.clave, d.huella from unnest(v_claves, v_huellas) d(clave, huella)
+   where d.huella is not null
+  on conflict (tabla, clave) do update set huella = excluded.huella;
+  return null;
+end
+$function$;
 
--- ── LOS 22 TRIGGERS ───────────────────────────────────────────────────────────────────────────────
--- Mismo nombre (`trg_ficha_inv`) en cada tabla: como cada una tiene UN solo trigger de este sistema,
--- `drop ... if exists` antes de cada `create` hace esta migración reaplicable sin duplicar triggers.
+revoke all on function public.ficha_cliente_cache_huellas(text), public.tr_ficha_inv_marcar(),
+  public.tr_ficha_inv_comparar() from public, anon, authenticated;
 
+drop trigger if exists trg_ficha_inv_al_commit on public.ficha_cliente_cache_pendiente;
+create constraint trigger trg_ficha_inv_al_commit
+  after insert on public.ficha_cliente_cache_pendiente
+  deferrable initially deferred
+  for each row execute function public.tr_ficha_inv_comparar();
+
+-- LA HUELLA DE HOY: sin esto, la primera sincronización después de aplicar invalidaría todo.
+delete from public.ficha_cliente_cache_huella;
+insert into public.ficha_cliente_cache_huella (tabla, clave, huella)
+select t.tabla, h.clave, h.huella
+  from unnest(array['compra_sheet', 'cobranzas', 'costos_obra', 'obra_papel', 'obra_economia_sheet',
+                    'jornales_bloque_persona']) t(tabla)
+ cross join lateral public.ficha_cliente_cache_huellas(t.tabla) h;
+
+-- ── LOS TRIGGERS ──────────────────────────────────────────────────────────────────────────────────
+-- Un `trg_ficha_inv` por tabla: `drop ... if exists` antes de cada `create` la hace reaplicable.
+
+-- A · por fila, con cliente directo (FK confirmada).
 drop trigger if exists trg_ficha_inv on public.clientes;
 create trigger trg_ficha_inv after insert or update or delete on public.clientes
-  for each row execute function public.tr_ficha_inv_cliente_col('id');
-
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'id');
 drop trigger if exists trg_ficha_inv on public.cliente_contacto;
 create trigger trg_ficha_inv after insert or update or delete on public.cliente_contacto
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
-
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
 drop trigger if exists trg_ficha_inv on public.cliente_documento;
 create trigger trg_ficha_inv after insert or update or delete on public.cliente_documento
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
-
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
 drop trigger if exists trg_ficha_inv on public.cliente_nota;
 create trigger trg_ficha_inv after insert or update or delete on public.cliente_nota
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
-
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
 drop trigger if exists trg_ficha_inv on public.cliente_orden;
 create trigger trg_ficha_inv after insert or update or delete on public.cliente_orden
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
-
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
 drop trigger if exists trg_ficha_inv on public.cotizaciones;
 create trigger trg_ficha_inv after insert or update or delete on public.cotizaciones
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
 
-drop trigger if exists trg_ficha_inv on public.cobranzas;
-create trigger trg_ficha_inv after insert or update or delete on public.cobranzas
-  for each row execute function public.tr_ficha_inv_cliente_col('cliente_id');
-
+-- A · por fila, con obra directa (confirmada contra el cuerpo de la vista que la lee).
 drop trigger if exists trg_ficha_inv on public.registros_hh;
 create trigger trg_ficha_inv after insert or update or delete on public.registros_hh
-  for each row execute function public.tr_ficha_inv_obra_col('obra_canonica_id');
-
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_canonica_id');
 drop trigger if exists trg_ficha_inv on public.certificados;
 create trigger trg_ficha_inv after insert or update or delete on public.certificados
-  for each row execute function public.tr_ficha_inv_obra_col('obra_canonica_id');
-
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_canonica_id');
 drop trigger if exists trg_ficha_inv on public.obra_contrato;
 create trigger trg_ficha_inv after insert or update or delete on public.obra_contrato
-  for each row execute function public.tr_ficha_inv_obra_col('obra_id');
-
-drop trigger if exists trg_ficha_inv on public.obra_economia_sheet;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_economia_sheet
-  for each row execute function public.tr_ficha_inv_obra_col('obra_canonica_id');
-
-drop trigger if exists trg_ficha_inv on public.obra_papel;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_papel
-  for each row execute function public.tr_ficha_inv_obra_col('obra_id');
-
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
 drop trigger if exists trg_ficha_inv on public.obra_carpeta_drive;
 create trigger trg_ficha_inv after insert or update or delete on public.obra_carpeta_drive
-  for each row execute function public.tr_ficha_inv_obra_col('obra_id');
-
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
 drop trigger if exists trg_ficha_inv on public.obra_restriccion;
 create trigger trg_ficha_inv after insert or update or delete on public.obra_restriccion
-  for each row execute function public.tr_ficha_inv_obra_col('obra_id');
-
-drop trigger if exists trg_ficha_inv on public.costos_obra;
-create trigger trg_ficha_inv after insert or update or delete on public.costos_obra
-  for each row execute function public.tr_ficha_inv_costos_obra();
-
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
 drop trigger if exists trg_ficha_inv on public.obra_canonica;
 create trigger trg_ficha_inv after insert or update or delete on public.obra_canonica
-  for each row execute function public.tr_ficha_inv_obra_canonica();
+  for each row execute function public.tr_ficha_inv_fila('obra_canonica', 'id');
 
-drop trigger if exists trg_ficha_inv on public.compra_sheet;
-create trigger trg_ficha_inv after insert or update or delete on public.compra_sheet
-  for each statement execute function public.tr_ficha_inv_blanket();
-
+-- A · por fila, todo: sin resolución barata y correcta a cliente u obra. Escritura rara, salvo
+-- `drive_index`, cuyo indexador reescribe `indexed_at`/`actualizado_at` sin cambiar el archivo.
 drop trigger if exists trg_ficha_inv on public.perfiles;
 create trigger trg_ficha_inv after insert or update or delete on public.perfiles
-  for each statement execute function public.tr_ficha_inv_blanket();
-
+  for each row execute function public.tr_ficha_inv_fila('todo');
 drop trigger if exists trg_ficha_inv on public.persona_tarifa;
 create trigger trg_ficha_inv after insert or update or delete on public.persona_tarifa
-  for each statement execute function public.tr_ficha_inv_blanket();
-
+  for each row execute function public.tr_ficha_inv_fila('todo');
 drop trigger if exists trg_ficha_inv on public.costo_hora_alicuota;
 create trigger trg_ficha_inv after insert or update or delete on public.costo_hora_alicuota
-  for each statement execute function public.tr_ficha_inv_blanket();
-
-drop trigger if exists trg_ficha_inv on public.drive_index;
-create trigger trg_ficha_inv after insert or update or delete on public.drive_index
-  for each statement execute function public.tr_ficha_inv_blanket();
-
+  for each row execute function public.tr_ficha_inv_fila('todo');
 drop trigger if exists trg_ficha_inv on public.obra_alias;
 create trigger trg_ficha_inv after insert or update or delete on public.obra_alias
-  for each statement execute function public.tr_ficha_inv_blanket();
+  for each row execute function public.tr_ficha_inv_fila('todo');
+drop trigger if exists trg_ficha_inv on public.drive_index;
+create trigger trg_ficha_inv after insert or update or delete on public.drive_index
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'indexed_at,actualizado_at');
+-- El nombre de la persona sale en el desglose de horas de toda obra donde trabajó.
+drop trigger if exists trg_ficha_inv on public.personas;
+create trigger trg_ficha_inv after update of nombre_completo, nombre_para_mostrar on public.personas
+  for each row execute function public.tr_ficha_inv_fila('todo');
 
--- ── EL VENCIMIENTO POR TIEMPO PASA A SER LA RED DE SEGURIDAD, NO LA VÍA PRINCIPAL ───────────────────
---
--- Igual al cuerpo de 20260917T1700: sólo cambia 7 → 60 minutos. La frescura normal ya la dan los
--- triggers (invalidan al escribir; el cron, cada 2 min, repone lo invalidado). 60 min es la red para
--- lo que este inventario no cubre (motor de cotización/planificación, ver cabecera) y para cualquier
--- escritura futura que llegue por una tabla no contemplada acá — nunca sirve más de 10 min por
--- `ficha_cliente_cache_leer` (20260913T1500), así que 60 es un techo de cuánto puede tardar en
--- REPONERSE algo vencido, no de cuánto puede servirse viejo.
+-- B · por huella al commit: las que las sincronizaciones reescriben.
+drop trigger if exists trg_ficha_inv on public.compra_sheet;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.compra_sheet
+  for each statement execute function public.tr_ficha_inv_marcar();
+drop trigger if exists trg_ficha_inv on public.cobranzas;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.cobranzas
+  for each statement execute function public.tr_ficha_inv_marcar();
+drop trigger if exists trg_ficha_inv on public.costos_obra;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.costos_obra
+  for each statement execute function public.tr_ficha_inv_marcar();
+drop trigger if exists trg_ficha_inv on public.obra_papel;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_papel
+  for each statement execute function public.tr_ficha_inv_marcar();
+drop trigger if exists trg_ficha_inv on public.obra_economia_sheet;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_economia_sheet
+  for each statement execute function public.tr_ficha_inv_marcar();
+drop trigger if exists trg_ficha_inv on public.jornales_bloque_persona;
+create trigger trg_ficha_inv after insert or update or delete or truncate on public.jornales_bloque_persona
+  for each statement execute function public.tr_ficha_inv_marcar();
+
+-- ── EL CRON: igual a 20260917T1700, con el vencimiento de `ficha_cliente_cache_vigencia()` ─────────
 CREATE OR REPLACE FUNCTION public.refrescar_ficha_cliente_cache(p_slug text DEFAULT NULL::text)
  RETURNS integer
  LANGUAGE plpgsql
@@ -387,8 +434,7 @@ begin
       left join public.ficha_cliente_cache c
         on c.rpc = x.rpc and c.clave = x.clave and c.solapa = x.solapa
      where p_slug is not null or c.calculado_en is null
-        -- 60 MIN (28/09/2026): red de seguridad, no la vía principal — ver la cabecera de esta migración.
-        or c.calculado_en < clock_timestamp() - interval '60 minutes'
+        or c.calculado_en < clock_timestamp() - public.ficha_cliente_cache_vigencia()
      order by (c.calculado_en is not null), c.calculado_en nulls first
   loop
     exit when p_slug is null and clock_timestamp() - v_inicio > interval '12 seconds';
@@ -420,8 +466,31 @@ $function$;
 
 comment on function public.refrescar_ficha_cliente_cache(text) is
   'Llena ficha_cliente_cache calculando como un perfil real de Dirección. Sin argumento: lo que falta '
-  'o quedó invalidado por un trigger (20260928T2330) o tiene más de 60 min (red de seguridad, no la '
-  'vía principal de frescura); corta a los 12 s y cede con más de 3 backends activos. Con slug: ese '
-  'cliente entero.';
+  '(invalidado por un trigger trg_ficha_inv*, 20260928T2330) o es más viejo que '
+  'ficha_cliente_cache_vigencia(); corta a los 12 s y cede con más de 3 backends activos. Con slug: '
+  'ese cliente entero.';
+
+-- ── LA LECTURA: igual a 20260913T1500, con la ventana atada al vencimiento ──────────────────────────
+-- Con 10 min fijos, subir el vencimiento no ahorraba nada visible: la fila seguía en la tabla pero la
+-- pantalla calculaba en vivo desde el minuto 10.
+create or replace function public.ficha_cliente_cache_leer(p_rpc text, p_clave text, p_solapa text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path to 'public'
+as $function$
+  select c.json || jsonb_build_object('cache_calculado_en', c.calculado_en)
+    from public.ficha_cliente_cache c
+   where c.rpc = p_rpc
+     and c.clave = p_clave
+     and c.solapa = p_solapa
+     and c.calculado_en > now() - (public.ficha_cliente_cache_vigencia() + interval '10 minutes')
+     and c.rol_calculo = public.current_rol()
+     and not public.sesion_es_de_prueba()
+$function$;
+
+revoke all on function public.ficha_cliente_cache_leer(text, text, text) from public, anon;
+grant execute on function public.ficha_cliente_cache_leer(text, text, text) to authenticated;
 
 notify pgrst, 'reload schema';

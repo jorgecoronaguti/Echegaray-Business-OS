@@ -35,7 +35,7 @@
 // viejo y no se corrige acá: cambiarlo cambia lo que leen las caras).
 import { makeGoogleClient, READONLY_SCOPES, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { query, closePool } from '../lib/db.mjs'
+import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { resolverCliente } from '../lib/portal/cobranzas-a-cliente.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
@@ -244,12 +244,16 @@ async function main() {
 
   const sql = `insert into public.cobranzas (${columnas.join(', ')}, origen, sincronizado_en)`
     + ` values (${columnas.map((_, i) => `$${i + 1}`).join(',')},'cobranzas_sheet',now())`
-  await query('begin')
+  // UNA CONEXIÓN PARA TODA LA TRANSACCIÓN. `query('begin')` va al pool: el delete y los insert podían
+  // caer en otra conexión y no había transacción (el mismo defecto que ya se corrigió en
+  // sync-compras.mjs). Además la caché de la ficha (20260928T2330) compara la huella de `cobranzas`
+  // AL COMMIT: si el delete commiteara solo, cada corrida vería la tabla vacía e invalidaría todo.
   try {
-    await query("delete from public.cobranzas where origen='cobranzas_sheet'")
-    for (const c of cobranzas) await query(sql, columnas.map((k) => c[k] ?? null))
-    await query('commit')
-  } catch (e) { await query('rollback'); console.error('sync falló, ROLLBACK:', e.message); process.exit(1) }
+    await withTx(async (tx) => {
+      await tx.query("delete from public.cobranzas where origen='cobranzas_sheet'")
+      for (const c of cobranzas) await tx.query(sql, columnas.map((k) => c[k] ?? null))
+    })
+  } catch (e) { console.error('sync falló, ROLLBACK:', e.message); process.exit(1) }
 
   await query(
     `insert into public.integraciones (slug, nombre, estado, salud, ultimo_sync, notas)

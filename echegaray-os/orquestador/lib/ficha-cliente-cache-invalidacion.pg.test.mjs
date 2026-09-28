@@ -15,8 +15,21 @@
 //  4 · QUE UN DELETE DE `obra_canonica` NO INVALIDE (la fila ya no está para hacer join al escribir el
 //      after-trigger; tiene que resolver el cliente de la fila que se está borrando, no de una que ya
 //      no existe).
-//  5 · QUE SIN NINGÚN CAMBIO EL CRON SIGA RECALCULANDO TODO — el defecto que este trabajo vino a
-//      arreglar: con la caché recién poblada y nada invalidado, una corrida tiene que devolver 0.
+//  5 · QUE SIN NINGÚN CAMBIO EL CRON SIGA RECALCULANDO TODO: recién poblada, una corrida devuelve 0.
+//  6 · QUE UNA SINCRONIZACIÓN QUE NO CAMBIA NADA INVALIDE (el rechazo del 28/09): `compra_sheet`,
+//      `costos_obra` y `cobranzas` se borran y reinsertan idénticas, `obra_papel` se rehace,
+//      `jornales_bloque_persona` y `obra_economia_sheet` sólo mueven el sello — la caché queda con
+//      todas sus filas. Y la contracara: un cambio REAL en una cobranza invalida sólo a su cliente, y
+//      mover un límite de quincena invalida los desgloses de horas y no las fichas.
+//  7 · QUE UN UPDATE QUE MUEVE LA FILA DE CLIENTE U OBRA INVALIDE SÓLO AL DUEÑO NUEVO (el viejo se
+//      quedaría mostrando la fila que ya no es suya), y que un UPDATE sin cambios invalide algo.
+//  8 · QUE EL VENCIMIENTO O LA VENTANA DE LECTURA VUELVAN ATRÁS: una fila de 50 min no se recalcula y
+//      se sirve; una de vencimiento + 1 min se recalcula; la ventana no es infinita.
+//  9 · QUE `authenticated` PUEDA VACIAR LA CACHÉ POR RPC, o que una función de trigger corra sin
+//      SECURITY DEFINER / `search_path` fijo.
+//
+// El trigger de huella es DIFERIDO (corre al commit). Como el test termina en ROLLBACK, `alCommit`
+// lo dispara a mano con `set constraints ... immediate`, que ejecuta lo pendiente en ese momento.
 //
 // ═══ POR QUÉ PIDE `ORQ_PG_DDL=1` ═══
 //
@@ -55,13 +68,43 @@ async function filasDe(c, slug) {
   return rows.map((r) => r.solapa).sort()
 }
 
+/** Dispara el trigger diferido de huella como si la transacción commiteara (el test hace ROLLBACK). */
+async function alCommit(c) {
+  await c.query('set constraints public.trg_ficha_inv_al_commit immediate')
+  await c.query('set constraints public.trg_ficha_inv_al_commit deferred')
+}
+
+async function cuantas(c) {
+  return Number((await c.query('select count(*) n from public.ficha_cliente_cache')).rows[0].n)
+}
+
+async function hayHH(c, obraId) {
+  const { rows } = await c.query(
+    `select 1 from public.ficha_cliente_cache where rpc = 'hh_de_obra' and clave = $1`, [obraId])
+  return rows.length === 1
+}
+
+/** Lo que hace una sincronización: borra y reinserta las mismas filas (con ids y sellos nuevos). */
+async function reescribir(c, tabla, filtro) {
+  const { rows } = await c.query(
+    `select string_agg(quote_ident(column_name), ',' order by ordinal_position) cols
+       from information_schema.columns
+      where table_schema = 'public' and table_name = $1 and column_name not in ('id', 'sincronizado_en')`,
+    [tabla])
+  const cols = rows[0].cols
+  await c.query(`drop table if exists _copia; create temp table _copia as select ${cols} from public.${tabla} where ${filtro}`)
+  await c.query(`delete from public.${tabla} where ${filtro}`)
+  await c.query(`insert into public.${tabla} (${cols}) select ${cols} from _copia`)
+}
+
 test('escribir una tabla fuente invalida su caché al toque, no al vencer',
   { skip: !conDDL && 'aplica DDL en una transacción con rollback: correr con ORQ_PG_DDL=1' }, async (t) => {
     const c = await getPool().connect()
     try {
       await c.query('begin')
-      // Lock propio (distinto del de ficha-cliente-cache.pg.test.mjs) para no trabarse con esa corrida.
-      await c.query('select pg_advisory_xact_lock(20260928)')
+      // EL TURNO COMÚN de los tests con DDL (ddl-de-un-test-pide-turno.test.mjs): un número propio
+      // sería otra cola, y esta migración toma lock sobre 23 tablas que leen los demás.
+      await c.query('select pg_advisory_xact_lock(20260822)')
       await c.query(`set local statement_timeout = '150s'`)
       await c.query(MIGRACION)
 
@@ -126,6 +169,7 @@ test('escribir una tabla fuente invalida su caché al toque, no al vencer',
             `insert into public.costos_obra (obra_texto, obra_id, fecha, total, area)
              values ($1, $2, current_date, 1, null)`,
             [alias[0].alias, otraObra ? otraObra.id : null])
+          await alCommit(c)
           assert.equal((await filasDe(c, laObraReal.slug)).length, 0,
             'el cliente que resuelve obra_alias/norm_obra(obra_texto) debía quedar invalidado')
         })
@@ -151,6 +195,121 @@ test('escribir una tabla fuente invalida su caché al toque, no al vencer',
         await c.query('update public.perfiles set updated_at = now() where id = $1', [perfil[0].id])
         const { rows: despues } = await c.query('select count(*) n from public.ficha_cliente_cache')
         assert.equal(despues[0].n, '0', 'un cambio en perfiles debía vaciar toda la caché (blanket declarado)')
+      })
+
+      await t.test('una sincronización que no cambia nada deja la caché intacta', async () => {
+        await poblarTodo(c)
+        const base = await cuantas(c)
+        await reescribir(c, 'compra_sheet', 'true')
+        await reescribir(c, 'costos_obra', "origen = 'compras_sheet'")
+        await alCommit(c)
+        assert.equal(await cuantas(c), base, 'sync-compras sin cambios invalidó filas de la caché')
+        await reescribir(c, 'cobranzas', "origen = 'cobranzas_sheet'")
+        await alCommit(c)
+        assert.equal(await cuantas(c), base, 'sync-cobranzas sin cambios invalidó filas de la caché')
+        await c.query('select public.refrescar_obra_papel()')
+        await c.query('update public.jornales_bloque_persona set leido_en = now()')
+        await c.query('update public.obra_economia_sheet set leido_en = now()')
+        await alCommit(c)
+        assert.equal(await cuantas(c), base, 'rehacer obra_papel o mover sólo el sello invalidó filas')
+      })
+
+      await t.test('un cambio real en una cobranza invalida sólo a su cliente', async () => {
+        const { rows: cob } = await c.query(
+          `select b.id, k.slug from public.cobranzas b join public.clientes k on k.id = b.cliente_id
+            where b.obra_id is null limit 1`)
+        if (!cob.length) { t.skip('no hay cobranza con cliente y sin obra'); return }
+        await poblarTodo(c)
+        const base = await cuantas(c)
+        await c.query('update public.cobranzas set total_bruto = total_bruto + 1 where id = $1', [cob[0].id])
+        await alCommit(c)
+        assert.equal((await filasDe(c, cob[0].slug)).length, 0, 'el cliente de la cobranza cambiada debía quedar invalidado')
+        assert.equal(await cuantas(c), base - 6, 'invalidó más que las 6 solapas del cliente')
+      })
+
+      await t.test('mover un límite de quincena invalida los desgloses de horas, no las fichas', async () => {
+        await poblarTodo(c)
+        const fichas = (await c.query(`select count(*) n from public.ficha_cliente_cache where rpc = 'pantalla_cliente'`)).rows[0].n
+        await c.query(`update public.jornales_bloque_persona set quincena_hasta = quincena_hasta + 1
+                        where id = (select id from public.jornales_bloque_persona limit 1)`)
+        await alCommit(c)
+        assert.equal(await hayHH(c, obra.id), false, 'el desglose de horas debía quedar invalidado')
+        const { rows } = await c.query(`select count(*) n from public.ficha_cliente_cache where rpc = 'pantalla_cliente'`)
+        assert.equal(rows[0].n, fichas, 'un límite de quincena no cambia la ficha del cliente')
+      })
+
+      await t.test('un UPDATE que mueve la fila de cliente invalida al viejo Y al nuevo; uno sin cambios, a nadie',
+        async () => {
+          const archivo = 'ensayo-inv-' + Date.now()
+          await c.query(`insert into public.cliente_documento (cliente_id, drive_file_id, rol, origen)
+                         values ($1, $2, 'ensayo', 'manual')`, [uno.id, archivo])
+          await poblarTodo(c)
+          const base = await cuantas(c)
+          await c.query('update public.cliente_documento set rol = rol where drive_file_id = $1', [archivo])
+          assert.equal(await cuantas(c), base, 'un UPDATE que no cambia nada invalidó la caché')
+          await c.query('update public.cliente_documento set cliente_id = $2 where drive_file_id = $1', [archivo, otro.id])
+          assert.equal((await filasDe(c, uno.slug)).length, 0, 'el dueño VIEJO (OLD) debía quedar invalidado')
+          assert.equal((await filasDe(c, otro.slug)).length, 0, 'el dueño NUEVO (NEW) debía quedar invalidado')
+        })
+
+      await t.test('un UPDATE que mueve horas de obra invalida el desglose de las DOS obras', async () => {
+        const { rows: persona } = await c.query('select id from public.personas limit 1')
+        const otraObra = obras.find((o) => o.id !== obra.id)
+        if (!persona.length || !otraObra) { t.skip('hacen falta una persona y dos obras con cliente'); return }
+        const { rows: reg } = await c.query(
+          `insert into public.registros_hh (obra_canonica_id, persona_id, fecha, horas, tipo_hora, fuente_legacy)
+           values ($1, $2, date '2001-01-02', 0.01, 'normal', 'ensayo-inv') returning id`, [obra.id, persona[0].id])
+        await poblarTodo(c)
+        assert.ok(await hayHH(c, obra.id) && await hayHH(c, otraObra.id), 'setup: las dos obras cacheadas')
+        await c.query('update public.registros_hh set obra_canonica_id = $2 where id = $1', [reg[0].id, otraObra.id])
+        assert.equal(await hayHH(c, obra.id), false, 'la obra VIEJA (OLD) debía quedar invalidada')
+        assert.equal(await hayHH(c, otraObra.id), false, 'la obra NUEVA (NEW) debía quedar invalidada')
+      })
+
+      await t.test('el vencimiento es de 60 min y la ventana de lectura lo acompaña', async () => {
+        await poblarTodo(c)
+        const fila = [`update public.ficha_cliente_cache set calculado_en = `,
+          ` where rpc = 'pantalla_cliente' and clave = '${uno.slug}' and solapa = 'obras'`]
+        const recalcula = async (edad) => {
+          await c.query(`${fila[0]}clock_timestamp() - ${edad}${fila[1]}`)
+          return (await c.query('select public.refrescar_ficha_cliente_cache() n')).rows[0].n
+        }
+        assert.equal(await recalcula(`interval '50 minutes'`), 0, 'recalculó una fila de 50 min: el vencimiento volvió atrás')
+        assert.equal(await recalcula(`(public.ficha_cliente_cache_vigencia() + interval '1 minute')`), 1,
+          'una fila vencida debía recalcularse')
+        const { rows: dir } = await c.query(`select id from public.perfiles where rol = 'direccion' and es_prueba = false
+                                              order by created_at, id limit 1`)
+        const sirve = async (edad) => {
+          await c.query('reset role')
+          await c.query(`${fila[0]}now() - ${edad}${fila[1]}`)
+          await c.query(`select set_config('request.jwt.claims', $1, true)`,
+            [JSON.stringify({ sub: dir[0].id, role: 'authenticated' })])
+          await c.query('set local role authenticated')
+          const { rows } = await c.query(
+            `select public.ficha_cliente_cache_leer('pantalla_cliente', $1, 'obras') is not null s`, [uno.slug])
+          await c.query('reset role')
+          return rows[0].s
+        }
+        assert.equal(await sirve(`interval '50 minutes'`), true, 'no sirvió una fila de 50 min: la ventana volvió a 10 min')
+        assert.equal(await sirve(`(public.ficha_cliente_cache_vigencia() + interval '5 minutes')`), true,
+          'la ventana de lectura debe cubrir el vencimiento más lo que tarda el cron en reponer')
+        assert.equal(await sirve(`interval '6 hours'`), false, 'sirvió una fila de 6 h: la ventana no tiene techo')
+      })
+
+      await t.test('nadie invalida por RPC y los triggers son SECURITY DEFINER con search_path fijo', async () => {
+        const firma = 'public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean)'
+        for (const rol of ['authenticated', 'anon', 'public']) {
+          const { rows } = await c.query(`select has_function_privilege($1, $2, 'execute') p`, [rol, firma])
+          assert.equal(rows[0].p, false, `${rol} puede vaciar la caché por RPC`)
+        }
+        const { rows } = await c.query(
+          `select distinct p.proname, p.prosecdef, p.proconfig from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+            where t.tgname like 'trg_ficha_inv%'`)
+        assert.ok(rows.length >= 3, 'faltan las funciones de trigger')
+        for (const f of rows) {
+          assert.equal(f.prosecdef, true, `${f.proname} no es SECURITY DEFINER`)
+          assert.ok((f.proconfig ?? []).some((x) => x.startsWith('search_path=')), `${f.proname} sin search_path fijo`)
+        }
       })
     } finally {
       await c.query('rollback').catch(() => {})
