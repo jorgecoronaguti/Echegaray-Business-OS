@@ -37,18 +37,51 @@
 -- no uno por sincronización. `jornales_bloque_persona` sólo entra a `hh_de_obra_en_vivo` por los
 -- límites de quincena de cada persona: su huella es esa proyección y sólo invalida los `hh_de_obra`.
 --
+-- ═══ EL GRAFO: QUÉ TABLAS LEE LA FICHA (catálogo de la base viva, 28/09, sólo SELECT) ═══
+--
+-- Recorrido desde `pantalla_cliente_en_vivo` y `hh_de_obra_en_vivo` por el cuerpo de cada función
+-- (`pg_get_functiondef`) y de cada vista (`pg_get_viewdef`): una arista es un `from`/`join` sobre una
+-- relación o una llamada `f(`. 62 vistas y funciones, 54 tablas. Toda tabla del grafo tiene un
+-- `trg_ficha_inv` más abajo o está en la lista siguiente; `ficha-cliente-cache-invalidacion.test.mjs`
+-- lo verifica contra una copia literal del grafo y se pone rojo si una queda sin nada.
+--
 -- ═══ LO QUE QUEDA CUBIERTO SÓLO POR EL VENCIMIENTO (60 min, más la ventana de lectura) ═══
 --
 --   · Motor de cotización y planificación: `cotizacion_partida`, `analisis`, `analisis_linea`,
 --     `recurso`, `recurso_precio`, `tipo_cambio`, `obra_actividad`, `obra_actividad_nota`,
 --     `obra_actividad_paso`, `obra_ejecucion`, `obra_ejecucion_equipo`, `obra_documento`,
 --     `tarea_tipo`, `cuadrilla`, `pedidos_materiales`: entran por varias vistas y no hay resolución
---     barata y correcta sin replicar la cascada adentro del trigger.
---   · `personas` fuera de `nombre_completo`/`nombre_para_mostrar` (que sí tienen trigger), y las
---     tablas `compras` y `obras` que aparecen en el grafo de vistas.
+--     barata y correcta sin replicar la cascada adentro del trigger; y un trigger `todo` en
+--     `tipo_cambio` (136 escrituras en pg_stat, casi todas borrados) recalcularía todo cada vez.
+--   · `obras`: tabla legada que sólo lee `cliente_economia`; 0 escrituras en pg_stat_user_tables.
+--   · `personas` fuera de `nombre_completo`/`nombre_para_mostrar` (que sí tienen trigger).
+--   · No son tablas del grafo aunque el nombre aparezca en el texto (el auditor las listó por léxico):
+--     `activo` (columna de `clientes` en `cliente_rotulo`), `carga_social` (literal
+--     `'carga_social'` en `analisis_costo`), `causa_desvio` (columna en `actividad_horas`), `compras`
+--     (sólo en comentarios de `pantalla_cliente_en_vivo`).
 --   · La carrera cron/escritura: si el cron calcula una fila con la foto de ANTES de un commit que la
 --     invalida y la inserta DESPUÉS del borrado, queda vieja hasta el vencimiento. La ventana es lo que
 --     tarda un cálculo (~0,3 s); era igual antes de este cambio.
+--   · Fuera del alcance del recorrido: SQL dinámico (`execute format(...)`) y las tablas que leen las
+--     policies RLS; la caché se calcula como Dirección, cuyos permisos cambian sólo por `perfiles`.
+--
+-- ═══ CÓMO SE APLICA (sin tirar el login: lo del 28/09 a las 19:08) ═══
+--
+-- `create or replace trigger` toma ShareRowExclusiveLock en 39 tablas y lo retiene hasta el commit:
+-- no frena lecturas, pero sí escrituras, y con una sincronización a mitad de camino puede esperar o
+-- trabarse. `lock_timeout = 3s` corta antes de hacer cola. El único `drop trigger` que queda es sobre
+-- `ficha_cliente_cache_pendiente`, tabla propia de esta migración. En este orden:
+--
+--   1. Pausar el cron: `select cron.alter_job(<jobid de 'refrescar_ficha_cliente_cache'>, active := false)`.
+--   2. Verificar que no corran `sync-compras`, `sync-cobranzas`, `jornales-espejo-bloques` ni
+--      `obras-economia-sync` (systemd / `pg_stat_activity`), y no arrancarlos hasta el paso 5.
+--   3. Ensayar con `node orquestador/scripts/aplicar-migracion.mjs <este archivo>` (sin `--aplicar`:
+--      corre y deshace; toma los mismos locks, por eso va después del paso 2). Si pasa, aplicar con
+--      `--aplicar`.
+--   4. Leer en el destino: filas de `ficha_cliente_cache_huella` por tabla (7 tablas), los
+--      `trg_ficha_inv*` en `pg_trigger` (uno por tabla con trigger, más `trg_ficha_inv_al_commit`) y
+--      el `count(*)` de `ficha_cliente_cache`.
+--   5. Reactivar el cron (`active := true`) y las sincronizaciones.
 --
 -- ═══ AHORRO ESTIMADO (ESTIMACIÓN sobre los `ms` medidos, no una medición del efecto) ═══
 --
@@ -109,7 +142,8 @@ comment on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], bo
   'su desglose de horas), todos los desgloses de horas, o todo. Sólo desde los triggers de 20260928T2330.';
 
 -- ── A · POR FILA ──────────────────────────────────────────────────────────────────────────────────
--- TG_ARGV: [0] modo (`cliente` | `obra` | `obra_canonica` | `todo`), [1] columna de la clave,
+-- TG_ARGV: [0] modo (`cliente` | `obra` | `obra_canonica` | `cliente_y_obra` | `todo`), [1] columna
+-- de la clave (la obra en `obra_canonica` y `cliente_y_obra`, que toman el cliente de `cliente_id`),
 -- [2] columnas que no cuentan como cambio, separadas por coma (sellos de tiempo del indexador).
 create or replace function public.tr_ficha_inv_fila() returns trigger
 language plpgsql
@@ -139,8 +173,9 @@ begin
     perform public.ficha_cliente_cache_invalidar_lote(v_ids::uuid[], null);
   elsif v_modo = 'obra' then
     perform public.ficha_cliente_cache_invalidar_lote(null, v_ids);
-  elsif v_modo = 'obra_canonica' then
-    -- En un DELETE la obra ya no está para hacer join: el cliente sale de la fila misma.
+  elsif v_modo in ('obra_canonica', 'cliente_y_obra') then
+    -- En un DELETE la obra ya no está para hacer join: el cliente sale de la fila misma. Lo mismo
+    -- cuando la fila tiene cliente propio que puede no coincidir con el dueño de su obra.
     perform public.ficha_cliente_cache_invalidar_lote(
       array(select distinct x::uuid
               from unnest(array[v_old ->> 'cliente_id', v_new ->> 'cliente_id']) x
@@ -212,6 +247,10 @@ begin
       select 'obra:' || coalesce(t.obra_canonica_id, '*'), md5((to_jsonb(t) - 'leido_en')::text)
         from public.obra_economia_sheet t where p_tabla = 'obra_economia_sheet'
       union all
+      -- Sin obra, la fila cuenta por el rótulo de cliente del Sheet (texto, sin resolución barata).
+      select 'obra:' || coalesce(t.obra_id, '*'), md5((to_jsonb(t) - 'sincronizado_en')::text)
+        from public.compra_obra_asignada t where p_tabla = 'compra_obra_asignada'
+      union all
       select 'hh:*', md5(concat_ws('|', t.persona_id, t.quincena_desde, t.quincena_hasta))
         from public.jornales_bloque_persona t where p_tabla = 'jornales_bloque_persona'
     ) x
@@ -276,6 +315,8 @@ $function$;
 revoke all on function public.ficha_cliente_cache_huellas(text), public.tr_ficha_inv_marcar(),
   public.tr_ficha_inv_comparar() from public, anon, authenticated;
 
+-- `create or replace` no acepta CONSTRAINT TRIGGER: acá queda el `drop`, sobre una tabla propia de
+-- esta migración que sólo escriben las sincronizaciones (pausadas durante la aplicación).
 drop trigger if exists trg_ficha_inv_al_commit on public.ficha_cliente_cache_pendiente;
 create constraint trigger trg_ficha_inv_al_commit
   after insert on public.ficha_cliente_cache_pendiente
@@ -286,93 +327,115 @@ create constraint trigger trg_ficha_inv_al_commit
 delete from public.ficha_cliente_cache_huella;
 insert into public.ficha_cliente_cache_huella (tabla, clave, huella)
 select t.tabla, h.clave, h.huella
-  from unnest(array['compra_sheet', 'cobranzas', 'costos_obra', 'obra_papel', 'obra_economia_sheet',
-                    'jornales_bloque_persona']) t(tabla)
+  from unnest(array['compra_sheet', 'compra_obra_asignada', 'cobranzas', 'costos_obra', 'obra_papel',
+                    'obra_economia_sheet', 'jornales_bloque_persona']) t(tabla)
  cross join lateral public.ficha_cliente_cache_huellas(t.tabla) h;
 
 -- ── LOS TRIGGERS ──────────────────────────────────────────────────────────────────────────────────
--- Un `trg_ficha_inv` por tabla: `drop ... if exists` antes de cada `create` la hace reaplicable.
+-- Un `trg_ficha_inv` por tabla. `create or replace trigger` (PG14+; la base es 17.6) la hace
+-- reaplicable tomando ShareRowExclusiveLock, que frena escrituras pero NO lecturas. `drop trigger`
+-- toma AccessExclusiveLock: con `perfiles`, `clientes` o `personas` bloqueadas, cada SELECT del login
+-- espera detrás (lo que tiró la app 25 min el 28/09).
 
 -- A · por fila, con cliente directo (FK confirmada).
-drop trigger if exists trg_ficha_inv on public.clientes;
-create trigger trg_ficha_inv after insert or update or delete on public.clientes
+create or replace trigger trg_ficha_inv after insert or update or delete on public.clientes
   for each row execute function public.tr_ficha_inv_fila('cliente', 'id');
-drop trigger if exists trg_ficha_inv on public.cliente_contacto;
-create trigger trg_ficha_inv after insert or update or delete on public.cliente_contacto
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_contacto
   for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
-drop trigger if exists trg_ficha_inv on public.cliente_documento;
-create trigger trg_ficha_inv after insert or update or delete on public.cliente_documento
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_documento
   for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
-drop trigger if exists trg_ficha_inv on public.cliente_nota;
-create trigger trg_ficha_inv after insert or update or delete on public.cliente_nota
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_nota
   for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
-drop trigger if exists trg_ficha_inv on public.cliente_orden;
-create trigger trg_ficha_inv after insert or update or delete on public.cliente_orden
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_orden
   for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
-drop trigger if exists trg_ficha_inv on public.cotizaciones;
-create trigger trg_ficha_inv after insert or update or delete on public.cotizaciones
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cotizaciones
   for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id');
+-- `cliente_de_sesion` la lee; los sellos de ingreso del portal no cambian qué sesión es de quién.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_acceso
+  for each row execute function public.tr_ficha_inv_fila('cliente', 'cliente_id',
+                                                          'primer_ingreso_at,ultimo_ingreso_at,ultimo_dispositivo');
+-- Plata: la cuenta corriente del cliente (`cuenta_corriente_de_clientes`). La web cambia el estado y
+-- una sincronización la reescribe de a una fila; mover sólo el sello no invalida.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.certificado_cliente
+  for each row execute function public.tr_ficha_inv_fila('cliente_y_obra', 'obra_id',
+                                                          'sincronizado_en,actualizado_at');
 
 -- A · por fila, con obra directa (confirmada contra el cuerpo de la vista que la lee).
-drop trigger if exists trg_ficha_inv on public.registros_hh;
-create trigger trg_ficha_inv after insert or update or delete on public.registros_hh
+create or replace trigger trg_ficha_inv after insert or update or delete on public.registros_hh
   for each row execute function public.tr_ficha_inv_fila('obra', 'obra_canonica_id');
-drop trigger if exists trg_ficha_inv on public.certificados;
-create trigger trg_ficha_inv after insert or update or delete on public.certificados
+create or replace trigger trg_ficha_inv after insert or update or delete on public.certificados
   for each row execute function public.tr_ficha_inv_fila('obra', 'obra_canonica_id');
-drop trigger if exists trg_ficha_inv on public.obra_contrato;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_contrato
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_contrato
   for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
-drop trigger if exists trg_ficha_inv on public.obra_carpeta_drive;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_carpeta_drive
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_carpeta_drive
   for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
-drop trigger if exists trg_ficha_inv on public.obra_restriccion;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_restriccion
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_restriccion
   for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
-drop trigger if exists trg_ficha_inv on public.obra_canonica;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_canonica
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_canonica
   for each row execute function public.tr_ficha_inv_fila('obra_canonica', 'id');
+-- Las tres entran por `costo_mo_quincena_calculo` / `costo_mo_quincena` con la obra en la fila.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_asignacion
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.subcontrato
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_id');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.costo_obra_quincena
+  for each row execute function public.tr_ficha_inv_fila('obra', 'obra_canonica_id');
 
 -- A · por fila, todo: sin resolución barata y correcta a cliente u obra. Escritura rara, salvo
 -- `drive_index`, cuyo indexador reescribe `indexed_at`/`actualizado_at` sin cambiar el archivo.
-drop trigger if exists trg_ficha_inv on public.perfiles;
-create trigger trg_ficha_inv after insert or update or delete on public.perfiles
+create or replace trigger trg_ficha_inv after insert or update or delete on public.perfiles
   for each row execute function public.tr_ficha_inv_fila('todo');
-drop trigger if exists trg_ficha_inv on public.persona_tarifa;
-create trigger trg_ficha_inv after insert or update or delete on public.persona_tarifa
+create or replace trigger trg_ficha_inv after insert or update or delete on public.persona_tarifa
   for each row execute function public.tr_ficha_inv_fila('todo');
-drop trigger if exists trg_ficha_inv on public.costo_hora_alicuota;
-create trigger trg_ficha_inv after insert or update or delete on public.costo_hora_alicuota
+create or replace trigger trg_ficha_inv after insert or update or delete on public.costo_hora_alicuota
   for each row execute function public.tr_ficha_inv_fila('todo');
-drop trigger if exists trg_ficha_inv on public.obra_alias;
-create trigger trg_ficha_inv after insert or update or delete on public.obra_alias
+create or replace trigger trg_ficha_inv after insert or update or delete on public.obra_alias
   for each row execute function public.tr_ficha_inv_fila('todo');
-drop trigger if exists trg_ficha_inv on public.drive_index;
-create trigger trg_ficha_inv after insert or update or delete on public.drive_index
+create or replace trigger trg_ficha_inv after insert or update or delete on public.drive_index
   for each row execute function public.tr_ficha_inv_fila('todo', '', 'indexed_at,actualizado_at');
+-- Plata: la mano de obra (`costo_mo_quincena_calculo`). La fila es de una PERSONA, y su costo se
+-- reparte entre las obras donde cargó horas esa quincena: resolverlo acá sería repetir el cálculo.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.liquidacion_linea
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'actualizado_en');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.liquidacion_quincena
+  for each row execute function public.tr_ficha_inv_fila('todo');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.recibo_sueldo_linea
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'cargado_en');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.convenio_escala
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'cargada_en');
+-- Mueve los días hábiles de toda obra (o de una, con `obra_id`); se escribe pocas veces al año.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.calendario_no_laborable
+  for each row execute function public.tr_ficha_inv_fila('todo');
+-- `presupuesto_monto` lo lee por id desde la cotización, sin pasar por la obra: la columna
+-- `obra_canonica_id` no alcanza para saber a quién ensucia.
+create or replace trigger trg_ficha_inv after insert or update or delete on public.presupuestos
+  for each row execute function public.tr_ficha_inv_fila('todo');
+-- Deciden qué fila de Compras es de qué obra y cliente, y con qué nombre (`costo_de_obra_filas`).
+create or replace trigger trg_ficha_inv after insert or update or delete on public.proveedores
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'updated_at,actualizado_en');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.proveedor_alias
+  for each row execute function public.tr_ficha_inv_fila('todo', '', 'actualizado_en');
+create or replace trigger trg_ficha_inv after insert or update or delete on public.cliente_alias
+  for each row execute function public.tr_ficha_inv_fila('todo');
 -- El nombre de la persona sale en el desglose de horas de toda obra donde trabajó.
-drop trigger if exists trg_ficha_inv on public.personas;
-create trigger trg_ficha_inv after update of nombre_completo, nombre_para_mostrar on public.personas
+create or replace trigger trg_ficha_inv after update of nombre_completo, nombre_para_mostrar on public.personas
   for each row execute function public.tr_ficha_inv_fila('todo');
 
 -- B · por huella al commit: las que las sincronizaciones reescriben.
-drop trigger if exists trg_ficha_inv on public.compra_sheet;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.compra_sheet
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.compra_sheet
   for each statement execute function public.tr_ficha_inv_marcar();
-drop trigger if exists trg_ficha_inv on public.cobranzas;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.cobranzas
+-- `sync-compras.mjs` la borra y reinserta entera en cada corrida (546 k inserciones para 947 filas).
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.compra_obra_asignada
   for each statement execute function public.tr_ficha_inv_marcar();
-drop trigger if exists trg_ficha_inv on public.costos_obra;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.costos_obra
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.cobranzas
   for each statement execute function public.tr_ficha_inv_marcar();
-drop trigger if exists trg_ficha_inv on public.obra_papel;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_papel
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.costos_obra
   for each statement execute function public.tr_ficha_inv_marcar();
-drop trigger if exists trg_ficha_inv on public.obra_economia_sheet;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_economia_sheet
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_papel
   for each statement execute function public.tr_ficha_inv_marcar();
-drop trigger if exists trg_ficha_inv on public.jornales_bloque_persona;
-create trigger trg_ficha_inv after insert or update or delete or truncate on public.jornales_bloque_persona
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.obra_economia_sheet
+  for each statement execute function public.tr_ficha_inv_marcar();
+create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.jornales_bloque_persona
   for each statement execute function public.tr_ficha_inv_marcar();
 
 -- ── EL CRON: igual a 20260917T1700, con el vencimiento de `ficha_cliente_cache_vigencia()` ─────────
