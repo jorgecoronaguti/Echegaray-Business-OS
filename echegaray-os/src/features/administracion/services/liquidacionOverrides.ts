@@ -467,15 +467,15 @@ function referenciaDe(
 }
 
 /**
- * EL BLANCO QUE SE PAGA YA LO SACÓ: su neto sale de conceptos que traen el 0426 (el recibo real del estudio, o el
- * estimado desde la 16–30/09, donde el presentismo se cobra en el blanco — dueño 28/09). Descontarlo además del
- * negro lo haría perder dos veces.
+ * EL BLANCO YA LO SACÓ: el recibo trae el 0426 (media jornada desde la 16–30/09, donde el presentismo se cobra en el
+ * blanco — dueño 28/09). Descontarlo además del negro lo haría perder dos veces. Lo dice el recibo, no de dónde
+ * salió el neto: nómina, a mano o por proporción es el mismo recibo del estudio (auditor 28/09: con neto de nómina
+ * el mismo perdido cobraba 516.760 o 580.240 según el dato cargado). Con conceptos reales mandan ellos; sin
+ * detalle, el estimado.
  */
 function blancoYaLoAnula(s: SueldoBlancoNegro): boolean {
   const lleva = (cs: readonly { codigo: string }[] | null | undefined): boolean => (cs ?? []).some((c) => c.codigo === '0426')
-  if (s.origenNeto === 'recibo') return lleva(s.conceptosReales)
-  if (s.origenNeto === 'conceptos') return lleva(s.reciboEstimado?.lineas)
-  return false
+  return s.conceptosReales?.length ? lleva(s.conceptosReales) : lleva(s.reciboEstimado?.lineas)
 }
 
 /**

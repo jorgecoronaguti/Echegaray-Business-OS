@@ -109,3 +109,20 @@ test('mensual y sin horas: nada que cobrar ni descontar', () => {
     cobra: 230240.12, porBanco: 230240.12, enEfectivo: 0, total: 230240.12,
   })
 })
+
+// AUDITOR 28/09: la guarda miraba de dónde salía el neto. Con neto de nómina, escrito a mano o de un recibo real sin
+// detalle, el mismo perdido de media jornada se volvía a descontar del negro (516.760 contra 580.240). Lo decide el
+// recibo: si trae el 0426, el blanco ya lo sacó. Jornada completa no tiene 0426: ahí sigue saliendo del negro.
+test('el perdido sale UNA vez sea cual sea el origen del neto', () => {
+  const negro = (b: EntradaDeBlanco, ov = {}, extra = {}) =>
+    plata(aplicarOverrides(obrero(100), { ...ov, ...extra }, 'obreros', null, b, TARDE)).negro
+  assert.equal(negro({ ...BLANCO, netoDeNomina: 230000 }), 350000, 'neto de nómina')
+  assert.equal(negro(BLANCO, { porBanco: 230000 }), 350000, 'neto escrito a mano')
+  const real = {
+    personaId: 'p', cuil: null, periodo: 'Q2-09/2026', categoria: 'oficial', valorHora: 6348, horasBlanco: 50,
+    bruto: 317400, neto: 230240.12, driveFileId: null,
+  }
+  assert.equal(negro({ ...BLANCO, recibo: real }), 350000, 'recibo real sin detalle de conceptos')
+  // Jornada completa, neto de nómina: sin 0426 en el recibo, el perdido sigue saliendo del negro (84.000 − 63.480).
+  assert.equal(negro({ ...BLANCO, netoDeNomina: 523000 }, COMPLETA), 20520)
+})
