@@ -13,7 +13,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Asignacion, Persona, ServiceResult } from '../types'
-import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 /**
  * El plantel elegible.
@@ -93,6 +93,7 @@ export async function getAsignaciones(supabase: SupabaseClient, obraId?: string)
     // El nombre puede faltar si la persona se borró del legajo: se publica el vínculo igual, con el
     // nombre en null. Perder la fila entera escondería una asignación que existe.
     persona_nombre: plantel.get(a.persona_id)?.nombre_completo ?? null,
+    persona_nombre_orden: plantel.get(a.persona_id)?.nombreOrden ?? null,
     persona_especialidad: plantel.get(a.persona_id)?.especialidad ?? null,
     persona_categoria: plantel.get(a.persona_id)?.categoria ?? null,
   }))
@@ -101,26 +102,29 @@ export async function getAsignaciones(supabase: SupabaseClient, obraId?: string)
 
 async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]) {
   const ids = [...new Set(personaIds.filter(Boolean))] as string[]
-  type Fila = { id: string; nombre_completo: string | null; especialidad: string | null; categoria: string | null }
-  const m = new Map<string, Omit<Fila, 'id'>>()
+  type Fila = { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null; especialidad: string | null; categoria: string | null }
+  const m = new Map<string, Omit<Fila, 'id' | 'nombre_para_mostrar'> & { nombreOrden: string }>()
   if (ids.length === 0) return m
   const { data } = await supabase
     .from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar, especialidad, categoria').in('id', ids)
   for (const p of (data ?? []) as Fila[]) {
-    m.set(p.id, { nombre_completo: nombreDePersonaONull(p), especialidad: p.especialidad, categoria: p.categoria })
+    // `nombre_completo` ACÁ ES EL NOMBRE PARA MOSTRAR («Emiliano Maldonado»), no el legajo: lo pisa
+    // `nombreDePersonaONull`. Para ORDENAR por apellido hace falta el legajo crudo aparte
+    // (`claveDeOrden`), porque ordenar por el texto de arriba ordena por nombre de pila.
+    m.set(p.id, { nombre_completo: nombreDePersonaONull(p), especialidad: p.especialidad, categoria: p.categoria, nombreOrden: claveDeOrden(p) })
   }
   return m
 }
 
-/** Vigentes primero, después responsables, después por nombre. Una asignación cerrada es historia y
- *  no tiene por qué disputarle el primer renglón a quien está trabajando hoy. */
+/** Vigentes primero, después responsables, después por APELLIDO. Una asignación cerrada es historia
+ *  y no tiene por qué disputarle el primer renglón a quien está trabajando hoy. */
 function ordenar(filas: Asignacion[]): Asignacion[] {
   return [...filas].sort((a, b) => {
     if (a.obra_id !== b.obra_id) return a.obra_id.localeCompare(b.obra_id)
     const cerrada = (x: Asignacion) => (x.hasta ? 1 : 0)
     if (cerrada(a) !== cerrada(b)) return cerrada(a) - cerrada(b)
     if (a.rol !== b.rol) return a.rol === 'responsable' ? -1 : 1
-    return String(a.persona_nombre ?? '').localeCompare(String(b.persona_nombre ?? ''))
+    return String(a.persona_nombre_orden ?? '').localeCompare(String(b.persona_nombre_orden ?? ''), 'es')
   })
 }
 

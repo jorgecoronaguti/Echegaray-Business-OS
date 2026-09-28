@@ -135,6 +135,8 @@ export interface CeldaDelEspejo extends CeldaDeGrilla {
 export interface FilaDelEspejo {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `PersonaDeGrilla.nombreOrden`. */
+  nombreOrden: string
   esJefe: boolean
   grupo: GrupoLiquidacion
   celdas: CeldaDelEspejo[]
@@ -182,7 +184,7 @@ export interface DatosDelEspejo {
 export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
   const dias = diasDelEspejo(d.quincena, diasConHorasDe(d.registros))
   const conLinea = d.personas.filter((p) => d.lineas[p.id] != null)
-  return ordenarComoPersonal(conLinea, (p) => p.nombre, (p) => p.esJefe === true).map((p) => {
+  return ordenarComoPersonal(conLinea, (p) => p.nombre, (p) => p.esJefe === true, (p) => p.nombreOrden).map((p) => {
     const suyos = d.registros.filter((r) => r.persona_id === p.id)
     const pres = new Map(d.presencias.filter((x) => x.persona_id === p.id).map((x) => [x.fecha, x]))
     const { grupo, linea } = d.lineas[p.id]
@@ -190,6 +192,7 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
     return {
       personaId: p.id,
       nombre: p.nombre,
+      nombreOrden: p.nombreOrden,
       esJefe: p.esJefe === true,
       grupo,
       linea,

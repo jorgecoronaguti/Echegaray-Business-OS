@@ -51,7 +51,7 @@ import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
 import { REGLAS_GENERADAS } from './reglasDelRecibo.generadas.ts'
 import type { Quincena } from './quincena.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
 export interface CuadroConOverrides extends Omit<CuadroDeLiquidacion, 'lineas'> {
@@ -238,6 +238,7 @@ export async function getLiquidacionDeLaQuincena(
       .map((r) => ({
         id: r.id,
         nombre: nombreDePersona(r),
+        nombreOrden: claveDeOrden(r),
         cuil: cuilPorPersona.get(r.id) ?? null,
         enLaEmpresa: r.en_la_empresa !== false,
         fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
@@ -292,7 +293,7 @@ export async function getLiquidacionDeLaQuincena(
   // reemplaza por la foto de su cabecera, línea por línea; lo vivo aporta sólo identidad y el recibo del período.
   // Un cuadro sin cabecera propia pero con la quincena cerrada (`estadoDelCuadro`) no tiene foto: sus filas quedan
   // «sin línea sellada», nunca calculadas.
-  const directorioSellable = new Map<string, PersonaSellable>(personas.map((p) => [p.id, { id: p.id, nombre: p.nombre, esJefe: p.esJefe === true }]))
+  const directorioSellable = new Map<string, PersonaSellable>(personas.map((p) => [p.id, { id: p.id, nombre: p.nombre, nombreOrden: p.nombreOrden, esJefe: p.esJefe === true }]))
   const selladosEnLaQuincena = new Set<string>()
   for (const c of vivos) {
     if (estadoDelCuadro(estados, c.grupo).estado !== 'cerrada') continue

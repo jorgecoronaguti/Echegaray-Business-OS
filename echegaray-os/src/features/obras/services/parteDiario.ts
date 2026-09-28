@@ -307,6 +307,9 @@ export function bajadaDePersona(cuadrilla: string | null, categoria: string | nu
 export interface PersonaEsperada {
   id: string
   nombre_completo: string
+  /** LA CLAVE DE ORDEN (apellido primero), no `nombre_completo` (que pese al nombre del campo trae el
+   *  nombre PARA MOSTRAR desde `getAsignaciones`). Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   cuadrilla: string | null
   categoria: string | null
 }
@@ -350,7 +353,10 @@ export function resumenGente(chips: readonly ChipGente[], conSinMarcar = true): 
  * asignaciones (responsable e integrante) es UNA persona; la cuadrilla es la primera que la nombra.
  */
 export function esperadosDeAsignaciones(
-  asignaciones: readonly { persona_id: string; persona_nombre: string | null; persona_categoria: string | null; cuadrilla: string | null; desde: string | null; hasta: string | null }[],
+  asignaciones: readonly {
+    persona_id: string; persona_nombre: string | null; persona_nombre_orden?: string | null
+    persona_categoria: string | null; cuadrilla: string | null; desde: string | null; hasta: string | null
+  }[],
   dia: string,
 ): PersonaEsperada[] {
   const vistos = new Map<string, PersonaEsperada>()
@@ -360,10 +366,12 @@ export function esperadosDeAsignaciones(
     const previo = vistos.get(a.persona_id)
     if (previo) { if (!previo.cuadrilla && a.cuadrilla) previo.cuadrilla = a.cuadrilla; continue }
     vistos.set(a.persona_id, {
-      id: a.persona_id, nombre_completo: a.persona_nombre ?? 'sin nombre', cuadrilla: a.cuadrilla, categoria: a.persona_categoria,
+      id: a.persona_id, nombre_completo: a.persona_nombre ?? 'sin nombre',
+      nombreOrden: a.persona_nombre_orden || a.persona_nombre || 'sin nombre',
+      cuadrilla: a.cuadrilla, categoria: a.persona_categoria,
     })
   }
-  return [...vistos.values()].sort((x, y) => x.nombre_completo.localeCompare(y.nombre_completo, 'es'))
+  return [...vistos.values()].sort((x, y) => x.nombreOrden.localeCompare(y.nombreOrden, 'es'))
 }
 
 // ── LO QUE VIAJA EN EL FORMULARIO ─────────────────────────────────────────────────────────────

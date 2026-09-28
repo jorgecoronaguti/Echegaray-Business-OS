@@ -39,6 +39,8 @@ export const MARCAR_JEFES_Y_MENSUALES = true
 export interface PersonaDeLaCarga {
   id: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   categoria: string | null
   /** `esJefeDeObra(puesto)`, decidido en el servidor con el mismo criterio que la grilla y Plantel. */
   esJefe: boolean
@@ -200,7 +202,7 @@ export function agruparPorObra(
     .map(([obraId, fs]) => ({
       obraId,
       nombre: obraId === null ? NOMBRE_SIN_OBRA : (nombres[obraId] ?? obraId),
-      filas: [...fs].sort((a, b) => a.persona.nombre.localeCompare(b.persona.nombre, 'es')),
+      filas: [...fs].sort((a, b) => a.persona.nombreOrden.localeCompare(b.persona.nombreOrden, 'es')),
     }))
     .sort((a, b) => (a.obraId === null ? 1 : b.obraId === null ? -1 : a.nombre.localeCompare(b.nombre, 'es')))
 }

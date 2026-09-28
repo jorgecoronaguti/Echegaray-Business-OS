@@ -12,7 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { RegistroDelDia } from './asistenciaDelDia'
-import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 const COLUMNAS = 'persona_id, horas, tipo_hora, notas, obra_canonica_id,'
   + ' obra_canonica(nombre), personas(nombre_completo, nombre_para_mostrar, categoria)'
@@ -24,7 +24,7 @@ interface FilaCruda {
   notas: string | null
   obra_canonica_id: string | null
   obra_canonica: { nombre: string } | null
-  personas: { nombre_completo: string | null; categoria: string | null } | null
+  personas: { nombre_completo: string | null; nombre_para_mostrar: string | null; categoria: string | null } | null
 }
 
 /** Los registros de horas de un día. `horas` es numeric: llega como TEXTO y se convierte acá, o
@@ -41,6 +41,7 @@ export async function getRegistrosDelDia(
     data: ((data ?? []) as unknown as FilaCruda[]).map((f) => ({
       persona_id: f.persona_id,
       nombre: nombreDePersonaONull(f.personas) ?? null,
+      nombreOrden: claveDeOrden(f.personas),
       categoria: f.personas?.categoria ?? null,
       obra_id: f.obra_canonica_id,
       obra: f.obra_canonica?.nombre ?? null,

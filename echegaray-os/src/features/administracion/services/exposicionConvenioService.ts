@@ -30,7 +30,7 @@ import { horasEsperadasDeQuincena } from './liquidacionQuincena.ts'
 import { tarifaVigenteAl, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Una fila de la escala del CCT que el OS ya tiene cargada, lista para prellenar el formulario. */
 export interface SugerenciaDeEscala {
@@ -72,6 +72,7 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 interface FilaLegajo {
   id: string
   nombre_completo: string
+  nombre_para_mostrar?: string | null
   cuil: string | null
   convenio_colectivo: string | null
   categoria: string | null
@@ -180,7 +181,7 @@ const ordenarPorUrgencia = (a: LineaExposicion, b: LineaExposicion): number => {
   if (a.bajoElPiso) return (b.regularizar ?? 0) - (a.regularizar ?? 0)
   const sinA = a.porQueNoSeCompara != null, sinB = b.porQueNoSeCompara != null
   if (sinA !== sinB) return sinA ? 1 : -1
-  return a.nombre.localeCompare(b.nombre, 'es')
+  return a.nombreOrden.localeCompare(b.nombreOrden, 'es')
 }
 
 /**
@@ -210,6 +211,7 @@ function personasDelPlantel(
     return {
       personaId: p.id,
       nombre: nombreDePersona(p),
+      nombreOrden: claveDeOrden(p),
       convenio: p.convenio_colectivo,
       categoria: p.categoria,
       valorHora: aComparar.valorHora,

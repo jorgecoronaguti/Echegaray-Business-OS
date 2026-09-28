@@ -27,15 +27,24 @@ import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
  * conservan el orden en que llegaron— porque `Array.prototype.sort` lo garantiza y acá no se
  * desempata por nada más: inventar un desempate por id haría que la lista cambiara de orden cuando
  * la base devuelve las filas en otro orden.
+ *
+ * `nombreDe` sigue siendo el texto de exhibición (lo que ya devolvía antes), pero ORDENAR no lee ese
+ * texto: lee `claveDe`, que por defecto es el mismo `nombreDe` — para quien pase el nombre LEGAL
+ * (apellido primero) esto no cambia nada. El bug real (28/09/2026, dueño: «se rompió el orden por
+ * apellido en toda la app») era pasar acá el nombre PARA MOSTRAR («Emiliano Maldonado», de
+ * `nombreDePersona`): un texto en oración empieza por el nombre de pila, y ordenar por ese texto
+ * ordena por pila, no por apellido. Un llamador con el legajo a mano debe pasar
+ * `claveDe: (item) => claveDeOrden(item)` (`shared/personas/nombre.ts`).
  */
 export function ordenarComoPersonal<T>(
   items: readonly T[], nombreDe: (item: T) => string, esJefeDe: (item: T) => boolean,
+  claveDe: (item: T) => string = nombreDe,
 ): T[] {
   return [...items].sort((a, b) => {
     const ja = esJefeDe(a) ? 0 : 1
     const jb = esJefeDe(b) ? 0 : 1
     if (ja !== jb) return ja - jb
-    return nombreDe(a).localeCompare(nombreDe(b), 'es')
+    return claveDe(a).localeCompare(claveDe(b), 'es')
   })
 }
 
@@ -98,8 +107,9 @@ export function seccionesDePersonal<T>(
   lineas: readonly T[],
   nombreDe: (item: T) => string,
   esJefeDe: (item: T) => boolean,
+  claveDe: (item: T) => string = nombreDe,
 ): SeccionDePersonal<T>[] {
-  const ordenadas = ordenarComoPersonal(lineas, nombreDe, esJefeDe)
+  const ordenadas = ordenarComoPersonal(lineas, nombreDe, esJefeDe, claveDe)
   if (ordenadas.length === 0) return []
   const grupos = agruparPorRolOrganizacional(ordenadas, esJefeDe)
   const rol = grupos.length === 1 ? grupos[0].clave : 'mixto'

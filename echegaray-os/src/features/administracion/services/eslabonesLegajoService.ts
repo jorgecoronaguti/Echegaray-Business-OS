@@ -25,7 +25,7 @@ import type { Quincena } from './quincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** El estado del recibo del estudio en Documentos del legajo. */
 export type ChipRecibo = 'cargado' | 'solicitado'
@@ -33,6 +33,8 @@ export type ChipRecibo = 'cargado' | 'solicitado'
 export interface EslabonPersona {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `PersonaDeLiquidacion.nombreOrden`. */
+  nombreOrden: string
   /** Retribución vigente. `null` = sin retribución cargada; la fila lo dice y no inventa $ 0. */
   valorHora: number | null
   netoMensual: number | null
@@ -74,7 +76,8 @@ const numero = (v: unknown): number => {
 }
 
 interface FilaLegajo {
-  id: string; nombre_completo: string; cuil: string | null; en_la_empresa: boolean | null
+  id: string; nombre_completo: string; nombre_para_mostrar?: string | null; cuil: string | null
+  en_la_empresa: boolean | null
 }
 
 /** LAS SEIS LECTURAS EN UNA TANDA. */
@@ -193,6 +196,7 @@ function armarPersonas(
       return {
         personaId: p.id,
         nombre: nombreDePersona(p),
+        nombreOrden: claveDeOrden(p),
         valorHora: vigente?.valorHora ?? null,
         netoMensual: vigente?.netoMensual ?? null,
         origenTarifa: vigente?.origen ?? null,
@@ -205,7 +209,7 @@ function armarPersonas(
   // EL ORDEN DEL MÓDULO PERSONAL: jefes primero y alfabético en español. Antes era un
   // `localeCompare` suelto —la mitad de la regla—, y los dos jefes de obra caían en el medio de la
   // lista, en un lugar distinto al que ocupan en Plantel, Asistencia, Horas y Pagos.
-  return ordenarComoPersonal(filas, (p) => p.nombre, (p) => p.esJefe)
+  return ordenarComoPersonal(filas, (p) => p.nombre, (p) => p.esJefe, (p) => p.nombreOrden)
 }
 
 /** Las ausencias declaradas de la ventana, con su motivo. Lectura aparte: la tabla es otra. */

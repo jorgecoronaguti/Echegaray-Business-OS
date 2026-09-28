@@ -162,7 +162,7 @@ function seccionesDelEspejo(
   return ORDEN_DE_CUADROS.flatMap((g) => {
     const suyas = filas.filter((f) => f.grupo === g)
     if (suyas.length === 0) return []
-    return seccionesDePersonal(g, tituloDe.get(g) ?? g, suyas, (f) => f.nombre, (f) => f.esJefe)
+    return seccionesDePersonal(g, tituloDe.get(g) ?? g, suyas, (f) => f.nombre, (f) => f.esJefe, (f) => f.nombreOrden)
       .map((s) => ({ clave: s.clave, rotulo: s.rotulo, filas: s.lineas }))
   })
 }

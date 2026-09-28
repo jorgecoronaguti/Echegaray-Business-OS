@@ -156,7 +156,7 @@ export default async function CargarAsistenciaPage({ searchParams }: {
           <TraerALaObra
             obraId={obraParaTraer} obraNombre={nombres[obraParaTraer]}
             candidatos={candidatosParaTraer({
-              plantel: d.personas.map((p) => ({ id: p.id, nombre_completo: p.nombre })),
+              plantel: d.personas.map((p) => ({ id: p.id, nombre_completo: p.nombre, nombreOrden: p.nombreOrden })),
               asignaciones: d.asignaciones, nombresDeObra: nombres, obraId: obraParaTraer, fecha,
             })}
             error={null}

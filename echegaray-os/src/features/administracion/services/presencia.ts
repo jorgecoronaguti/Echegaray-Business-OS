@@ -41,6 +41,7 @@ export interface FilaPresencia {
 export interface Esperado {
   id: string
   nombre_completo: string
+  nombre_para_mostrar?: string | null
   categoria: string | null
   obra_actual_id: string | null
   obra_actual: string | null

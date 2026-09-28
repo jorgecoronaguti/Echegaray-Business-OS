@@ -55,6 +55,40 @@ export function nombreLegal(nombreCompleto: string | null | undefined): string |
   return l ? oracion(l) : null
 }
 
+/** Quita tildes y baja a minúscula, para comparar sin que un acento cambie el orden binario
+ *  (`localeCompare(..., 'es')` ya hace lo suyo, pero primero hay que igualar el texto: la Ñ de
+ *  «Núñez» no es una letra con tilde, así que NO se toca). */
+const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+/**
+ * LA CLAVE DE ORDEN DE UNA PERSONA — SIEMPRE EL LEGAJO, NUNCA EL NOMBRE PARA MOSTRAR.
+ *
+ * Bug real (28/09/2026, dueño: «se ha roto el orden por apellido del personal en toda la app»): el
+ * commit del 24/09 hizo que `nombreDePersona` devolviera «Emiliano Maldonado» (nombre de pila
+ * primero, para MOSTRAR) y varias pantallas ordenaban con ese mismo texto — así el plantel quedaba
+ * alfabético por NOMBRE DE PILA, no por apellido.
+ *
+ * `personas.nombre_completo` (el legajo: «Maldonado Batista Emiliano Miguel») empieza siempre por
+ * apellido y es la única fuente para ORDENAR. Lo que se MUESTRA no cambia — sigue siendo
+ * `nombreDePersona`. Sin legajo (una cuenta sin persona, o sólo llegó un texto ya resuelto), el
+ * único dato que hay es el nombre para mostrar: se usa ÉSE para no dejar la fila sin orden.
+ */
+export function claveDeOrden(p: Entrada): string {
+  const base = p != null && typeof p === 'object'
+    ? (nombreLegal(p.nombre_completo) ?? nombreDePersonaONull(p))
+    : nombreLegal(p)
+  return sinTildes(String(base ?? '').toLocaleLowerCase('es-AR'))
+}
+
+/**
+ * EL COMPARADOR ÚNICO PARA ORDENAR PERSONAS ALFABÉTICAMENTE — jefes/obreros y cualquier otro
+ * agrupamiento se resuelven ANTES, con `esJefeDe`/`ordenarComoPersonal` (`ordenDePersonal.ts`); esta
+ * función sólo decide el alfabético por apellido dentro de un grupo, o cuando no hay grupos.
+ */
+export function compararPorApellido(a: Entrada, b: Entrada): number {
+  return claveDeOrden(a).localeCompare(claveDeOrden(b), 'es')
+}
+
 /** Una fila de `nombres_de_usuarios()`: el nombre ya viene resuelto por el vínculo. */
 export interface FilaNombreDeUsuario { id: string; nombre: string | null }
 

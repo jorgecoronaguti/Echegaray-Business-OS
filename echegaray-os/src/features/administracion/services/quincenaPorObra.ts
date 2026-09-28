@@ -88,6 +88,8 @@ export interface CeldaObra {
 export interface AsignacionQuincena {
   persona_id: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no `nombre`. Ver `Asignacion.persona_nombre_orden`. */
+  nombreOrden: string
   nota: string | null
   obra_id: string
   /** `null` = sin límite, no «nunca». Ausente se trata como `null` por compatibilidad. */
@@ -114,6 +116,8 @@ export interface RegistroQuincena {
 /** Cómo se nombra a alguien que NO tiene ninguna asignación. Sale de `persona_plantel`. */
 export interface PersonaRotulo {
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no `nombre`. Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   nota: string | null
   /** «baja dd/mm» o «ya no está» (`marcaDeBaja`). Con plantel, reemplaza la nota de la fila. */
   baja?: string | null
@@ -395,6 +399,8 @@ function rotuloDeObraNoElegible(o: ObraRotulo): string {
 interface PersonaDeLaGrilla {
   persona_id: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no `nombre`. Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   nota: string | null
   /** Sus asignaciones a obras ACTIVAS vivas en la quincena. Puede tener más de una, y puede tener
    *  tramos ya cerrados: cuál rige HOY lo decide `obraActivaDe`, no esta lista. */
@@ -423,7 +429,7 @@ function personasDe(
     const previa = mapa.get(a.persona_id)
     if (previa) { previa.asignaciones.push(tramo); continue }
     mapa.set(a.persona_id, {
-      persona_id: a.persona_id, nombre: a.nombre, nota: a.nota, asignaciones: [tramo],
+      persona_id: a.persona_id, nombre: a.nombre, nombreOrden: a.nombreOrden, nota: a.nota, asignaciones: [tramo],
     })
   }
   for (const r of registros) {
@@ -445,6 +451,7 @@ function personasDe(
     mapa.set(r.persona_id, {
       persona_id: r.persona_id,
       nombre: conNombre?.nombre ?? delPlantel.nombre,
+      nombreOrden: conNombre?.nombreOrden ?? delPlantel.nombreOrden,
       nota: conNombre?.nota ?? delPlantel?.nota ?? null,
       asignaciones: [],
     })
@@ -457,14 +464,14 @@ function personasDe(
       if (!p) continue
       const previa = mapa.get(id)
       if (previa) { if (p.baja) previa.nota = p.baja; continue }
-      mapa.set(id, { persona_id: id, nombre: p.nombre, nota: p.baja ?? p.nota, asignaciones: [] })
+      mapa.set(id, { persona_id: id, nombre: p.nombre, nombreOrden: p.nombreOrden, nota: p.baja ?? p.nota, asignaciones: [] })
     }
   }
   for (const a of asignaciones) {
     if (a.elegible !== false || fuera(a.persona_id)) continue
     mapa.get(a.persona_id)?.asignaciones.push(tramoDe(a))
   }
-  return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  return [...mapa.values()].sort((a, b) => (a.nombreOrden ?? a.nombre).localeCompare(b.nombreOrden ?? b.nombre, 'es'))
 }
 
 /**

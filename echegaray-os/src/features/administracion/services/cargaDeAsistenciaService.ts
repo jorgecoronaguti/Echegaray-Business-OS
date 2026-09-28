@@ -21,7 +21,7 @@ import type {
   AsignacionDelDia, HoraDelDiaConObra, PersonaDeLaCarga, PresenciaDelDiaConObra,
 } from './cargaDeAsistencia.ts'
 import type { EstadoPresencia } from './presenciaDelDia.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
@@ -101,10 +101,12 @@ export async function getCargaDelDia(
     data: {
       // DIRECCIÓN NO SE MARCA PRESENTE NI AUSENTE: no es plantel operativo y nadie le toma
       // asistencia. `sinDireccion` en la lectura, como en todo el módulo.
-      personas: sinDireccion((plantel.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[])
+      personas: sinDireccion((plantel.data ?? []) as
+        { id: string; nombre_completo: string; nombre_para_mostrar: string | null; categoria: string | null; puesto: string | null }[])
         .map((p) => ({
           id: p.id,
           nombre: nombreDePersona(p),
+          nombreOrden: claveDeOrden(p),
           categoria: (p.categoria ?? '').trim().replace('_', ' ') || null,
           esJefe: esJefeDeObra(p.puesto),
         })),

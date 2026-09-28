@@ -79,6 +79,8 @@ export function pisoVigente(
 export interface PersonaExpuesta {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `PersonaDeLiquidacion.nombreOrden`. */
+  nombreOrden: string
   convenio: string | null
   /** El texto del legajo (`personas.categoria`), tal cual. */
   categoria: string | null

@@ -1,4 +1,4 @@
-import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 // TRAER A ALGUIEN A ESTA OBRA — a quién se puede ofrecer, sin base de datos.
 //
 // El dueño (08/09/2026, tarde), textual: *«al comenzar el día tengo que marcar la asistencia de las
@@ -54,7 +54,12 @@ export function vigenteEnFecha(a: { desde: string | null; hasta: string | null }
  * no un ranking. El orden alfabético es el único que no cambia entre una apertura y la siguiente.
  */
 export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obraId, fecha }: {
-  plantel: { id: string; nombre_completo: string | null }[]
+  plantel: {
+    id: string; nombre_completo: string | null
+    /** Ya resuelta (`PersonaDeLaCarga.nombreOrden`): evita recalcularla mal cuando quien llama sólo
+     *  tiene el nombre PARA MOSTRAR a mano y no el legajo crudo. */
+    nombreOrden?: string
+  }[]
   asignaciones: AsignacionParaTraer[]
   nombresDeObra: Record<string, string>
   obraId: string
@@ -66,7 +71,7 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
     dondeEsta.set(a.persona_id, [...(dondeEsta.get(a.persona_id) ?? []), a.obra_id])
   }
 
-  const salida: CandidatoParaTraer[] = []
+  const salida: (CandidatoParaTraer & { nombreOrden: string })[] = []
   for (const p of plantel) {
     const nombre = nombreDePersonaONull(p) ?? ''
     if (!nombre) continue
@@ -75,6 +80,9 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
     salida.push({
       id: p.id,
       nombre,
+      // POR APELLIDO (legajo), NO por el nombre para mostrar (28/09/2026, dueño: «se rompió el orden
+      // por apellido en toda la app»): `claveDeOrden` lee `nombre_completo` cuando lo hay.
+      nombreOrden: p.nombreOrden ?? claveDeOrden(p),
       // CON VARIAS VIGENTES SE NOMBRAN TODAS. Mostrar una sola escondería que traerlo acá va a
       // cerrarle dos asignaciones, que es justo lo que hay que poder ver antes de tocar.
       // Sin catálogo se escribe el id: feo, pero mentir con «sin obra» sería peor.
@@ -83,7 +91,9 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
         : obras.map((o) => nombresDeObra[o] ?? o).sort().join(' y '),
     })
   }
-  return salida.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  return salida
+    .sort((a, b) => a.nombreOrden.localeCompare(b.nombreOrden, 'es'))
+    .map((c) => ({ id: c.id, nombre: c.nombre, obraActual: c.obraActual }))
 }
 
 /** Sin tildes y en minúsculas. En obra se tipea «peres» buscando a PÉREZ, y con el teclado del

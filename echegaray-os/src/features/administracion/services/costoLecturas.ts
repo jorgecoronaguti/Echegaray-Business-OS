@@ -19,7 +19,7 @@ import { inicioDeMes, valorHoraDeCosto } from './costoHora.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import type { Quincena } from './quincena.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface Falla { que: string; error: string }
 
@@ -350,12 +350,14 @@ export async function getPersonasProyectables(
   if (r.error) return { personas: [], error: { que: 'el plantel', error: r.error.message } }
   const personas = (r.data ?? [])
     .filter((p) => p.en_la_empresa === true && p.es_prueba !== true)
+    // POR APELLIDO (legajo), no por el nombre para mostrar: ordenar sobre `p` ANTES de perder el
+    // legajo en el `.map()` de abajo (28/09/2026, dueño: «se rompió el orden por apellido»).
+    .slice().sort(compararPorApellido)
     .map((p): PersonaProyectable => ({
       personaId: String(p.id),
       nombre: nombreDePersona(p),
       valorHora: tarifas.get(String(p.id)) ?? null,
     }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   return { personas, error: null }
 }
 

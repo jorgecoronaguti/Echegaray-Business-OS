@@ -99,6 +99,8 @@ export interface RegistroClasificable {
 export interface RegistroDelDia extends RegistroClasificable {
   persona_id: string
   nombre: string | null
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   categoria: string | null
   obra_id: string | null
   obra: string | null
@@ -107,6 +109,8 @@ export interface RegistroDelDia extends RegistroClasificable {
 export interface PersonaDelDia extends ClasificacionDelDia {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `nombre.ts:claveDeOrden`. */
+  nombreOrden: string
   /** La categoría de convenio, igual que la columna CATEGORÍA de Plantel. Nunca se inventa. */
   categoria: string | null
 }
@@ -142,7 +146,7 @@ export interface AsistenciaDelDia extends ConteoDelDia {
 
 // El «código · nombre» lo arma sólo el helper único; `rotulo` decide qué texto usar sin nombre.
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const rotulo = (id: string | null, nombre: string | null): string =>
   nombre?.trim() || id || 'Sin obra imputada'
@@ -265,6 +269,7 @@ export function asistenciaDelDia(
     filas.push({
       personaId: e.id,
       nombre: nombreDePersona(e),
+      nombreOrden: claveDeOrden(e),
       categoria: e.categoria,
       obraId: donde?.obra_id ?? e.obra_actual_id,
       obra: donde?.obra ?? e.obra_actual,
@@ -280,6 +285,9 @@ export function asistenciaDelDia(
     filas.push({
       personaId,
       nombre: conObra.nombre ?? personaId,
+      // SIN LEGAJO A MANO ACÁ (`conObra` sólo trae el nombre ya resuelto): se ordena por ese mismo
+      // texto. Es la misma limitación declarada de `claveDeOrden` sin fila — ver `nombre.ts`.
+      nombreOrden: conObra.nombreOrden || personaId,
       categoria: conObra.categoria,
       obraId: conObra.obra_id,
       obra: conObra.obra,
@@ -297,7 +305,7 @@ export function asistenciaDelDia(
     })
     const gente = porObra.get(clave) ?? []
     gente.push({
-      personaId: f.personaId, nombre: f.nombre, categoria: f.categoria,
+      personaId: f.personaId, nombre: f.nombre, nombreOrden: f.nombreOrden, categoria: f.categoria,
       presencia: f.presencia, fuente: f.fuente, horas: f.horas, motivo: f.motivo,
       ...(f.conflicto ? { conflicto: true as const } : {}),
     })
@@ -306,9 +314,10 @@ export function asistenciaDelDia(
 
   const obras = [...porObra.entries()]
     .map(([clave, gente]) => {
-      const ordenada = [...gente].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      const ordenada = [...gente].sort((a, b) => a.nombreOrden.localeCompare(b.nombreOrden, 'es'))
       return { ...nombreObra.get(clave)!, gente: ordenada, ...contar(ordenada) }
     })
+    // ACÁ SÍ POR NOMBRE DE OBRA (`a.nombre` es el rótulo de la obra en este nivel, no de una persona).
     .sort((a, b) => b.gente.length - a.gente.length || a.nombre.localeCompare(b.nombre, 'es'))
 
   return { obras, plantel: filas.length, ...contar(filas) }

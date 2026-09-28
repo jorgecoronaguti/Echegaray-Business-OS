@@ -30,6 +30,7 @@ import { leerRegistrosHH } from './registrosHHService.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
 import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
+import { claveDeOrden } from '../../../shared/personas/nombre.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -133,13 +134,14 @@ export async function getJornadaDelDia(
     .map((a) => ({
       persona_id: a.persona_id,
       nombre: a.persona_nombre as string,
+      nombreOrden: a.persona_nombre_orden || (a.persona_nombre as string),
       nota: notaDe(a),
       esJefe: esJefeDeObra(puestos[a.persona_id] ?? null),
     }))
   // Una sola fila por persona: dos asignaciones vigentes en la misma obra (dos frentes) no son dos
   // personas. Sin esto, el mismo nombre aparecería dos veces y el pie contaría de más.
   const unicas = [...new Map(personas.map((p) => [p.persona_id, p])).values()]
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    .sort((a, b) => a.nombreOrden.localeCompare(b.nombreOrden, 'es'))
 
   // LA REGLA DEL AVISO ES PURA Y SE PRUEBA SIN BASE: `otrasCargasDelDia`. Acá sólo se traduce la
   // forma que devuelve PostgREST.
@@ -274,6 +276,7 @@ export async function getQuincenaPorObra(
     .map((a) => ({
       persona_id: a.persona_id,
       nombre: a.persona_nombre as string,
+      nombreOrden: a.persona_nombre_orden || (a.persona_nombre as string),
       nota: notaDe(a),
       obra_id: a.obra_id,
       desde: a.desde ?? null,
@@ -378,6 +381,7 @@ async function plantelDe(
     { conHoras: new Set(ids), conLinea: vacio, conRecibo: vacio, conJornales: vacio })
   return Object.fromEntries(activas.map(({ fila: p, ...persona }) => [p.id, {
     nombre: persona.nombre,
+    nombreOrden: claveDeOrden(p),
     nota: marcaDeBaja(persona)?.texto ?? notaDe({
       rol: null, persona_especialidad: p.especialidad, persona_categoria: p.categoria,
     }),

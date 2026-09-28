@@ -40,6 +40,9 @@ import { ORDEN_DE_CUADROS, ordenarComoPersonal } from './ordenDePersonal.ts'
 export interface PersonaDeLiquidacion {
   id: string
   nombre: string
+  /** LA CLAVE DE ORDEN, NO DE EXHIBICIÓN: el apellido primero (`claveDeOrden`, `nombre.ts`). `nombre`
+   *  sigue siendo lo que se muestra («Emiliano Maldonado»); ordenar por ESE texto ordena por pila. */
+  nombreOrden: string
   /** Sin CUIL no hay recibo ni giro que emparejar: la fila lo dice, no lo adivina. */
   cuil: string | null
   enLaEmpresa: boolean
@@ -197,6 +200,7 @@ function entradaDe(
   return {
     personaId: p.id,
     nombre: p.nombre,
+    nombreOrden: p.nombreOrden,
     esJefe: p.esJefe === true,
     horas: h == null ? null : h.horas,
     horasEquivalentes: h == null ? null : (h.horasEquivalentes ?? h.horas),
@@ -268,7 +272,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
   return [...ORDEN_DE_CUADROS].map((grupo) => ({
     grupo,
     titulo: TITULOS[grupo],
-    lineas: ordenarComoPersonal(cuadros[grupo], (l) => l.nombre, (l) => l.esJefe),
+    lineas: ordenarComoPersonal(cuadros[grupo], (l) => l.nombre, (l) => l.esJefe, (l) => l.nombreOrden),
     presentesSinHoras: grupo === 'obreros' ? presentesSinHoras : 0,
     // LA COLUMNA ADELANTO ESTÁ EN CERO PORQUE NO TIENE TABLA, no porque nadie haya cobrado nada a
     // cuenta. Se declara en los tres cuadros: los tres la restan.

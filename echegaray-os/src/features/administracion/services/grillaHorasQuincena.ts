@@ -30,6 +30,10 @@ import {
 export interface PersonaDeGrilla {
   id: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero, `claveDeOrden` en `nombre.ts`), no lo que se muestra:
+   *  `nombre` es «Emiliano Maldonado» (nombre de pila primero) desde el 24/09/2026 y ordenar por
+   *  ESE texto ordena por pila, no por apellido (bug del dueño, 28/09/2026). */
+  nombreOrden: string
   /** `null` es «sin retribución cargada», que NO es cero (R1): la fila queda pendiente. */
   valorHora: number | null
   /** El neto mensual acordado de Oficina. XOR con `valorHora`: nunca los dos (CHECK de la base). */
@@ -93,8 +97,8 @@ export interface FilaDeGrilla {
   esJefe: boolean
 }
 
-/** El orden del plantel y de la asistencia: alfabético por nombre, en español. */
-const porNombre = (a: PersonaDeGrilla, b: PersonaDeGrilla) => a.nombre.localeCompare(b.nombre, 'es')
+/** El orden del plantel y de la asistencia: alfabético por APELLIDO (`nombreOrden`), en español. */
+const porNombre = (a: PersonaDeGrilla, b: PersonaDeGrilla) => a.nombreOrden.localeCompare(b.nombreOrden, 'es')
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 

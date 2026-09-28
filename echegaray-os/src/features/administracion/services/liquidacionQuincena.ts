@@ -198,6 +198,8 @@ export interface TarifaVigente {
 export interface EntradaDeLinea {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `PersonaDeLiquidacion.nombreOrden`. */
+  nombreOrden: string
   /** `null` = no se pudo calcular. Cero horas cargadas ES cero, y eso sí es un número. */
   horas: number | null
   /** Horas equivalentes (con coeficiente de extras). Ausente = iguales a `horas`. */
@@ -229,6 +231,8 @@ export interface EntradaDeLinea {
 export interface LineaLiquidada {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `EntradaDeLinea.nombreOrden`. */
+  nombreOrden: string
   /** Horas CARGADAS: las que se muestran, iguales al total de «Horas». */
   horas: number | null
   /** Horas EQUIVALENTES con el coeficiente de extras: las que se pagan. */
@@ -305,6 +309,7 @@ export function liquidarLinea(
   return {
     personaId: e.personaId,
     nombre: e.nombre,
+    nombreOrden: e.nombreOrden,
     horas: e.horas,
     horasEquivalentes: e.horasEquivalentes ?? e.horas,
     extras: e.extras ?? [],

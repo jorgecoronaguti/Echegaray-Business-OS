@@ -47,7 +47,7 @@ import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
 import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface DatosDePersona {
   id: string
@@ -253,6 +253,7 @@ export async function getDatosDeLaSolapaHoras(
     personas: directorioFilas.map((p) => ({
       id: p.id,
       nombre: nombreDePersona(p),
+      nombreOrden: claveDeOrden(p),
       // EL MISMO CORTE QUE EL PLANTEL Y LA ASISTENCIA: `esJefeDeObra(puesto)`, una sola definición.
       esJefe: esJefeDeObra(p.puesto),
       valorHora: tarifaDe.get(p.id)?.valorHora ?? null,

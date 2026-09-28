@@ -40,6 +40,8 @@ export const ORIGEN_SELLADO = 'sellado al cerrar la quincena'
 export interface PersonaSellable {
   id: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero), no lo que se muestra. Ver `EntradaDeLinea.nombreOrden`. */
+  nombreOrden: string
   esJefe: boolean
 }
 
@@ -75,6 +77,7 @@ function lineaDeLaFoto(
   return {
     personaId: s.personaId,
     nombre: persona.nombre,
+    nombreOrden: persona.nombreOrden,
     esJefe: persona.esJefe,
     // LAS HORAS SELLADAS SON LAS PAGAS: `cobra = horas × valor_hora` en la foto. No hay extras aparte que reconstruir.
     horas: s.horas,
@@ -139,10 +142,10 @@ export function cuadroSellado(e: EntradaDelCuadroSellado): CuadroSellado {
   for (const s of e.selladas) {
     const viva = vivaDe.get(s.personaId)
     const persona = e.personas.get(s.personaId)
-      ?? (viva ? { id: viva.personaId, nombre: viva.nombre, esJefe: viva.esJefe } : null)
+      ?? (viva ? { id: viva.personaId, nombre: viva.nombre, nombreOrden: viva.nombreOrden, esJefe: viva.esJefe } : null)
     // UNA LÍNEA SELLADA DE ALGUIEN QUE NO ESTÁ EN EL DIRECTORIO NI EN LO VIVO no tiene nombre con qué dibujarse: se
     // publica igual, con su id, antes que desaparecer en silencio de una quincena pagada.
-    lineas.push(lineaDeLaFoto(s, e.grupo, persona ?? { id: s.personaId, nombre: s.personaId, esJefe: false }, viva,
+    lineas.push(lineaDeLaFoto(s, e.grupo, persona ?? { id: s.personaId, nombre: s.personaId, nombreOrden: s.personaId, esJefe: false }, viva,
       e.redondeos.get(s.personaId) ?? null))
   }
   const yaEstan = new Set(lineas.map((l) => l.personaId))
@@ -151,7 +154,7 @@ export function cuadroSellado(e: EntradaDelCuadroSellado): CuadroSellado {
     sinLinea.add(v.personaId)
     lineas.push(lineaSinFoto(v, e.redondeos.get(v.personaId) ?? null))
   }
-  return { lineas: ordenarComoPersonal(lineas, (l) => l.nombre, (l) => l.esJefe), sinLinea }
+  return { lineas: ordenarComoPersonal(lineas, (l) => l.nombre, (l) => l.esJefe, (l) => l.nombreOrden), sinLinea }
 }
 
 /**
