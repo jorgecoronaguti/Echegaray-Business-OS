@@ -38,11 +38,11 @@ const P = { categoria: 'oficial', basico: 6348, quincenaDesde: '2026-09-16', mod
 const CUMPLE = { ...P, tardanzas: [] }
 const TARDE = { ...P, tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }] }
 const obrero = (horas: number) => liquidarLinea({
-  personaId: 'p', nombre: 'N', horas, tarifa: { valorHora: 7000, netoMensual: null, desde: '2026-09-01', origen: 'x' },
+  personaId: 'p', nombre: 'N', nombreOrden: 'N', horas, tarifa: { valorHora: 7000, netoMensual: null, desde: '2026-09-01', origen: 'x' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'obreros', null)
 const oficina = liquidarLinea({
-  personaId: 'o', nombre: 'O', horas: 100, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'x' },
+  personaId: 'o', nombre: 'O', nombreOrden: 'O', horas: 100, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'x' },
   adelanto: 0, yaTransferido: 20_000, reciboNeto: 30_000, giroEnElLote: true,
 }, 'oficina', null)
 const COMPLETA = { horasRecibo: 88 }
