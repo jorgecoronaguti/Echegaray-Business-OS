@@ -41,6 +41,7 @@ import { textoDelRecibo } from './FilasMensuales'
 import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
+import { ReciboEnBlanco } from './ReciboEnBlanco'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
@@ -61,7 +62,8 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
 }) {
   const jornales = tituloDeJornales(fila.linea)
   // «RECIBO» (dueño, 22/09/2026): el mismo panel pasa a armar el recibo de esta persona; «Volver» lo devuelve.
-  const [armando, setArmando] = useState(false)
+  // «RECIBO EN BLANCO» (dueño, 28/09/2026): el mismo lugar arma también el recibo con la forma del contador.
+  const [armando, setArmando] = useState<false | 'pago' | 'blanco'>(false)
   return (
     <Drawer
       // «VOLVER» ARRIBA (dueño, 22/09/2026): *«al hacer click en recibo [...] tiene q haber arriba de ese desplegable
@@ -72,7 +74,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
             style={{ padding: '5px 12px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>
             ‹ Volver
           </button>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`Recibo · ${fila.nombre}`}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${armando === 'blanco' ? 'Recibo en blanco' : 'Recibo'} · ${fila.nombre}`}</span>
         </span>
       ) : fila.nombre}
       subtitulo={`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · alta ${corta(fila.alta)}`}
@@ -82,9 +84,15 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       pie={
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {!armando && (
-            <button type="button" onClick={() => setArmando(true)} data-testid="panel-recibo"
+            <button type="button" onClick={() => setArmando('pago')} data-testid="panel-recibo"
               style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
               Recibo
+            </button>
+          )}
+          {!armando && (
+            <button type="button" onClick={() => setArmando('blanco')} data-testid="panel-recibo-blanco"
+              style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              Recibo en blanco
             </button>
           )}
           <Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>
@@ -93,7 +101,9 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
     >
       {armando ? (
         <div style={{ padding: '16px 16px 24px' }}>
-          <ArmarRecibo fila={fila} quincena={quincena} />
+          {armando === 'blanco'
+            ? <ReciboEnBlanco fila={fila} quincena={quincena} detalle={detalle} />
+            : <ArmarRecibo fila={fila} quincena={quincena} />}
         </div>
       ) : (
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
