@@ -30,6 +30,10 @@
 --       Por qué no tablas de transición: sólo ven UNA sentencia, y el `delete` y el `insert` de una
 --       sincronización son dos.
 --
+-- «Invalidar» es DEJAR UNA MARCA en `ficha_cliente_cache_pendiente`, nunca borrar de la caché: el
+-- cron es el único que escribe `ficha_cliente_cache`, consume las marcas y recalcula con un COMMIT
+-- por fila; la lectura no sirve una fila marcada. Ver «LAS MARCAS» y «EL CRON» más abajo.
+--
 -- `costos_obra` resuelve la obra por `obra_alias.alias = norm_obra(obra_texto)` —el camino de
 -- `pantalla_cliente_en_vivo`— y no por su columna `obra_id`, que discrepa en el 45 % de las filas.
 -- `compra_sheet` no tiene resolución barata y correcta a cliente (se junta por `referencia_externa`):
@@ -39,11 +43,15 @@
 --
 -- ═══ EL GRAFO: QUÉ TABLAS LEE LA FICHA (catálogo de la base viva, 28/09, sólo SELECT) ═══
 --
--- Recorrido desde `pantalla_cliente_en_vivo` y `hh_de_obra_en_vivo` por el cuerpo de cada función
--- (`pg_get_functiondef`) y de cada vista (`pg_get_viewdef`): una arista es un `from`/`join` sobre una
--- relación o una llamada `f(`. 62 vistas y funciones, 54 tablas. Toda tabla del grafo tiene un
+-- Recorrido desde `pantalla_cliente_en_vivo` y `hh_de_obra_en_vivo`: las vistas por `pg_depend`
+-- (exacto), las funciones por su `prosrc` (una arista es un `from`/`join` sobre una relación o una
+-- llamada `f(`) más su `pg_depend`. 73 vistas y funciones, 53 tablas. Toda tabla del grafo tiene un
 -- `trg_ficha_inv` más abajo o está en la lista siguiente; `ficha-cliente-cache-invalidacion.test.mjs`
 -- lo verifica contra una copia literal del grafo y se pone rojo si una queda sin nada.
+-- EL CONTROL DEL GRAFO es `orquestador/scripts/verificar-grafo-ficha-cache.mjs`: recorre el catálogo
+-- VIVO (sólo SELECT) y sale con código ≠ 0 si una tabla que hoy lee la ficha no tiene trigger ni
+-- está declarada acá. La copia literal del test envejece; el script no. Correrlo antes de aplicar y
+-- después de toda migración que toque una vista o función de la ficha.
 --
 -- ═══ LO QUE QUEDA CUBIERTO SÓLO POR EL VENCIMIENTO (60 min, más la ventana de lectura) ═══
 --
@@ -53,15 +61,15 @@
 --     `tarea_tipo`, `cuadrilla`, `pedidos_materiales`: entran por varias vistas y no hay resolución
 --     barata y correcta sin replicar la cascada adentro del trigger; y un trigger `todo` en
 --     `tipo_cambio` (136 escrituras en pg_stat, casi todas borrados) recalcularía todo cada vez.
---   · `obras`: tabla legada que sólo lee `cliente_economia`; 0 escrituras en pg_stat_user_tables.
 --   · `personas` fuera de `nombre_completo`/`nombre_para_mostrar` (que sí tienen trigger).
 --   · No son tablas del grafo aunque el nombre aparezca en el texto (el auditor las listó por léxico):
 --     `activo` (columna de `clientes` en `cliente_rotulo`), `carga_social` (literal
 --     `'carga_social'` en `analisis_costo`), `causa_desvio` (columna en `actividad_horas`), `compras`
---     (sólo en comentarios de `pantalla_cliente_en_vivo`).
---   · La carrera cron/escritura: si el cron calcula una fila con la foto de ANTES de un commit que la
---     invalida y la inserta DESPUÉS del borrado, queda vieja hasta el vencimiento. La ventana es lo que
---     tarda un cálculo (~0,3 s); era igual antes de este cambio.
+--     (sólo en comentarios de `pantalla_cliente_en_vivo`), `obras` (en `cliente_economia` es el
+--     nombre de un CTE: `pg_depend` no la registra; la tabla legada tiene 0 escrituras).
+--   · La carrera cron/escritura ya no existe: una marca que confirma durante un cálculo sobrevive a
+--     la corrida (el cron borra sólo los pares (clave, txid) que leyó) y la lectura no sirve la fila
+--     hasta que la corrida siguiente la recalcule.
 --   · Fuera del alcance del recorrido: SQL dinámico (`execute format(...)`) y las tablas que leen las
 --     policies RLS; la caché se calcula como Dirección, cuyos permisos cambian sólo por `perfiles`.
 --
@@ -70,17 +78,22 @@
 -- `create or replace trigger` toma ShareRowExclusiveLock en 39 tablas y lo retiene hasta el commit:
 -- no frena lecturas, pero sí escrituras, y con una sincronización a mitad de camino puede esperar o
 -- trabarse. `lock_timeout = 3s` corta antes de hacer cola. El único `drop trigger` que queda es sobre
--- `ficha_cliente_cache_pendiente`, tabla propia de esta migración. En este orden:
+-- `ficha_cliente_cache_tocada`, tabla propia de esta migración. En este orden:
 --
+--   0. `node orquestador/scripts/verificar-grafo-ficha-cache.mjs` en verde (sólo lee el catálogo).
 --   1. Pausar el cron: `select cron.alter_job(<jobid de 'refrescar_ficha_cliente_cache'>, active := false)`.
+--      La migración cambia su comando a `call public.refrescar_ficha_cliente_cache()`: la función
+--      vieja deja de existir, y un cron activo en el medio fallaría hasta el commit.
 --   2. Verificar que no corran `sync-compras`, `sync-cobranzas`, `jornales-espejo-bloques` ni
 --      `obras-economia-sync` (systemd / `pg_stat_activity`), y no arrancarlos hasta el paso 5.
 --   3. Ensayar con `node orquestador/scripts/aplicar-migracion.mjs <este archivo>` (sin `--aplicar`:
 --      corre y deshace; toma los mismos locks, por eso va después del paso 2). Si pasa, aplicar con
 --      `--aplicar`.
 --   4. Leer en el destino: filas de `ficha_cliente_cache_huella` por tabla (7 tablas), los
---      `trg_ficha_inv*` en `pg_trigger` (uno por tabla con trigger, más `trg_ficha_inv_al_commit`) y
---      el `count(*)` de `ficha_cliente_cache`.
+--      `trg_ficha_inv*` en `pg_trigger` (uno por tabla con trigger, más `trg_ficha_inv_al_commit`),
+--      el `command` del job en `cron.job` y el `count(*)` de `ficha_cliente_cache`.
+--   6. Después de reactivar: `cron.job_run_details` de las dos corridas siguientes en `succeeded`, y
+--      `ficha_cliente_cache_pendiente` vaciándose (sólo quedan marcas de los últimos 2 min).
 --   5. Reactivar el cron (`active := true`) y las sincronizaciones.
 --
 -- ═══ AHORRO ESTIMADO (ESTIMACIÓN sobre los `ms` medidos, no una medición del efecto) ═══
@@ -93,8 +106,9 @@
 
 set lock_timeout = '3s';
 
--- La versión de 3 argumentos (primer borrador de esta migración) haría ambiguas las llamadas cortas.
+-- Borradores de esta migración que borraban la caché desde el trigger (nunca aplicados).
 drop function if exists public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean);
+drop function if exists public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean);
 
 -- ── EL VENCIMIENTO, DEFINIDO UNA VEZ ──────────────────────────────────────────────────────────────
 -- Lo leen el cron (qué recalcula) y la lectura (qué sirve). La lectura sirve hasta 10 min más que el
@@ -107,39 +121,100 @@ comment on function public.ficha_cliente_cache_vigencia() is
   'Edad a la que refrescar_ficha_cliente_cache recalcula una fila (20260928T2330). La lectura sirve '
   'hasta vigencia + 10 min. La frescura normal la dan los triggers trg_ficha_inv*; esto es la red.';
 
--- ── EL HELPER QUE BORRA ───────────────────────────────────────────────────────────────────────────
--- Sólo lo llaman los triggers (SECURITY DEFINER, dueños de la tabla). No es una RPC: con
--- `p_todo = true` cualquiera con EXECUTE vaciaría la caché y cargaría el recálculo entero.
-create or replace function public.ficha_cliente_cache_invalidar_lote(
-  p_cliente_ids uuid[] default null,
-  p_obra_ids text[] default null,
-  p_todo boolean default false,
-  p_todo_hh boolean default false
-) returns void
+-- ── LAS MARCAS ────────────────────────────────────────────────────────────────────────────────────
+-- Un trigger NUNCA toca `ficha_cliente_cache`: el cron retiene esas filas mientras calcula, y un
+-- `delete` desde el trigger de `perfiles` o `liquidacion_linea` esperaba ese lock hasta el
+-- `lock_timeout = 8s` de `authenticator` o cerraba un 40P01 (rechazo del auditor, 28/09). El trigger
+-- deja una marca; la lectura no sirve lo marcado; el cron la consume.
+--
+-- La clave primaria lleva el `txid` A PROPÓSITO. Con una sola fila por clave (p. ej. un único «*»),
+-- una transacción abierta que choca con la marca ya confirmada no deja rastro propio: si el cron la
+-- consume antes de que esa transacción confirme, su cambio se pierde hasta el vencimiento. Y un
+-- `do update` para evitarlo pondría en fila a todas las escrituras sobre esa marca. Con el `txid`, el
+-- `on conflict do nothing` sólo colapsa las marcas de UNA transacción (una sincronización de 1.000
+-- filas en modo `todo` deja una sola fila) y ninguna escritura espera a otra ni al cron.
+-- Claves: «cliente:<uuid>», «obra:<id>», «hh:*» (sólo desgloses de horas), «*», «cliente:*» y
+-- «obra:*» (las dos últimas, de una huella sin resolución, valen como «*»).
+create table if not exists public.ficha_cliente_cache_pendiente (
+  clave      text        not null,
+  txid       bigint      not null default txid_current(),
+  marcado_en timestamptz not null default clock_timestamp(),
+  primary key (clave, txid)
+);
+-- Qué tablas de B tocó cada transacción (una fila por tabla y transacción): dispara la comparación.
+create table if not exists public.ficha_cliente_cache_tocada (
+  txid  bigint not null default txid_current(),
+  tabla text   not null,
+  primary key (txid, tabla)
+);
+create table if not exists public.ficha_cliente_cache_huella (
+  tabla  text not null,
+  clave  text not null,
+  huella text not null,
+  primary key (tabla, clave)
+);
+-- Sin policies a propósito: sólo las escriben las funciones SECURITY DEFINER de abajo.
+alter table public.ficha_cliente_cache_pendiente enable row level security;
+alter table public.ficha_cliente_cache_tocada enable row level security;
+alter table public.ficha_cliente_cache_huella enable row level security;
+revoke all on public.ficha_cliente_cache_pendiente, public.ficha_cliente_cache_tocada,
+  public.ficha_cliente_cache_huella from public, anon, authenticated;
+
+comment on table public.ficha_cliente_cache_pendiente is
+  'Marcas de invalidación de ficha_cliente_cache (20260928T2330). Las escriben los triggers '
+  'trg_ficha_inv* e invalidar_ficha_cliente_cache; las consume refrescar_ficha_cliente_cache.';
+
+create or replace function public.ficha_cliente_cache_marcar(p_claves text[]) returns void
 language sql
 volatile
 security definer
 set search_path to 'public', 'pg_temp'
 as $function$
-  delete from public.ficha_cliente_cache c
-   where p_todo
-      or (p_todo_hh and c.rpc = 'hh_de_obra')
-      or (c.rpc = 'pantalla_cliente'
-          and c.clave in (select k.slug from public.clientes k where k.id = any(p_cliente_ids)))
-      or (c.rpc = 'hh_de_obra' and c.clave = any(p_obra_ids))
-      -- LA FICHA DEL CLIENTE DUEÑO TAMBIÉN SE ENSUCIA: muestra HH y costo por obra.
-      or (c.rpc = 'pantalla_cliente'
-          and c.clave in (select k.slug from public.clientes k
-                            join public.obra_canonica o on o.cliente_id = k.id
-                           where o.id = any(p_obra_ids)))
+  insert into public.ficha_cliente_cache_pendiente (clave)
+  select distinct k from unnest(p_claves) k where k is not null
+  on conflict do nothing;
 $function$;
 
-revoke all on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean)
-  from public, anon, authenticated;
+revoke all on function public.ficha_cliente_cache_marcar(text[]) from public, anon, authenticated;
 
-comment on function public.ficha_cliente_cache_invalidar_lote(uuid[], text[], boolean, boolean) is
-  'Borra de ficha_cliente_cache lo que un cambio real ensució: por cliente, por obra (ficha del dueño + '
-  'su desglose de horas), todos los desgloses de horas, o todo. Sólo desde los triggers de 20260928T2330.';
+-- ¿Hay una marca sin consumir que ensucie esta fila? La lee `ficha_cliente_cache_leer`: entre la
+-- escritura y la próxima corrida del cron (≤ 2 min) la pantalla calcula en vivo, como cuando el
+-- trigger borraba la fila.
+create or replace function public.ficha_cliente_cache_marcada(p_rpc text, p_clave text)
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
+  select exists (
+    select 1 from public.ficha_cliente_cache_pendiente p
+     where p.clave in ('*', 'cliente:*', 'obra:*')
+        or (p_rpc = 'hh_de_obra' and p.clave in ('hh:*', 'obra:' || p_clave))
+        -- LA FICHA DEL CLIENTE DUEÑO TAMBIÉN SE ENSUCIA: muestra HH y costo por obra.
+        or (p_rpc = 'pantalla_cliente' and p.clave in (
+              select 'cliente:' || k.id from public.clientes k where k.slug = p_clave
+              union all
+              select 'obra:' || o.id from public.clientes k
+                join public.obra_canonica o on o.cliente_id = k.id where k.slug = p_clave)))
+$function$;
+
+revoke all on function public.ficha_cliente_cache_marcada(text, text) from public, anon, authenticated;
+
+-- La RPC de la web (`invalidarFicha.ts`) marca igual que un trigger: tampoco espera al cron.
+create or replace function public.invalidar_ficha_cliente_cache(p_cliente_id uuid default null)
+returns void
+language sql
+security definer
+set search_path to 'public'
+as $function$
+  select public.ficha_cliente_cache_marcar(
+           case when p_cliente_id is null then array['*']
+                else array['cliente:' || p_cliente_id]
+                     || array(select 'obra:' || o.id from public.obra_canonica o
+                               where o.cliente_id = p_cliente_id) end)
+   where public.ve_economia();
+$function$;
 
 -- ── A · POR FILA ──────────────────────────────────────────────────────────────────────────────────
 -- TG_ARGV: [0] modo (`cliente` | `obra` | `obra_canonica` | `cliente_y_obra` | `todo`), [1] columna
@@ -163,24 +238,22 @@ begin
     return null;
   end if;
   if v_modo = 'todo' then
-    perform public.ficha_cliente_cache_invalidar_lote(null, null, true);
+    perform public.ficha_cliente_cache_marcar(array['*']);
     return null;
   end if;
   -- EL DUEÑO VIEJO Y EL NUEVO: un UPDATE que mueve la fila de cliente u obra ensucia a los dos.
   v_ids := array(select distinct x from unnest(array[v_old ->> v_col, v_new ->> v_col]) x
                   where x is not null);
   if v_modo = 'cliente' then
-    perform public.ficha_cliente_cache_invalidar_lote(v_ids::uuid[], null);
+    perform public.ficha_cliente_cache_marcar(array(select 'cliente:' || x from unnest(v_ids) x));
   elsif v_modo = 'obra' then
-    perform public.ficha_cliente_cache_invalidar_lote(null, v_ids);
+    perform public.ficha_cliente_cache_marcar(array(select 'obra:' || x from unnest(v_ids) x));
   elsif v_modo in ('obra_canonica', 'cliente_y_obra') then
     -- En un DELETE la obra ya no está para hacer join: el cliente sale de la fila misma. Lo mismo
     -- cuando la fila tiene cliente propio que puede no coincidir con el dueño de su obra.
-    perform public.ficha_cliente_cache_invalidar_lote(
-      array(select distinct x::uuid
-              from unnest(array[v_old ->> 'cliente_id', v_new ->> 'cliente_id']) x
-             where x is not null),
-      v_ids);
+    perform public.ficha_cliente_cache_marcar(
+      array(select 'cliente:' || x from unnest(array[v_old ->> 'cliente_id', v_new ->> 'cliente_id']) x)
+      || array(select 'obra:' || x from unnest(v_ids) x));
   end if;
   return null;
 end
@@ -189,27 +262,10 @@ $function$;
 revoke all on function public.tr_ficha_inv_fila() from public, anon, authenticated;
 
 comment on function public.tr_ficha_inv_fila() is
-  'Trigger FOR EACH ROW (20260928T2330): invalida por la clave de OLD y de NEW; un UPDATE sin cambios '
-  '(fuera de las columnas de TG_ARGV[2]) no invalida.';
+  'Trigger FOR EACH ROW (20260928T2330): marca la clave de OLD y de NEW en ficha_cliente_cache_pendiente; '
+  'un UPDATE sin cambios (fuera de las columnas de TG_ARGV[2]) no marca. No toca ficha_cliente_cache.';
 
 -- ── B · POR HUELLA AL COMMIT ──────────────────────────────────────────────────────────────────────
-create table if not exists public.ficha_cliente_cache_huella (
-  tabla  text not null,
-  clave  text not null,
-  huella text not null,
-  primary key (tabla, clave)
-);
-create table if not exists public.ficha_cliente_cache_pendiente (
-  txid  bigint not null default txid_current(),
-  tabla text   not null,
-  primary key (txid, tabla)
-);
--- Sin policies a propósito: sólo las escriben las funciones SECURITY DEFINER de abajo.
-alter table public.ficha_cliente_cache_huella enable row level security;
-alter table public.ficha_cliente_cache_pendiente enable row level security;
-revoke all on public.ficha_cliente_cache_huella, public.ficha_cliente_cache_pendiente
-  from public, anon, authenticated;
-
 comment on table public.ficha_cliente_cache_huella is
   'Huella del contenido, por clave, de las tablas que las sincronizaciones reescriben enteras. Clave: '
   '«cliente:<uuid>», «obra:<id>», «hh:*» (sólo desgloses de horas) o «*» (todo). 20260928T2330.';
@@ -260,7 +316,7 @@ $function$;
 
 revoke all on function public.ficha_cliente_cache_huellas(text) from public, anon, authenticated;
 
--- POR SENTENCIA: marca la tabla como tocada en esta transacción (una fila por tabla y transacción;
+-- POR SENTENCIA: anota la tabla como tocada en esta transacción (una fila por tabla y transacción;
 -- las sentencias siguientes chocan con el `on conflict` y no encolan otra comparación).
 create or replace function public.tr_ficha_inv_marcar() returns trigger
 language plpgsql
@@ -268,14 +324,15 @@ security definer
 set search_path to 'public', 'pg_temp'
 as $function$
 begin
-  insert into public.ficha_cliente_cache_pendiente (txid, tabla)
+  insert into public.ficha_cliente_cache_tocada (txid, tabla)
   values (txid_current(), TG_TABLE_NAME)
   on conflict do nothing;
   return null;
 end
 $function$;
 
--- AL COMMIT (constraint trigger diferido sobre la marca): compara y guarda la huella nueva.
+-- AL COMMIT (constraint trigger diferido sobre `tocada`): compara, marca lo que cambió y guarda la
+-- huella nueva. Corre adentro de la transacción de la sincronización: por eso sólo marca.
 create or replace function public.tr_ficha_inv_comparar() returns trigger
 language plpgsql
 security definer
@@ -285,7 +342,7 @@ declare
   v_claves  text[];
   v_huellas text[];
 begin
-  delete from public.ficha_cliente_cache_pendiente p where p.txid = NEW.txid and p.tabla = NEW.tabla;
+  delete from public.ficha_cliente_cache_tocada p where p.txid = NEW.txid and p.tabla = NEW.tabla;
   -- Las claves cuya huella cambió; `huella` null = la clave desapareció.
   select array_agg(coalesce(n.clave, v.clave)), array_agg(n.huella)
     into v_claves, v_huellas
@@ -296,11 +353,8 @@ begin
   if v_claves is null then
     return null;                            -- la sincronización no cambió nada: la caché queda intacta
   end if;
-  perform public.ficha_cliente_cache_invalidar_lote(
-    array(select substr(k, 9)::uuid from unnest(v_claves) k where k like 'cliente:%' and k <> 'cliente:*'),
-    array(select substr(k, 6) from unnest(v_claves) k where k like 'obra:%' and k <> 'obra:*'),
-    v_claves && array['*', 'cliente:*', 'obra:*'],
-    'hh:*' = any(v_claves));
+  -- Las claves de la huella ya son claves de marca («cliente:*» y «obra:*» valen como «*»).
+  perform public.ficha_cliente_cache_marcar(v_claves);
   delete from public.ficha_cliente_cache_huella h
    using unnest(v_claves, v_huellas) d(clave, huella)
    where h.tabla = NEW.tabla and h.clave = d.clave and d.huella is null;
@@ -317,9 +371,9 @@ revoke all on function public.ficha_cliente_cache_huellas(text), public.tr_ficha
 
 -- `create or replace` no acepta CONSTRAINT TRIGGER: acá queda el `drop`, sobre una tabla propia de
 -- esta migración que sólo escriben las sincronizaciones (pausadas durante la aplicación).
-drop trigger if exists trg_ficha_inv_al_commit on public.ficha_cliente_cache_pendiente;
+drop trigger if exists trg_ficha_inv_al_commit on public.ficha_cliente_cache_tocada;
 create constraint trigger trg_ficha_inv_al_commit
-  after insert on public.ficha_cliente_cache_pendiente
+  after insert on public.ficha_cliente_cache_tocada
   deferrable initially deferred
   for each row execute function public.tr_ficha_inv_comparar();
 
@@ -438,102 +492,159 @@ create or replace trigger trg_ficha_inv after insert or update or delete or trun
 create or replace trigger trg_ficha_inv after insert or update or delete or truncate on public.jornales_bloque_persona
   for each statement execute function public.tr_ficha_inv_marcar();
 
--- ── EL CRON: igual a 20260917T1700, con el vencimiento de `ficha_cliente_cache_vigencia()` ─────────
-CREATE OR REPLACE FUNCTION public.refrescar_ficha_cliente_cache(p_slug text DEFAULT NULL::text)
- RETURNS integer
- LANGUAGE plpgsql
- SET search_path TO 'public'
-AS $function$
+-- ── EL CRON: consume las marcas y recalcula UNA fila por transacción ───────────────────────────────
+-- 20260917T1700 era una función: una sola transacción de hasta 12 s con las filas recalculadas
+-- bloqueadas hasta el final. Ahora es un PROCEDURE con COMMIT después de consumir y después de cada
+-- fila: ningún lock suyo dura más que un cálculo (~0,3 s).
+
+-- Consume las marcas VISIBLES al empezar y borra EXACTAMENTE esos pares (clave, txid). Una marca que
+-- confirma mientras tanto no está en el arreglo, no se borra y la consume la corrida siguiente; hasta
+-- entonces la lectura no sirve lo marcado.
+create or replace function public.ficha_cliente_cache_consumir() returns integer
+language plpgsql
+set search_path to 'public', 'pg_temp'
+as $function$
 declare
-  v_uid     uuid;
-  v_rpc     text;
-  v_clave   text;
-  v_solapa  text;
-  v_json    jsonb;
-  v_desde   timestamptz;
-  v_inicio  timestamptz := clock_timestamp();
-  v_n       integer := 0;
+  v_claves text[];
+  v_txids  bigint[];
 begin
-  if not pg_try_advisory_xact_lock(hashtext('public.refrescar_ficha_cliente_cache')) then
+  delete from public.ficha_cliente_cache c
+   where (c.rpc = 'pantalla_cliente' and not exists (select 1 from public.clientes k where k.slug = c.clave))
+      or (c.rpc = 'hh_de_obra' and not exists (select 1 from public.obra_canonica o where o.id = c.clave));
+  select array_agg(p.clave), array_agg(p.txid) into v_claves, v_txids
+    from public.ficha_cliente_cache_pendiente p;
+  if v_claves is null then
     return 0;
   end if;
+  -- Borrar la fila es lo que la hace recalcular primero (el lote ordena por `calculado_en` nulo).
+  delete from public.ficha_cliente_cache c
+   where v_claves && array['*', 'cliente:*', 'obra:*']
+      or (c.rpc = 'hh_de_obra' and ('hh:*' = any(v_claves) or 'obra:' || c.clave = any(v_claves)))
+      or (c.rpc = 'pantalla_cliente'
+          and c.clave in (select k.slug from public.clientes k where 'cliente:' || k.id = any(v_claves)
+                          union all
+                          select k.slug from public.clientes k
+                            join public.obra_canonica o on o.cliente_id = k.id
+                           where 'obra:' || o.id = any(v_claves)));
+  delete from public.ficha_cliente_cache_pendiente p
+   using unnest(v_claves, v_txids) d(clave, txid)
+   where p.clave = d.clave and p.txid = d.txid;
+  return cardinality(v_claves);
+end
+$function$;
 
-  if p_slug is null and (select count(*) from pg_stat_activity a
-                          where a.state = 'active' and a.backend_type = 'client backend'
-                            and a.pid <> pg_backend_pid()) > 3 then
-    return 0;
+-- Una fila, calculada como un perfil real de Dirección. El `exception` vive acá porque un bloque con
+-- `exception` no admite COMMIT: el procedure no puede atrapar el error él mismo.
+create or replace function public.ficha_cliente_cache_calcular(
+  p_uid uuid, p_rpc text, p_clave text, p_solapa text
+) returns boolean
+language plpgsql
+set search_path to 'public'
+as $function$
+declare
+  v_json  jsonb;
+  v_desde timestamptz := clock_timestamp();
+begin
+  perform set_config('request.jwt.claims',
+                     jsonb_build_object('sub', p_uid, 'role', 'authenticated')::text, true);
+  begin
+    set local role authenticated;
+    if p_rpc = 'pantalla_cliente' then
+      v_json := public.pantalla_cliente_en_vivo(p_clave, p_solapa) - 'perfil';
+    else
+      v_json := public.hh_de_obra_en_vivo(p_clave, null);
+    end if;
+    reset role;
+  exception when others then
+    raise warning 'ficha_cliente_cache: % % % no se pudo calcular: %', p_rpc, p_clave, p_solapa, sqlerrm;
+    return false;
+  end;
+  if v_json is null then
+    return false;
   end if;
+  insert into public.ficha_cliente_cache as c (rpc, clave, solapa, json, calculado_en, rol_calculo, ms)
+  values (p_rpc, p_clave, p_solapa, v_json, v_desde, 'direccion',
+          (extract(epoch from clock_timestamp() - v_desde) * 1000)::integer)
+  on conflict (rpc, clave, solapa) do update
+     set json = excluded.json, calculado_en = excluded.calculado_en,
+         rol_calculo = excluded.rol_calculo, ms = excluded.ms;
+  return true;
+end
+$function$;
 
+revoke all on function public.ficha_cliente_cache_consumir(),
+  public.ficha_cliente_cache_calcular(uuid, text, text, text) from public, anon, authenticated;
+
+-- Un procedure no puede llevar `set search_path` y hacer COMMIT: todo va calificado con `public.`.
+-- El candado es de SESIÓN (el de transacción se soltaría en el primer COMMIT); pg_cron abre una
+-- conexión por corrida, así que un error a mitad de camino también lo suelta.
+drop function if exists public.refrescar_ficha_cliente_cache(text);
+create or replace procedure public.refrescar_ficha_cliente_cache()
+language plpgsql
+as $procedure$
+declare
+  v_uid    uuid;
+  v_inicio timestamptz := clock_timestamp();
+  r        record;
+begin
+  if not pg_try_advisory_lock(hashtext('public.refrescar_ficha_cliente_cache')) then
+    return;
+  end if;
+  if (select count(*) from pg_catalog.pg_stat_activity a
+       where a.state = 'active' and a.backend_type = 'client backend' and a.pid <> pg_backend_pid()) > 3
+  then
+    perform pg_advisory_unlock(hashtext('public.refrescar_ficha_cliente_cache'));
+    return;
+  end if;
   select p.id into v_uid
     from public.perfiles p
    where p.rol = 'direccion' and p.es_prueba = false
    order by p.created_at, p.id
    limit 1;
-  if v_uid is null then
-    return 0;
+  if v_uid is not null then
+    perform public.ficha_cliente_cache_consumir();
+    commit;
+    -- Un FOR con COMMIT adentro materializa la lista: se calcula una vez, después de consumir.
+    for r in
+      select x.rpc, x.clave, x.solapa
+        from (
+          select 'pantalla_cliente'::text as rpc, k.slug as clave, s.solapa
+            from public.clientes k
+           cross join unnest(array['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos',
+                                   'actividad']) as s(solapa)
+          union all
+          select 'hh_de_obra', o.id, ''
+            from public.obra_canonica o
+            join public.clientes k on k.id = o.cliente_id
+        ) x
+        left join public.ficha_cliente_cache c
+          on c.rpc = x.rpc and c.clave = x.clave and c.solapa = x.solapa
+       where c.calculado_en is null
+          or c.calculado_en < clock_timestamp() - public.ficha_cliente_cache_vigencia()
+       order by (c.calculado_en is not null), c.calculado_en nulls first
+    loop
+      exit when clock_timestamp() - v_inicio > interval '12 seconds';
+      perform public.ficha_cliente_cache_calcular(v_uid, r.rpc, r.clave, r.solapa);
+      commit;
+    end loop;
   end if;
-
-  perform set_config('request.jwt.claims',
-                     jsonb_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
-
-  delete from public.ficha_cliente_cache c
-   where (c.rpc = 'pantalla_cliente' and not exists (select 1 from public.clientes k where k.slug = c.clave))
-      or (c.rpc = 'hh_de_obra' and not exists (select 1 from public.obra_canonica o where o.id = c.clave));
-
-  for v_rpc, v_clave, v_solapa in
-    select x.rpc, x.clave, x.solapa
-      from (
-        select 'pantalla_cliente'::text as rpc, k.slug as clave, s.solapa
-          from public.clientes k
-         cross join unnest(array['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos', 'actividad'])
-                 as s(solapa)
-         where p_slug is null or k.slug = p_slug
-        union all
-        select 'hh_de_obra', o.id, ''
-          from public.obra_canonica o
-          join public.clientes k on k.id = o.cliente_id
-         where p_slug is null or k.slug = p_slug
-      ) x
-      left join public.ficha_cliente_cache c
-        on c.rpc = x.rpc and c.clave = x.clave and c.solapa = x.solapa
-     where p_slug is not null or c.calculado_en is null
-        or c.calculado_en < clock_timestamp() - public.ficha_cliente_cache_vigencia()
-     order by (c.calculado_en is not null), c.calculado_en nulls first
-  loop
-    exit when p_slug is null and clock_timestamp() - v_inicio > interval '12 seconds';
-    v_desde := clock_timestamp();
-    begin
-      set local role authenticated;
-      if v_rpc = 'pantalla_cliente' then
-        v_json := public.pantalla_cliente_en_vivo(v_clave, v_solapa) - 'perfil';
-      else
-        v_json := public.hh_de_obra_en_vivo(v_clave, null);
-      end if;
-      reset role;
-    exception when others then
-      raise warning 'ficha_cliente_cache: % % % no se pudo calcular: %', v_rpc, v_clave, v_solapa, sqlerrm;
-      continue;
-    end;
-    continue when v_json is null;
-    insert into public.ficha_cliente_cache as c (rpc, clave, solapa, json, calculado_en, rol_calculo, ms)
-    values (v_rpc, v_clave, v_solapa, v_json, v_desde, 'direccion',
-            (extract(epoch from clock_timestamp() - v_desde) * 1000)::integer)
-    on conflict (rpc, clave, solapa) do update
-       set json = excluded.json, calculado_en = excluded.calculado_en,
-           rol_calculo = excluded.rol_calculo, ms = excluded.ms;
-    v_n := v_n + 1;
-  end loop;
-  return v_n;
+  perform pg_advisory_unlock(hashtext('public.refrescar_ficha_cliente_cache'));
 end
-$function$;
+$procedure$;
 
-comment on function public.refrescar_ficha_cliente_cache(text) is
-  'Llena ficha_cliente_cache calculando como un perfil real de Dirección. Sin argumento: lo que falta '
-  '(invalidado por un trigger trg_ficha_inv*, 20260928T2330) o es más viejo que '
-  'ficha_cliente_cache_vigencia(); corta a los 12 s y cede con más de 3 backends activos. Con slug: '
-  'ese cliente entero.';
+revoke all on procedure public.refrescar_ficha_cliente_cache() from public, anon, authenticated;
 
--- ── LA LECTURA: igual a 20260913T1500, con la ventana atada al vencimiento ──────────────────────────
+comment on procedure public.refrescar_ficha_cliente_cache() is
+  'Cron (20260928T2330): consume las marcas de ficha_cliente_cache_pendiente y recalcula lo que falta '
+  'o venció, con COMMIT por fila; corta a los 12 s y cede con más de 3 backends activos.';
+
+-- Una función se llama con SELECT; un procedure con COMMIT adentro sólo corre con CALL, sola en la
+-- sentencia (pg_cron manda el comando tal cual). Queda pausado: lo reactiva el paso 5.
+select cron.alter_job(j.jobid, command := 'call public.refrescar_ficha_cliente_cache()')
+  from cron.job j
+ where j.jobname = 'refrescar_ficha_cliente_cache';
+
+-- ── LA LECTURA: igual a 20260913T1500, con la ventana atada al vencimiento y sin servir lo marcado ──
 -- Con 10 min fijos, subir el vencimiento no ahorraba nada visible: la fila seguía en la tabla pero la
 -- pantalla calculaba en vivo desde el minuto 10.
 create or replace function public.ficha_cliente_cache_leer(p_rpc text, p_clave text, p_solapa text)
@@ -551,6 +662,7 @@ as $function$
      and c.calculado_en > now() - (public.ficha_cliente_cache_vigencia() + interval '10 minutes')
      and c.rol_calculo = public.current_rol()
      and not public.sesion_es_de_prueba()
+     and not public.ficha_cliente_cache_marcada(p_rpc, p_clave)
 $function$;
 
 revoke all on function public.ficha_cliente_cache_leer(text, text, text) from public, anon;

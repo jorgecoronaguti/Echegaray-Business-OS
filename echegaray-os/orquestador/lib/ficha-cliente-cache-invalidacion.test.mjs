@@ -28,19 +28,23 @@
 //      devuelve filas para ella, la comparación al commit no ve diferencias y NUNCA invalida — el
 //      peor caso, porque parece funcionar. O que no se siembre, y la primera sincronización lo
 //      invalide todo.
-//  4 · Un modo de `tr_ficha_inv_fila` que la función no maneja: el trigger corre y no borra nada.
+//  4 · Un modo de `tr_ficha_inv_fila` que la función no maneja: el trigger corre y no marca nada.
+//  5 · Un trigger (o la RPC de la web) que escribe `ficha_cliente_cache`, directo o por una función
+//      que llama. El cron retiene esas filas mientras calcula: el `delete` del trigger de `perfiles`
+//      esperaba hasta el `lock_timeout = 8s` de `authenticator` o cerraba un 40P01 (auditor, 28/09).
+//  6 · Marcas que se pierden: una clave primaria sin `txid` (una transacción abierta choca con la
+//      marca de otra y no deja la suya), o un cron que borra marcas que no leyó.
+//  7 · Un cron que vuelve a ser una sola transacción, o una lectura que sirve una fila marcada.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { MIGRACION_REL, declaradasDe, triggersDe } from './ficha-cache-grafo.mjs'
 
-const MIGRACION = join(
-  import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260928T2330_ficha_cache_invalidacion_por_trigger.sql',
-)
+const MIGRACION = join(import.meta.dirname, '..', '..', MIGRACION_REL)
 
-/** Las 54 tablas que lee la ficha (catálogo vivo, 28/09). */
+/** Las 53 tablas que lee la ficha (catálogo vivo, 28/09; `verificar-grafo-ficha-cache.mjs`). */
 const GRAFO = [
   'analisis', 'analisis_linea', 'calendario_no_laborable', 'certificado_cliente', 'certificados',
   'cliente_acceso', 'cliente_alias', 'cliente_contacto', 'cliente_documento', 'cliente_nota',
@@ -49,7 +53,7 @@ const GRAFO = [
   'cuadrilla', 'drive_index', 'jornales_bloque_persona', 'liquidacion_linea', 'liquidacion_quincena',
   'obra_actividad', 'obra_actividad_nota', 'obra_actividad_paso', 'obra_alias', 'obra_asignacion',
   'obra_canonica', 'obra_carpeta_drive', 'obra_contrato', 'obra_documento', 'obra_economia_sheet',
-  'obra_ejecucion', 'obra_ejecucion_equipo', 'obra_papel', 'obra_restriccion', 'obras',
+  'obra_ejecucion', 'obra_ejecucion_equipo', 'obra_papel', 'obra_restriccion',
   'pedidos_materiales', 'perfiles', 'persona_tarifa', 'personas', 'presupuestos',
   'proveedor_alias', 'proveedores', 'recibo_sueldo_linea', 'recurso', 'recurso_precio',
   'registros_hh', 'subcontrato', 'tarea_tipo', 'tipo_cambio',
@@ -58,21 +62,8 @@ const GRAFO = [
 const texto = readFileSync(MIGRACION, 'utf8')
 const sinComentarios = texto.replace(/--[^\n]*/g, '')
 
-/** Tablas con `create or replace trigger trg_ficha_inv ... on public.<tabla>`, y cómo. */
-function triggers() {
-  const re = /create or replace trigger trg_ficha_inv\s[^;]*?\son public\.(\w+)\s+for each (row|statement) execute function public\.(\w+)\(([^)]*)\)/g
-  return [...sinComentarios.matchAll(re)].map(([, tabla, nivel, funcion, args]) => ({
-    tabla, nivel, funcion, modo: args.split(',')[0]?.trim().replace(/'/g, ''),
-  }))
-}
-
-/** Los identificadores entre acentos graves de la sección «cubierto sólo por el vencimiento». */
-function declaradas() {
-  const desde = texto.indexOf('═══ LO QUE QUEDA CUBIERTO SÓLO POR EL VENCIMIENTO')
-  assert.ok(desde > 0, 'falta la sección de tablas declaradas en la cabecera')
-  const hasta = texto.indexOf('═══', texto.indexOf('\n', desde))
-  return new Set([...texto.slice(desde, hasta).matchAll(/`(\w+)`/g)].map((m) => m[1]))
-}
+const triggers = () => triggersDe(texto)
+const declaradas = () => declaradasDe(texto)
 
 test('toda tabla del grafo tiene trigger o está declarada con su razón', () => {
   const conTrigger = new Set(triggers().map((t) => t.tabla))
@@ -88,7 +79,7 @@ test('las dos tablas con plata tienen trigger, no sólo declaración', () => {
 
 test('ningún DDL de trigger toma AccessExclusiveLock sobre una tabla de la app', () => {
   const drops = [...sinComentarios.matchAll(/drop trigger[^;]*?\son public\.(\w+)/gi)].map((m) => m[1])
-  assert.deepEqual(drops.filter((t) => t !== 'ficha_cliente_cache_pendiente'), [])
+  assert.deepEqual(drops.filter((t) => t !== 'ficha_cliente_cache_tocada'), [])
   const planos = [...sinComentarios.matchAll(/create\s+trigger\s+(\w+)/gi)].map((m) => m[1])
   assert.deepEqual(planos, [], 'create trigger sin «or replace»')
   assert.match(sinComentarios, /set lock_timeout = '3s'/)
@@ -113,4 +104,58 @@ test('todo modo usado por un trigger por fila lo maneja tr_ficha_inv_fila', () =
   const manejados = new Set([...cuerpo.matchAll(/'(\w+)'/g)].map((m) => m[1]))
   const usados = triggers().filter((t) => t.funcion === 'tr_ficha_inv_fila').map((t) => t.modo)
   for (const m of new Set(usados)) assert.ok(manejados.has(m), `modo sin rama: ${m}`)
+})
+
+/** Cuerpo de cada función o procedure de la migración, por nombre. */
+function cuerpos() {
+  const re = /create or replace (?:function|procedure) public\.(\w+)\([\s\S]*?\$(function|procedure)\$([\s\S]*?)\$\2\$/g
+  return new Map([...sinComentarios.matchAll(re)].map(([, nombre, , cuerpo]) => [nombre, cuerpo]))
+}
+
+/** Lo que corre adentro de la transacción de quien escribe: triggers, sus llamadas y la RPC web. */
+function alcanzablesDesdeEscrituras() {
+  const fns = cuerpos()
+  const raices = [...sinComentarios.matchAll(/execute function public\.(\w+)\(/g)].map((m) => m[1])
+  const pila = [...new Set([...raices, 'invalidar_ficha_cliente_cache'])]
+  const vistos = new Set()
+  while (pila.length) {
+    const f = pila.pop()
+    if (vistos.has(f)) continue
+    vistos.add(f)
+    for (const [, g] of (fns.get(f) ?? '').matchAll(/public\.(\w+)\(/g)) if (fns.has(g)) pila.push(g)
+  }
+  return vistos
+}
+
+test('ningún trigger ni la RPC de la web escribe ficha_cliente_cache: sólo marcan', () => {
+  const fns = cuerpos()
+  const alcanzables = alcanzablesDesdeEscrituras()
+  for (const f of ['tr_ficha_inv_fila', 'tr_ficha_inv_comparar', 'tr_ficha_inv_marcar',
+    'ficha_cliente_cache_marcar', 'invalidar_ficha_cliente_cache']) {
+    assert.ok(alcanzables.has(f) && fns.has(f), `no se analizó ${f}`)
+  }
+  const escribe = /\b(delete\s+from|update|insert\s+into|truncate)\s+(public\.)?ficha_cliente_cache\b(?!_)/i
+  const culpables = [...alcanzables].filter((f) => escribe.test(fns.get(f) ?? ''))
+  assert.deepEqual(culpables, [], `escriben la caché desde la transacción de la app: ${culpables}`)
+})
+
+test('las marcas no se pierden: una por clave y transacción, y el cron borra sólo las que leyó', () => {
+  assert.match(sinComentarios, /create table if not exists public\.ficha_cliente_cache_pendiente \([^;]*primary key \(clave, txid\)/)
+  const marcar = cuerpos().get('ficha_cliente_cache_marcar')
+  assert.match(marcar, /insert into public\.ficha_cliente_cache_pendiente[\s\S]*on conflict do nothing/)
+  const consumir = cuerpos().get('ficha_cliente_cache_consumir')
+  const borrados = [...consumir.matchAll(/delete from public\.ficha_cliente_cache_pendiente[^;]*;/g)].map((m) => m[0])
+  assert.equal(borrados.length, 1)
+  assert.match(borrados[0], /using unnest\(v_claves, v_txids\)[\s\S]*p\.clave = d\.clave and p\.txid = d\.txid/)
+})
+
+test('el cron confirma por fila y la lectura no sirve lo marcado', () => {
+  const cron = cuerpos().get('refrescar_ficha_cliente_cache')
+  assert.ok(cron, 'falta el procedure del cron')
+  assert.match(sinComentarios, /create or replace procedure public\.refrescar_ficha_cliente_cache\(\)/)
+  const lazo = cron.slice(cron.indexOf('for r in'), cron.indexOf('end loop'))
+  assert.match(lazo, /ficha_cliente_cache_calcular\([^;]*;\s*commit;/)
+  assert.match(cron, /ficha_cliente_cache_consumir\(\);\s*commit;/)
+  assert.match(sinComentarios, /cron\.alter_job\([^;]*command := 'call public\.refrescar_ficha_cliente_cache\(\)'/)
+  assert.match(cuerpos().get('ficha_cliente_cache_leer'), /not public\.ficha_cliente_cache_marcada\(p_rpc, p_clave\)/)
 })
