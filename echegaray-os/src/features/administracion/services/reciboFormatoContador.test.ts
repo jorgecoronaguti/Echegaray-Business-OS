@@ -168,18 +168,20 @@ test('el período de pago como lo escribe el recibo', () => {
   assert.equal(periodoDePago('2026-09-01').q, 1)
 })
 
-// DUEÑO 28/09: «¿por qué no pusiste el presentismo en el modelo de recibo en blanco?». Con el presentismo del
-// OS el panel saca el par 0425/0426 de media jornada; el papel lo lleva como el estudio, y los totales no se mueven.
-test('media jornada con presentismo del OS: el papel lleva 0425 y 0426 como el estudio, sin mover el neto', () => {
-  const conOS = estimarRecibo(REGLAS, { persona: P22, periodo: 'Q2-08/2026', valorHora: 6348, horasRecibo: null, feriados: 1, recibosPropios: RECIBOS.filter((r) => r.persona === P22), presentismoPropio: true })!
-  assert.ok(!conOS.lineas.some((l) => l.codigo === '0425'), 'el panel no lo muestra (21/09)')
-  const r = armar(sueldo({ reciboEstimado: conOS, bruto: conOS.remunerativo, neto: conOS.neto }))
-  const cods = r.remunerativo.map((l) => l.codigo)
-  assert.deepEqual(cods.slice(0, 3), ['0401', '0425', '0426'])
-  const m = (c: string) => r.remunerativo.find((l) => l.codigo === c)!.monto!
-  assert.ok(m('0425') > 0)
-  assert.equal(m('0426'), -m('0425'))
-  assert.equal(r.totalRemunerativo, conOS.remunerativo)
-  assert.equal(r.neto, conOS.neto)
-  assert.equal(r.cuadra, true)
+// DUEÑO 28/09: el presentismo va en el papel donde lo pone el estudio (detrás del 0401). Desde la 16–30/09, si cumple
+// se cobra (sin 0426); si no, el 0426 lo anula. El papel lleva lo mismo que el estimado, y los totales son los suyos.
+test('media jornada con presentismo del OS: el papel lleva el 0425 detrás del 0401, con o sin el 0426', () => {
+  const base = { persona: P22, periodo: 'Q2-08/2026', valorHora: 6348, horasRecibo: null, feriados: 1, recibosPropios: RECIBOS.filter((r) => r.persona === P22), presentismoPropio: true }
+  for (const [cobra, esperado] of [[true, ['0401', '0425']], [false, ['0401', '0425', '0426']]] as const) {
+    const est = estimarRecibo(REGLAS, { ...base, presentismoCobra: cobra })!
+    const r = armar(sueldo({ reciboEstimado: est, bruto: est.remunerativo, neto: est.neto }))
+    assert.deepEqual(r.remunerativo.map((l) => l.codigo).slice(0, esperado.length), [...esperado])
+    const m = (c: string) => r.remunerativo.find((l) => l.codigo === c)?.monto
+    assert.ok(m('0425')! > 0)
+    if (!cobra) assert.equal(m('0426'), -m('0425')!)
+    else assert.equal(m('0426'), undefined)
+    assert.equal(r.totalRemunerativo, est.remunerativo)
+    assert.equal(r.neto, est.neto)
+    assert.equal(r.cuadra, true)
+  }
 })

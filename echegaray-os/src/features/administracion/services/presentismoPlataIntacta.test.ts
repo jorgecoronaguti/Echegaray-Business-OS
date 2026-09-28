@@ -1,4 +1,10 @@
-// EL PRESENTISMO CAMBIÓ DE LUGAR EN EL PANEL, NO DE IMPORTE (dueño, 28/09/2026).
+// LA PLATA DE LA CADENA CON EL PRESENTISMO (dueño, 28/09/2026).
+//
+// SEGUNDA DECISIÓN DEL MISMO DÍA: *«en esta quincena es parte del blanco pero no se anula»*. Desde la 16–30/09 la
+// media jornada que cumple cobra el 0425 en el blanco (sin 0426): el neto y el banco suben. La que no cumple lleva
+// el 0426 en el blanco y el negro NO se descuenta además (se perdería dos veces). Jornada completa no cambia.
+//
+// Lo de abajo es la primera decisión del día, que sigue valiendo para la jornada completa:
 //
 // *«no quiero que se discrimine tanto el presentismo de todos los demás conceptos en el desplegable de la
 // derecha»*. El primer intento (31312cd0) movió la plata junto con la vista: puso en el 0425 de jornada
@@ -61,17 +67,23 @@ function plata(r: LineaConOverrides) {
   }
 }
 
-const RECIBO_MEDIA = { jornada: 'parcial', asistencia: [], remunerativo: 317400, descuentos: 87159.88, netoRecibo: 230240.12, neto: 230240.12 }
+const RECIBO_MEDIA = { jornada: 'parcial', asistencia: [['0425', 63480], ['0426', -63480]], remunerativo: 317400, descuentos: 87159.88, netoRecibo: 230240.12, neto: 230240.12 }
 const RECIBO_COMPLETA = { jornada: 'completa', asistencia: [['0425', 111724.8]], remunerativo: 670348.8, descuentos: 146983.43, netoRecibo: 523365.37, neto: 523365.37 }
 
-test('media jornada: cumple y pierde — el perdido sale del negro, el recibo no se mueve', () => {
-  assert.deepEqual(plata(aplicarOverrides(obrero(100), {}, 'obreros', null, BLANCO, CUMPLE)), {
-    presentismo: ['aplica', 63480], ...RECIBO_MEDIA, negro: 350000, totalSueldo: 580240.12,
-    cobra: 580240.12, porBanco: 230240.12, enEfectivo: 350000, total: 580240.12,
-  })
+test('media jornada: cumple cobra el 0425 en el blanco; el perdido lo pierde UNA vez, en el blanco', () => {
+  const cumple = plata(aplicarOverrides(obrero(100), {}, 'obreros', null, BLANCO, CUMPLE))
+  // 0425 = 20 % del 0401 (50 h × $6.348 = $317.400) = $63.480, sin 0426; el negro (50 h × $7.000) no se toca.
+  assert.deepEqual(cumple.asistencia, [['0425', 63480]])
+  assert.equal(cumple.remunerativo, 380880)
+  assert.equal(cumple.negro, 350000)
+  assert.ok(cumple.neto! > 230240.12 && cumple.neto! < 230240.12 + 63480, 'el neto sube el 0425 menos sus descuentos')
+  assert.equal(cumple.porBanco, cumple.neto)
+  assert.equal(cumple.total, Math.round((cumple.neto! + 350000) * 100) / 100)
+  // Perdido: el par en el blanco (como las quincenas pasadas) y el negro entero. MUTACIÓN: descontarlo también del
+  // negro (`descontarDelNegro` sin `blancoYaLoAnula`) → negro 286.520 → rojo.
   assert.deepEqual(plata(aplicarOverrides(obrero(100), {}, 'obreros', null, BLANCO, TARDE)), {
-    presentismo: ['perdido', 63480], ...RECIBO_MEDIA, negro: 286520, totalSueldo: 516760.12,
-    cobra: 516760.12, porBanco: 230240.12, enEfectivo: 286520, total: 516760.12,
+    presentismo: ['perdido', 63480], ...RECIBO_MEDIA, negro: 350000, totalSueldo: 580240.12,
+    cobra: 580240.12, porBanco: 230240.12, enEfectivo: 350000, total: 580240.12,
   })
 })
 

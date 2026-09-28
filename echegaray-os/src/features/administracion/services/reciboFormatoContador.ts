@@ -105,19 +105,6 @@ function desdeElReal(s: SueldoBlancoNegro, real: readonly ConceptoDeRecibo[]): R
   }
 }
 
-/**
- * EL PRESENTISMO VA EN EL PAPEL COMO LO PONE EL ESTUDIO (dueño 28/09: «¿por qué no pusiste el presentismo en el
- * modelo de recibo en blanco?»). El panel saca el par 0425/0426 cuando se anula (21/09); el recibo impreso lo
- * lleva, detrás del 0401, como los recibos reales. El par suma cero: el total remunerativo no cambia.
- */
-function conPresentismoDelEstudio(est: NonNullable<SueldoBlancoNegro['reciboEstimado']>) {
-  const rem = deSeccion(est.lineas, 'remunerativo')
-  const par = est.presentismoDelEstudio ?? []
-  if (par.length === 0) return rem
-  const i = rem.findIndex((l) => l.codigo === '0401')
-  return [...rem.slice(0, i + 1), ...par, ...rem.slice(i + 1)]
-}
-
 /** El estimado del panel. Los totales son los suyos (`remunerativo`, `descuentos`, `neto`), no una suma nueva. */
 function desdeElEstimado(s: SueldoBlancoNegro): ReciboContador {
   const est = s.reciboEstimado!
@@ -128,7 +115,7 @@ function desdeElEstimado(s: SueldoBlancoNegro): ReciboContador {
   const totalNoRem = sumaONull(noRem)
   return {
     origen: 'estimado', categoria: s.categoriaRecibo ?? null, valorHora: est.valorHora,
-    remunerativo: conPresentismoDelEstudio(est).map(renglon), noRemunerativo: noRem,
+    remunerativo: deSeccion(est.lineas, 'remunerativo').map(renglon), noRemunerativo: noRem,
     descuentos: deSeccion(est.lineas, 'descuento').map(renglon),
     contribuciones: contrib,
     totalRemunerativo: est.remunerativo, totalNoRemunerativo: totalNoRem, totalDescuentos: est.descuentos,

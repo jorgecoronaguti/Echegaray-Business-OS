@@ -98,28 +98,29 @@ test('Rosales Q2-08 estimado: 45 + 5 feriado a $6.348, cada concepto igual al re
   assert.equal(e.costoTotal, null)
 })
 
-// ═══ EL PRESENTISMO SE DICE UNA SOLA VEZ (dueño, 21/09/2026) ═══
+// ═══ DESDE LA 16–30/09 EL PRESENTISMO SE COBRA EN EL BLANCO (dueño, 28/09/2026) ═══
 //
-// *«el menú que se abre con la liquidación en blanco sigue restando el concepto presentismo en la quincena actual,
-// algo que ya no es así»*. En la quincena que liquida con el presentismo del OS, el estimado deja de traer el par
-// 0425/0426 —la costumbre del estudio en la ventana de recibos— porque ese concepto lo decide `presentismo.ts` y
-// lo muestra el bloque «Presentismo» del panel, con base, %, importe y motivo.
+// *«en quincenas pasadas el presentismo se consideraba y dp se anulaba […] en esta quincena es parte del blanco pero
+// no se anula»*. Mismo lugar que en los recibos reales (0425 detrás del 0401); cumple → sin 0426 y suma; si no
+// cumple, el 0426 lo anula entero, como antes.
 
-test('con el presentismo del OS, el estimado no trae 0425 ni 0426 — y NO mueve el neto', () => {
-  const sinBandera = estimarRecibo(REGLAS, ROSALES)!
-  const conBandera = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true })!
-  const codigos = (e: typeof sinBandera) => e.lineas.map((l) => l.codigo)
-  assert.ok(codigos(sinBandera).includes('0425') && codigos(sinBandera).includes('0426'), 'antes estaban los dos')
-  assert.equal(codigos(conBandera).includes('0425'), false, 'la asistencia perfecta sale')
-  assert.equal(codigos(conBandera).includes('0426'), false, 'MUTACIÓN: quedó el ajuste restando el presentismo')
-  // NI UN PESO: el 0426 es exactamente −0425, así que sacarlos no cambia el remunerativo, los descuentos ni el neto.
-  // Si alguien saca SÓLO el 0426, este test se pone rojo: el neto subiría y el banco pagaría de más.
-  assert.equal(conBandera.remunerativo, sinBandera.remunerativo)
-  assert.equal(conBandera.descuentos, sinBandera.descuentos)
-  assert.equal(conBandera.neto, sinBandera.neto)
-  assert.equal(conBandera.neto, 231880.94)
-  // El resto del recibo no se toca: el básico, el feriado y los descuentos siguen concepto por concepto.
-  assert.deepEqual(codigos(conBandera), codigos(sinBandera).filter((c) => c !== '0425' && c !== '0426'))
+test('con el presentismo del OS: cumple cobra el 0425 en el blanco; si no, el 0426 lo anula como antes', () => {
+  const antes = estimarRecibo(REGLAS, ROSALES)!
+  const cumple = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true, presentismoCobra: true })!
+  const noCumple = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true })!
+  const codigos = (e: typeof antes) => e.lineas.map((l) => l.codigo)
+  const monto = (e: typeof antes, c: string) => e.lineas.find((l) => l.codigo === c)?.monto
+  assert.deepEqual(codigos(antes).slice(0, 3), ['0401', '0425', '0426'], 'quincenas pasadas: el par, detrás del 0401')
+  // Cumple: mismo lugar, sin el ajuste, y el remunerativo sube exactamente el 0425 (20 % del 0401).
+  assert.deepEqual(codigos(cumple).slice(0, 2), ['0401', '0425'])
+  assert.equal(codigos(cumple).includes('0426'), false, 'MUTACIÓN: quedó el 0426 anulando al que cumple')
+  assert.equal(monto(cumple, '0425'), monto(antes, '0425'))
+  assert.equal(cumple.remunerativo, Math.round((antes.remunerativo! + monto(antes, '0425')!) * 100) / 100)
+  assert.ok(cumple.neto! > antes.neto!, 'el neto del blanco sube')
+  // No cumple (perdido, sin horas o sin dato): el par como siempre, y la plata no se mueve.
+  assert.deepEqual(codigos(noCumple), codigos(antes))
+  assert.equal(noCumple.neto, antes.neto)
+  assert.equal(noCumple.neto, 231880.94)
 })
 
 test('mutación «olvidar el feriado»: sin feriados, las 50 h van al 0401 y el 0431 desaparece', () => {

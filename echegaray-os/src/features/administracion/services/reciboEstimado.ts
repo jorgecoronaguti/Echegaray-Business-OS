@@ -31,9 +31,14 @@ export interface PersonaDelEstimado {
   recibosPropios: readonly ReciboParaReglas[]
   /**
    * LA QUINCENA YA LIQUIDA CON EL PRESENTISMO DEL OS (`quincenaConPresentismo`, desde el 16/09/2026).
-   * Entonces el 0425/0426 NO va en el estimado: ver `haberes`.
+   * Entonces el 0425 se cobra en el blanco y el 0426 sólo va si lo perdió: ver `haberes`.
    */
   presentismoPropio?: boolean
+  /**
+   * `presentismo.ts` dice que cumple («aplica»). Sólo cuenta con `presentismoPropio`: sin esto —perdido, sin horas,
+   * sin categoría o no evaluado— el 0426 lo anula, como siempre.
+   */
+  presentismoCobra?: boolean
 }
 
 export interface LineaEstimada {
@@ -61,12 +66,6 @@ export interface ReciboEstimado {
   contribuciones: number | null
   costoTotal: number | null
   avisos: string[]
-  /**
-   * El par 0425/0426 tal como lo pone el estudio, cuando el panel lo saca (media jornada con presentismo del
-   * OS: el 0426 anula el 0425, suman cero). Lo usa sólo el recibo impreso con forma del estudio (dueño 28/09:
-   * «¿por qué no pusiste el presentismo en el modelo de recibo en blanco?»). No entra en ningún total.
-   */
-  presentismoDelEstudio?: LineaEstimada[]
 }
 
 const pct = (t: number): string => `${(t * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} %`
@@ -102,24 +101,21 @@ function horasDeLaPersona(reglas: ReglasDelRecibo, p: PersonaDelEstimado): { jor
 /**
  * 0401, 0431, 0425 y 0426.
  *
- * ═══ EL PRESENTISMO SE DICE UNA SOLA VEZ (dueño, 21/09/2026) ═══
+ * ═══ DESDE LA 16–30/09 EL PRESENTISMO SE COBRA EN EL BLANCO (dueño, 28/09/2026) ═══
  *
- * Textual: *«el menú que se abre con la liquidación en blanco sigue restando el concepto presentismo en la
- * quincena actual, algo que ya no es así»*. El estimado reproducía la costumbre del estudio en la ventana de
- * recibos: 0425 ASISTENCIA PERFECTA y, pegado, 0426 AJUSTE COD.0425 anulándolo (64 de 64 recibos de media
- * jornada). Los dos suman cero, así que el neto no cambiaba… pero el panel afirmaba un descuento por
- * inasistencia sobre alguien que no faltó, y el mismo panel, dos bloques más abajo, decía «Presentismo ·
- * Cumple». Dos versiones del mismo concepto en la misma pantalla.
+ * Textual: *«en quincenas pasadas el presentismo se consideraba y dp se anulaba porque asi estaba establecido en
+ * la empresa y porque en los recibos de sueldo se ven asi. en esta quincena es parte del blanco pero no se
+ * anula»*. Hasta la 1–15/09 el estudio ponía 0425 ASISTENCIA PERFECTA y, pegado, 0426 AJUSTE COD.0425 anulándolo
+ * (media jornada: 263 de 263 recibos). Desde `quincenaConPresentismo` el 0425 va en el mismo lugar —detrás del
+ * 0401— y SUMA cuando `presentismo.ts` dice que cumple. Si lo perdió —o no se sabe— va el 0426 que lo anula, que
+ * es para lo que el estudio lo usa («INASIST. Y/O TARD.»). Jornada completa no cambia: el 0426 no existe ahí (0 de 29).
  *
- * Desde la quincena en que rige el presentismo del OS (`quincenaConPresentismo`), el par no va: quién lo cobra
- * y quién lo pierde lo decide `presentismo.ts`, y su bloque del panel lo muestra con base, porcentaje, importe
- * y motivo. SACAR LOS DOS RENGLONES NO MUEVE UN PESO —el 0426 es exactamente −0425— y por eso este arreglo no
- * cambia el neto, el banco ni el cobra de nadie. El recibo REAL del estudio se sigue mostrando tal cual llega:
- * lo que se saca es la predicción, no el hecho.
+ * El 21/09 se había sacado el par del estimado porque sumaba cero y el panel lo decía dos veces. Eso quedó atrás:
+ * ahora es plata del blanco y se dice una vez, como un concepto más.
  */
 function haberes(
   reglas: ReglasDelRecibo, jornada: 'parcial' | 'completa', normales: number, feriado: number, vh: number,
-  presentismoPropio = false,
+  presentismoPropio = false, presentismoCobra = false,
 ): LineaEstimada[] {
   const ev = `${reglas.recibos} recibos (${ventanaDe(reglas)})`
   const basico = r2(normales * vh)
@@ -135,15 +131,15 @@ function haberes(
   // él el neto estimado, que en `sueldoBlancoNegro` es el banco preliminar de la fila: medido en Nievas
   // Villegas y Maldonado Batista (96 h, $7.420/h) daba $557.362 contra $672.758, −$115.396 cada uno,
   // ~$221.000 por quincena, contra un recibo real de $663.142. Se saltea el par sólo si de verdad se anula.
-  const seAnula = a.ajuste[jornada].anula === true
-  if (a.tasa != null && !(presentismoPropio && seAnula)) {
+  if (a.tasa != null) {
     const monto = a.dudosa ? null : r2(a.tasa * basico)
     out.push({ codigo: '0425', descripcion: 'ASISTENCIA PERFECTA (ART. 52 CCT)', seccion: 'remunerativo', unidad: null, base: null, monto, fuente: `${pct(a.tasa)} del 0401 · reproduce ${a.evidencia.aciertos} de ${a.evidencia.recibos} recibos (${ventanaDe(reglas)})` })
     const aj = a.ajuste[jornada]
-    if (aj.anula !== false) {
+    // Con el presentismo del OS el 0426 no va cuando cumple; si va, anula el 0425 entero.
+    if (aj.anula !== false && !(presentismoPropio && presentismoCobra)) {
       out.push({
         codigo: '0426', descripcion: 'AJUSTE COD.0425 (INASIST. Y/O TARD.)', seccion: 'remunerativo', unidad: null, base: null,
-        monto: aj.anula && monto != null ? -monto : null,
+        monto: (aj.anula || presentismoPropio) && monto != null ? -monto : null,
         fuente: `anula el 0425 en ${aj.conAjuste} de ${aj.recibos} recibos de jornada ${jornada} (${ventanaDe(reglas)})${aj.anula == null ? ' · DUDOSA' : ''}`,
       })
     }
@@ -194,11 +190,7 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
   if (p.feriados == null) avisos.push('el calendario de feriados no tiene cargado este año: se estima sin feriados')
   else if (p.feriados > 0 && porDia == null) avisos.push('hay feriados en la quincena y ningún recibo de la ventana dice cuántas horas vale cada uno')
   const feriado = Math.min(h.total, (p.feriados ?? 0) * (porDia ?? 0))
-  const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, p.presentismoPropio === true)
-  const par = p.presentismoPropio === true
-    ? haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, false)
-      .filter((l) => (l.codigo === '0425' || l.codigo === '0426') && !lineas.some((x) => x.codigo === l.codigo))
-    : []
+  const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora, p.presentismoPropio === true, p.presentismoCobra === true)
   const remunerativo = sumaONull(lineas)
   // UNA REGLA DE UNA SOLA MITAD DEL MES SE DECIDE POR LA QUINCENA QUE SE ESTIMA, no por la que se generó: las reglas
   // congeladas para Q1-09 tienen el seguro de vida en «no aplica», y en Q2-09 aplica.
@@ -216,7 +208,7 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
     lineas, remunerativo, descuentos,
     neto: remunerativo == null || descuentos == null ? null : r2(remunerativo - descuentos),
     contribuciones, costoTotal: remunerativo == null || contribuciones == null ? null : r2(remunerativo + contribuciones),
-    avisos, ...(par.length > 0 ? { presentismoDelEstudio: par } : {}),
+    avisos,
   }
 }
 
