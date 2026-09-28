@@ -1,9 +1,9 @@
-// EL PRESENTISMO COMO UN RENGLÓN MÁS DEL NEGRO (dueño, 28/09/2026).
+// EL PRESENTISMO COMO UN CONCEPTO MÁS DEL BLANCO (dueño, 28/09/2026).
 //
 // *«no quiero que se discrimine tanto el presentismo de todos los demás conceptos en el desplegable de la
 // derecha donde salen los descuentos»*. Hasta hoy el panel le daba una sección propia —título, cuatro
-// renglones, estado en negrita y ámbar—; ahora es un renglón del bloque Negro. El 0425/0426 del blanco
-// sigue donde ya estaba: en el recibo por conceptos, como lo liquida el estudio.
+// renglones, estado en negrita y ámbar—; ahora es un concepto más del BLANCO (el dueño eligió ese lugar el
+// 28/09): lo dibuja `ReciboPorConceptos` junto al 0401/0425. El mensual sigue en «Efectivo · fuera del recibo».
 //
 // SIN «INCLUIDO EN EL IMPORTE» NI «DESCONTADO DEL IMPORTE» (auditor, 28/09): el importe del negro es
 // horas × $/h negro; en jornada completa el presentismo se paga en el recibo (0425), y con el negro

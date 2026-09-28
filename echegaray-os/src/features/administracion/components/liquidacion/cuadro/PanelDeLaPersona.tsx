@@ -159,7 +159,7 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
       {/* EL RECIBO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el estimado cuyo neto es el Banco preliminar, o el real
           contra el estimado cuando llegó el del estudio. */}
       <div style={{ height: 12 }} />
-      <ReciboPorConceptos s={s} />
+      <ReciboPorConceptos s={s} presentismo={renglonDePresentismo(fila.linea.presentismo ?? null)} />
 
       <div style={{ height: 16 }} />
       <Rotulo>Negro</Rotulo>
@@ -168,9 +168,6 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={s.horasNegro} unidad="horas" />
       </Renglon>
       <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
-      {/* EL PRESENTISMO, UN CONCEPTO MÁS DEL NEGRO (dueño, 28/09/2026): va antes del importe porque ya está
-          adentro —cobrado o descontado—, no se le suma. */}
-      <RenglonDelPresentismo fila={fila} />
       <Renglon rotulo="Importe">
         <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>

@@ -55,3 +55,15 @@ test('no rige, no aplica y sin categoría se dicen; sin evaluar no hay renglón'
   assert.match(renglonDePresentismo(presentismoDeLinea({ ...E, categoria: null, basico: null }, 100))?.nota ?? '', /^Sin categoría/)
   assert.equal(renglonDePresentismo(null), null)
 })
+
+// EL LUGAR (dueño, 28/09/2026, elegido entre tres: «entre los conceptos del blanco»). Si el renglón vuelve al
+// bloque Negro o deja de llegar a la lista de conceptos del blanco, esto se pone rojo.
+test('el presentismo va entre los conceptos del blanco, no en el bloque Negro', async () => {
+  const { readFileSync } = await import('node:fs')
+  const panel = readFileSync(new URL('./PanelDeLaPersona.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /<ReciboPorConceptos s=\{s\} presentismo=\{renglonDePresentismo\(/)
+  const negro = panel.slice(panel.indexOf('<Rotulo>Negro</Rotulo>'), panel.indexOf('<PagadoYSaldo'))
+  assert.doesNotMatch(negro, /RenglonDelPresentismo/)
+  const recibo = readFileSync(new URL('./ReciboPorConceptos.tsx', import.meta.url), 'utf8')
+  assert.match(recibo, /<Bloque titulo="Haberes"[^>]*presentismo=\{presentismo\}/)
+})

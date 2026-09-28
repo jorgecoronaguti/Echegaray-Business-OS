@@ -15,6 +15,7 @@ import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import { compararConReal, totalesDelReal, type FilaComparada } from '../../../services/reciboEstimado'
 import type { SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
+import type { RenglonDePresentismo } from './presentismoEnElPanel'
 
 const MONO = "'IBM Plex Mono', monospace"
 const SOLO_ESTIMADO = 'minmax(0, 1fr) 96px'
@@ -23,7 +24,12 @@ const SIN_DETALLE_REAL = 'el recibo del estudio todavía no está cargado concep
 
 const legible = (s: string): string => (s ? s.charAt(0) + s.slice(1).toLowerCase() : s)
 
-export function ReciboPorConceptos({ s }: { s: SueldoBlancoNegro }) {
+// EL PRESENTISMO ENTRE LOS CONCEPTOS DEL BLANCO (dueño, 28/09/2026, eligió esto entre tres lugares: «entre los
+// conceptos del blanco»). Si el 0425 ya es un renglón (jornada completa, recibo real), su estado, base, % y fechas
+// van debajo de ese renglón. Si no (media jornada: el estudio lo anula con el 0426 y desde el 21/09 el par no se
+// muestra), va un renglón «Presentismo» detrás del 0401 con el importe de `presentismo.ts` APAGADO y la nota
+// «fuera del subtotal»: ese importe se paga o se descuenta con el negro, y el subtotal del blanco no lo suma.
+export function ReciboPorConceptos({ s, presentismo = null }: { s: SueldoBlancoNegro; presentismo?: RenglonDePresentismo | null }) {
   const est = s.reciboEstimado ?? null
   const real = s.conceptosReales ?? null
   const totales = totalesDelReal(real) ?? s.totalesReales ?? null
@@ -43,7 +49,7 @@ export function ReciboPorConceptos({ s }: { s: SueldoBlancoNegro }) {
           <span>Concepto</span><Derecha>Estimado</Derecha><Derecha>Real</Derecha><Derecha>Dif.</Derecha>
         </Grilla>
       )}
-      <Bloque titulo="Haberes" filas={de('remunerativo', 'no_remunerativo')} {...p} />
+      <Bloque titulo="Haberes" filas={de('remunerativo', 'no_remunerativo')} presentismo={presentismo} {...p} />
       <Total rotulo="Subtotal remunerativo" {...p} est={est?.remunerativo} real={totales?.haberes} />
       <Bloque titulo="Descuentos" filas={de('descuento')} {...p} />
       <Total rotulo="Total descuentos" {...p} est={est?.descuentos} real={totales?.descuentos} />
@@ -72,17 +78,46 @@ const Derecha = ({ children, title, color }: { children: ReactNode; title?: stri
 
 interface PropsDeTabla { cols: string; conReal: boolean; detalleReal: boolean }
 
-function Bloque({ titulo, filas, ...p }: PropsDeTabla & { titulo: string; filas: FilaComparada[] }) {
+function Bloque({ titulo, filas, presentismo = null, ...p }: PropsDeTabla & {
+  titulo: string; filas: FilaComparada[]; presentismo?: RenglonDePresentismo | null
+}) {
   if (filas.length === 0) return null
+  const con0425 = filas.some((f) => f.codigo === '0425')
+  const trasBasico = presentismo && !con0425 ? Math.max(filas.findIndex((f) => f.codigo === '0401'), -1) : -2
   return (
     <>
       <div style={{ fontSize: '10.5px', color: V.apagado, paddingTop: 8 }}>{titulo}</div>
-      {filas.map((f) => <Fila key={`${f.seccion}-${f.codigo}`} f={f} {...p} />)}
+      {trasBasico === -1 && presentismo && <FilaDePresentismo r={presentismo} {...p} />}
+      {filas.map((f, i) => (
+        <div key={`${f.seccion}-${f.codigo}`}>
+          <Fila f={f} nota={f.codigo === '0425' && presentismo ? presentismo.nota : undefined} {...p} />
+          {i === trasBasico && presentismo && <FilaDePresentismo r={presentismo} {...p} />}
+        </div>
+      ))}
     </>
   )
 }
 
-function Fila({ f, cols, conReal, detalleReal }: PropsDeTabla & { f: FilaComparada }) {
+/** El presentismo del OS cuando el blanco no lleva 0425: mismo renglón que un concepto, importe apagado. */
+function FilaDePresentismo({ r, cols, conReal }: PropsDeTabla & { r: RenglonDePresentismo }) {
+  const fuera = r.valor != null
+  return (
+    <Grilla cols={cols} testid="recibo-concepto-presentismo">
+      <div style={{ minWidth: 0 }} data-estado={r.estado}>
+        <div>
+          <span style={{ fontFamily: MONO, fontSize: '10px', color: V.tenue, marginRight: 6 }}>0425</span>
+          {r.rotulo.replace(/^− /, '')}
+        </div>
+        <div style={{ fontSize: '10.5px', color: V.apagado }}>{fuera ? `${r.nota} · fuera del subtotal: va con el negro` : r.nota}</div>
+      </div>
+      <Derecha color={V.apagado}>{r.valor == null ? '—' : `${r.rotulo.startsWith('−') ? '− ' : ''}${pesos(r.valor)}`}</Derecha>
+      {conReal && <Derecha color={V.tenue}>—</Derecha>}
+      {conReal && <Derecha color={V.tenue}>—</Derecha>}
+    </Grilla>
+  )
+}
+
+function Fila({ f, cols, conReal, detalleReal, nota }: PropsDeTabla & { f: FilaComparada; nota?: string }) {
   const unidad = f.unidad == null ? null : `${f.unidad.toLocaleString('es-AR')}${f.base == null ? '' : ` × ${pesos(f.base)}`}`
   // Con fuente y sin número: regla dudosa (⚠). Sin fuente y sin número: el estimado no lo previó.
   const dudosa = f.estimado == null && f.fuente != null
@@ -94,6 +129,7 @@ function Fila({ f, cols, conReal, detalleReal }: PropsDeTabla & { f: FilaCompara
           {legible(f.descripcion)}
         </div>
         {unidad && <div style={{ fontSize: '10.5px', color: V.apagado }}>{unidad}</div>}
+        {nota && <div data-testid="recibo-concepto-0425-presentismo" style={{ fontSize: '10.5px', color: V.apagado }}>{nota}</div>}
       </div>
       <Derecha title={f.fuente ?? 'el estimado no lo previó'} color={dudosa ? V.warn : conReal ? V.apagado : V.tinta}>
         {dudosa ? '⚠' : pesos(f.estimado)}
