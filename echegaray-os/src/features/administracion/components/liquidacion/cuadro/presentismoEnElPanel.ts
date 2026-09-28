@@ -2,9 +2,12 @@
 //
 // *«no quiero que se discrimine tanto el presentismo de todos los demás conceptos en el desplegable de la
 // derecha donde salen los descuentos»*. Hasta hoy el panel le daba una sección propia —título, cuatro
-// renglones, estado en negrita y ámbar—; ahora es un renglón del bloque Negro, que es donde se paga
-// (va dentro del importe) o se descuenta (`descontarDelNegro`). El 0425/0426 del blanco sigue donde ya
-// estaba: en el recibo por conceptos, como lo liquida el estudio.
+// renglones, estado en negrita y ámbar—; ahora es un renglón del bloque Negro. El 0425/0426 del blanco
+// sigue donde ya estaba: en el recibo por conceptos, como lo liquida el estudio.
+//
+// SIN «INCLUIDO EN EL IMPORTE» NI «DESCONTADO DEL IMPORTE» (auditor, 28/09): el importe del negro es
+// horas × $/h negro; en jornada completa el presentismo se paga en el recibo (0425), y con el negro
+// escrito a mano no se descuenta nada. El renglón dice el estado y la base, no dónde entra la plata.
 //
 // ═══ LO QUE NO SE PERDIÓ AL ACHICARLO ═══
 //
@@ -64,7 +67,7 @@ export function renglonDePresentismo(p: PresentismoDeLinea | null): RenglonDePre
     return r('Presentismo', null, ['Sin horas', 'sin horas cargadas en la quincena: todavía no hay presentismo que calcular', ...causas, ...aRevisar(p)])
   }
   if (p.estado === 'perdido') {
-    return r('− Presentismo', p.importe, ['Perdido', baseYPorcentaje(p), motivosDePerdida(p), ...aRevisar(p), 'descontado del importe'])
+    return r('− Presentismo', p.importe, ['Perdido', baseYPorcentaje(p), motivosDePerdida(p), ...aRevisar(p)])
   }
-  return r('Presentismo', p.importe, ['Cumple', baseYPorcentaje(p), 'sin faltas injustificadas, tardanzas ni retiros', 'incluido en el importe'])
+  return r('Presentismo', p.importe, ['Cumple', baseYPorcentaje(p), 'sin faltas injustificadas, tardanzas ni retiros'])
 }

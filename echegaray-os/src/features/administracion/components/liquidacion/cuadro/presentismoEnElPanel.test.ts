@@ -20,7 +20,8 @@ test('cumple: el importe de presentismo.ts, con la base y el % en la nota', () =
   assert.equal(r?.rotulo, 'Presentismo')
   assert.equal(r?.valor, p.importe)
   assert.equal(r?.valor, 63480, '20 % × 50 h × $6.348')
-  assert.match(r?.nota ?? '', /^Cumple · 20 % de \$317\.400 \(50 % en blanco\) · .* · incluido en el importe$/)
+  assert.match(r?.nota ?? '', /^Cumple · 20 % de \$317\.400 \(50 % en blanco\) · /)
+  assert.doesNotMatch(r?.nota ?? '', /importe/, 'no afirma dónde entra la plata: el cálculo no lo respalda en jornada completa')
 })
 
 test('perdido: rótulo con signo, motivo y las fechas a revisar a la vista', () => {
@@ -36,7 +37,7 @@ test('perdido: rótulo con signo, motivo y las fechas a revisar a la vista', () 
   const nota = r?.nota ?? ''
   assert.ok(nota.startsWith('Perdido · 20 % de $317.400 (50 % en blanco) · 17/09'), nota)
   assert.match(nota, /cargá el motivo de 18\/09: si lo justifica, lo recupera/)
-  assert.match(nota, /descontado del importe$/)
+  assert.doesNotMatch(nota, /importe/, 'con negro manual no se descuenta: no se afirma')
 })
 
 test('sin horas no dice «Cumple», y lo ya marcado se sigue viendo', () => {
