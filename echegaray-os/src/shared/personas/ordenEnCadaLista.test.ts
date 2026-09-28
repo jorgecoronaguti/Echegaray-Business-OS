@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { clavesDeOrdenDeUsuarios } from './nombre.ts'
+import { clavesDeOrden } from './nombre.ts'
+import { ordenDeUsuarios } from './nombresDeUsuarios.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { plantelActivo, type LineaDelCuadro } from '../../features/administracion/services/retribucionDelPlantel.ts'
 import { pagoDeNomina } from '../../features/analiticas/services/nominaPagada.ts'
 import { pagoDeLaLinea } from '../../features/administracion/services/pagoDeLaQuincena.ts'
@@ -27,20 +29,64 @@ const clave = (id: keyof typeof LEGAJO) => LEGAJO[id].toLocaleLowerCase('es-AR')
 
 const fuente = (ruta: string) => readFileSync(new URL(ruta, import.meta.url), 'utf8')
 
-test('usuarios (entrar como, responsables, herramientas): la clave sale del legajo por persona_id', () => {
-  const filas = [
-    { id: 'u-m', nombre: MOSTRAR.m, persona_id: 'p-m' },
-    { id: 'u-a', nombre: MOSTRAR.a, persona_id: 'p-a' },
-    { id: 'u-c', nombre: MOSTRAR.c, persona_id: 'p-c' },
-    { id: 'u-sin', nombre: 'Bruno Contador', persona_id: null },
-  ]
-  const legajos = new Map([['p-m', LEGAJO.m], ['p-a', LEGAJO.a], ['p-c', LEGAJO.c]])
-  const claves = clavesDeOrdenDeUsuarios(filas, legajos)
-  const orden = [...claves].sort(([, x], [, y]) => x.localeCompare(y, 'es')).map(([id]) => id)
-  // «bruno contador» (sin persona: se ordena por su nombre de cuenta) cae entre Aballay y Corona.
-  assert.deepEqual(orden, ['u-a', 'u-sin', 'u-c', 'u-m'])
-  // Persona que la sesión no ve por RLS: sin legajo, el nombre para mostrar, nunca una fila sin clave.
-  assert.equal(clavesDeOrdenDeUsuarios([{ id: 'u', nombre: 'Ana Pérez', persona_id: 'oculta' }], new Map()).get('u'), 'ana perez')
+/**
+ * Supabase de una sesión de CAMPO: la RLS de `personas` no le deja ver ningún legajo (cero filas) y
+ * `nombres_de_usuarios()` le da sólo el nombre para mostrar. `orden_de_usuarios()` es security
+ * definer: la base arma la clave con el legajo aunque la sesión no lo vea.
+ */
+function supabaseDeCampo() {
+  const llamadas: string[] = []
+  const vacio = { data: [], error: null }
+  const tabla = (nombre: string) => {
+    llamadas.push(`from:${nombre}`)
+    const q: Record<string, unknown> = {}
+    for (const m of ['select', 'in', 'eq', 'order']) q[m] = () => q
+    q.then = (ok: (v: typeof vacio) => unknown) => Promise.resolve(vacio).then(ok)
+    return q
+  }
+  const rpc = async (fn: string) => {
+    llamadas.push(`rpc:${fn}`)
+    if (fn === 'orden_de_usuarios') {
+      return { data: (['m', 'a', 'c'] as const).map((k) => ({ usuario_id: `u-${k}`, clave_orden: LEGAJO[k].toLowerCase() })), error: null }
+    }
+    if (fn === 'nombres_de_usuarios') {
+      return { data: (['m', 'a', 'c'] as const).map((k) => ({ id: `u-${k}`, nombre: MOSTRAR[k], persona_id: `p-${k}` })), error: null }
+    }
+    return { data: null, error: { message: `no existe ${fn}` } }
+  }
+  return { cliente: { rpc, from: tabla } as unknown as SupabaseClient, llamadas }
+}
+
+test('usuarios con sesión de Campo (sin legajo visible): ordena por apellido, no por el nombre para mostrar', async () => {
+  const { cliente, llamadas } = supabaseDeCampo()
+  const orden = await ordenDeUsuarios(cliente)
+  const ids = [...orden].sort(([, x], [, y]) => x.localeCompare(y, 'es')).map(([id]) => id)
+  // Por lo que se muestra sería Diego, Emiliano, Jorge (u-a, u-m, u-c).
+  assert.deepEqual(ids, ['u-a', 'u-c', 'u-m'])
+  // Una sola lectura, y nunca a `personas` con la sesión del usuario (ahí la RLS la deja vacía).
+  assert.deepEqual(llamadas, ['rpc:orden_de_usuarios'])
+})
+
+test('clavesDeOrden: normaliza la clave de la base como la app y descarta filas sin usuario', () => {
+  const claves = clavesDeOrden([
+    { usuario_id: 'u-n', clave_orden: 'ÑAÑEZ  PEDRO' },
+    { usuario_id: 'u-g', clave_orden: 'gómez álvarez josé' },
+    { usuario_id: '', clave_orden: 'nadie' },
+  ])
+  assert.deepEqual([...claves], [['u-n', 'ñañez pedro'], ['u-g', 'gomez alvarez jose']])
+})
+
+test('orden_de_usuarios(): security definer, legajo primero y cerrada a anon', () => {
+  const sql = fuente('../../../supabase/migrations/20260928T2345_orden_de_usuarios.sql').replace(/^\s*--.*$/gm, '')
+  assert.match(sql, /security definer/)
+  assert.match(sql, /set search_path = public/)
+  // El legajo es el PRIMER término: el nombre para mostrar sólo entra si no hay legajo.
+  assert.match(sql, /coalesce\(\s*nullif\(btrim\(pe\.nombre_completo\)/)
+  // La Ñ no se traduce a N.
+  assert.doesNotMatch(sql, /translate\([\s\S]*ñ[\s\S]*\)\s+as clave_orden/)
+  assert.match(sql, /revoke all on function public\.orden_de_usuarios\(\) from public, anon/)
+  assert.match(sql, /grant execute on function public\.orden_de_usuarios\(\) to authenticated/)
+  assert.doesNotMatch(sql, /nombres_de_usuarios/)
 })
 
 test('Personal › retribución del plantel (plantelActivo): por legajo, no por lo que se muestra', () => {

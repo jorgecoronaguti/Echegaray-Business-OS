@@ -93,25 +93,23 @@ export function compararPorApellido(a: Entrada, b: Entrada): number {
 }
 
 /** Una fila de `nombres_de_usuarios()`: el nombre ya viene resuelto por el vínculo. */
-export interface FilaNombreDeUsuario { id: string; nombre: string | null; persona_id?: string | null }
+export interface FilaNombreDeUsuario { id: string; nombre: string | null }
+
+/** Una fila de `orden_de_usuarios()`: la clave de orden ya resuelta en la base. */
+export interface FilaOrdenDeUsuario { usuario_id: string; clave_orden: string | null }
 
 /**
  * id de usuario → CLAVE DE ORDEN (el legajo, apellido primero), para las listas de usuarios.
  *
- * `nombres_de_usuarios()` devuelve el nombre PARA MOSTRAR («Emiliano Maldonado»): ordenar por él es
- * ordenar por nombre de pila (el bug del 28/09). La función devuelve también `persona_id`, y con él
- * se busca el `nombre_completo` del legajo en `legajos`. Sin persona, o sin legajo visible para la
- * sesión, el único dato que hay es el nombre de la cuenta: se ordena por ése.
+ * La clave la arma `orden_de_usuarios()` (security definer) y no la app, porque la RLS de `personas`
+ * oculta los legajos a Campo y a los jefes: leído con su sesión, no había legajo y la lista caía al
+ * nombre para mostrar, o sea al nombre de pila (auditoría 28/09/2026). Se vuelve a pasar por
+ * `claveDeOrden` para que la normalización sea la de la app aunque la base deje escapar una tilde.
  */
-export function clavesDeOrdenDeUsuarios(
-  filas: readonly FilaNombreDeUsuario[] | null | undefined,
-  legajos: ReadonlyMap<string, string | null>,
-): Map<string, string> {
+export function clavesDeOrden(filas: readonly FilaOrdenDeUsuario[] | null | undefined): Map<string, string> {
   const m = new Map<string, string>()
   for (const f of filas ?? []) {
-    if (!f.id) continue
-    const legajo = f.persona_id ? legajos.get(f.persona_id) : null
-    m.set(f.id, claveDeOrden(legajo ? { nombre_completo: legajo } : f.nombre))
+    if (f.usuario_id) m.set(f.usuario_id, claveDeOrden(f.clave_orden))
   }
   return m
 }

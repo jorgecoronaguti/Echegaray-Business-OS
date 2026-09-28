@@ -4,7 +4,7 @@
 // para poner «quién» al lado de un movimiento, una tarea o una corrección. Esas lecturas daban el
 // nombre de la CUENTA, no el de la persona, y cada pantalla lo escribía a su manera.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { clavesDeOrdenDeUsuarios, diccionarioDeUsuarios, type FilaNombreDeUsuario } from './nombre.ts'
+import { clavesDeOrden, diccionarioDeUsuarios, type FilaNombreDeUsuario, type FilaOrdenDeUsuario } from './nombre.ts'
 
 /** Todos los usuarios (son pocos: ~5). Si la lectura falla, un diccionario vacío: la pantalla cae en
  *  su «alguien» / texto viejo, nunca se cae. */
@@ -28,22 +28,16 @@ export async function nombresDeUsuariosPlano(supabase: SupabaseClient): Promise<
  * `nombresDeUsuarios`; esto es sólo para ordenar, porque ordenar por el nombre para mostrar es
  * ordenar por nombre de pila (dueño, 28/09/2026).
  *
- * El legajo se lee con la sesión de quien llama: si la RLS de `personas` no le deja ver a alguien, esa
- * cuenta se ordena por su nombre para mostrar (la función sólo trae el nombre ya resuelto). Si todo
- * falla, un diccionario vacío y quien llama cae en su propio orden: nunca se cae la pantalla.
+ * Una sola lectura, a `orden_de_usuarios()`: es security definer porque la RLS de `personas` le
+ * esconde los legajos a Campo y a los jefes, y leerlos con esa sesión los hacía caer al nombre de
+ * pila. Si la función falla (o la migración 20260928T2345 todavía no está aplicada), un diccionario
+ * vacío y quien llama cae en su propio orden: nunca se cae la pantalla.
  */
 export async function ordenDeUsuarios(supabase: SupabaseClient): Promise<Map<string, string>> {
   try {
-    const { data, error } = await supabase.rpc('nombres_de_usuarios')
+    const { data, error } = await supabase.rpc('orden_de_usuarios')
     if (error) return new Map()
-    const filas = (data ?? []) as FilaNombreDeUsuario[]
-    const ids = [...new Set(filas.map((f) => f.persona_id).filter((x): x is string => !!x))]
-    const legajos = new Map<string, string | null>()
-    if (ids.length) {
-      const { data: personas } = await supabase.from('personas').select('id, nombre_completo').in('id', ids)
-      for (const p of (personas ?? []) as { id: string; nombre_completo: string | null }[]) legajos.set(p.id, p.nombre_completo)
-    }
-    return clavesDeOrdenDeUsuarios(filas, legajos)
+    return clavesDeOrden((data ?? []) as FilaOrdenDeUsuario[])
   } catch {
     return new Map()
   }
