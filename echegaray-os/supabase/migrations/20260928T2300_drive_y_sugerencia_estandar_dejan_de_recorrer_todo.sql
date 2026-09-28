@@ -55,6 +55,9 @@
 -- fila por fila). El índice nuevo sólo acelera la lectura; no cambia qué policy evalúa ni qué ve cada
 -- rol.
 
+-- Si una sincronización del Drive tiene la tabla tomada, que falle en 3 s en vez de quedar en cola trabando lecturas.
+set lock_timeout = '3s';
+
 create index if not exists drive_index_path_c_idx on public.drive_index (path collate "C");
 comment on index public.drive_index_path_c_idx is
   'Rango de prefijo de carpeta para drive_file_ids_vinculados() (rama 4). COLLATE "C" a propósito: '
@@ -139,7 +142,7 @@ comment on function public.drive_file_ids_vinculados() is
 -- vista `obra_actividad_vinculacion`, sin tocar). El único cambio es DÓNDE se calcula
 -- `norm_area_txt()`, no QUÉ compara ni QUÉ fila ve cada rol.
 
-create or replace view public.obra_actividad_sugerencia_estandar as
+create or replace view public.obra_actividad_sugerencia_estandar with (security_invoker = true) as
 with v_norm as materialized (
   select v.obra_id,
     v.actividad_id,
