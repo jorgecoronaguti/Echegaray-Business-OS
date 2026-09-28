@@ -3,7 +3,7 @@
 // Persisten en orq.schedules; el timer del OS (0 API) las dispara en su cadencia. Corren AUTO
 // (sin aprobación): son internas y reversibles (Nivel D). Usan capability 'drive.read' — el
 // mismo truco que la tool "aprender" — para que la policy las deje ejecutar directo.
-import { createSchedule, listSchedules, toggleSchedule } from '../schedules.mjs'
+import { createSchedule, listSchedules, toggleSchedule, HERRAMIENTAS_DE_AGENDA } from '../schedules.mjs'
 import { parseCadence, describeCadence } from '../schedule-intent.mjs'
 
 export function scheduleTools({ tenantId, createdBy }) {
@@ -12,20 +12,22 @@ export function scheduleTools({ tenantId, createdBy }) {
       capability: 'drive.read',
       schema: {
         name: 'programar_tarea',
-        description: 'Deja una tarea corriendo SOLA de forma recurrente (el OS la ejecuta en su cronograma sin que nadie la dispare, hasta que se frene). Llamala SOLO cuando la tarea está BIEN DEFINIDA con el dueño: alcance (qué hacer exactamente), expectativa (qué entrega y a quién/cómo) y cronograma (cada cuánto). Pasá directiva (la orden completa y autocontenida, como si se la dieras al OS cada vez), cadencia_texto en palabras (ej. "todos los lunes a las 8", "cada día a las 9", "el día 5 de cada mes") y un titulo corto.',
+        description: 'Deja corriendo SOLA, en su cronograma, una HERRAMIENTA PROPIA del OS (sin modelo): briefing_caja (briefing de caja del día), alias_pendientes (nombres de cliente que el eje no reconoce) o indices_economicos (inflación esperada del REM del BCRA). No programa órdenes en lenguaje natural: si lo pedido no es una de esas tres, decile al dueño que la agenda todavía no lo sabe correr. Pasá herramienta, cadencia_texto en palabras (ej. "todos los lunes a las 8") y un titulo corto.',
         input_schema: {
           type: 'object',
           properties: {
-            directiva: { type: 'string', description: 'la orden completa y autocontenida a ejecutar cada vez (ej. "revisá qué se vence esta semana y mandame el detalle por mail a jorge")' },
+            herramienta: { type: 'string', enum: [...HERRAMIENTAS_DE_AGENDA], description: 'la herramienta propia que corre cada vez' },
+            directiva: { type: 'string', description: 'para qué la pidió el dueño, en una línea (queda como nota)' },
             cadencia_texto: { type: 'string', description: 'cada cuánto, en palabras: "todos los lunes a las 8", "cada día a las 9", "el día 5 de cada mes"' },
             titulo: { type: 'string', description: 'nombre corto de la tarea (ej. "Vencimientos semanales")' },
           },
-          required: ['directiva', 'cadencia_texto'],
+          required: ['herramienta', 'cadencia_texto'],
         },
       },
       async run(input) {
-        const directive = String(input?.directiva ?? '').trim()
-        if (!directive) return { error: 'falta la directiva (qué hacer)' }
+        const herramienta = String(input?.herramienta ?? '').trim()
+        if (!HERRAMIENTAS_DE_AGENDA.includes(herramienta)) return { error: `la agenda sólo corre herramientas propias (${HERRAMIENTAS_DE_AGENDA.join(', ')}): «${herramienta}» no se puede programar` }
+        const directive = String(input?.directiva ?? '').trim() || herramienta
         const cad = parseCadence(input?.cadencia_texto)
         if (!cad) return { error: `no entendí "${input?.cadencia_texto ?? ''}". Decime la cadencia en palabras, ej. "todos los lunes a las 8", "cada día a las 9" o "el día 5 de cada mes".` }
         const s = await createSchedule({
@@ -33,6 +35,7 @@ export function scheduleTools({ tenantId, createdBy }) {
           title: String(input?.titulo || directive).slice(0, 60),
           directive: directive.slice(0, 2000),
           cadence: cad.cadence,
+          herramienta,
         })
         return { ok: true, id: s.id, titulo: s.title, cuando: cad.legible, cadence: cad.cadence, proxima_corrida: s.next_run_at, nota: 'Queda corriendo sola hasta que la frenes.' }
       },

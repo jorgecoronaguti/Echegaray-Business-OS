@@ -1166,7 +1166,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   // GUÍA MODO AGENDA — el dueño quiere PROGRAMAR una tarea recurrente. NO la crees de una:
   // primero un diálogo CORTO que la deje BIEN DEFINIDA, y recién ahí llamás programar_tarea.
   const agendaGuidance = scheduleCreateIntent
-    ? `\n\nMODO AGENDA — vas a dejar una tarea corriendo SOLA (recurrente). NO la programes hasta que esté BIEN DEFINIDA en estas 4 dimensiones; preguntá SOLO las que falten, UNA por vez, conciso (no interrogues de más si el dueño ya las dio):\n• ALCANCE: qué tiene que hacer exactamente, sobre qué datos/obra/fuente.\n• EXPECTATIVA: qué entrega y CÓMO/A QUIÉN (¿solo mostrarlo en el chat?, ¿mail a quién?, ¿qué formato?). Si va por mail necesitás el destinatario.\n• CRONOGRAMA: cada cuánto y a qué hora (ej. "todos los lunes a las 8"). Si falta la hora, asumí 08:00 y confirmá.\n• COSTO: cada corrida gasta API. Estimá y decilo en una línea: un lookup simple + aviso ≈ US$0.02–0.10/corrida; un análisis pesado ≈ US$0.30–1. Que el dueño sepa el gasto recurrente antes de activarla (regla del OS: nada corre de fondo si no da utilidad clara).\nCuando las 4 estén claras, LLAMÁ programar_tarea con: directiva = la orden COMPLETA y autocontenida (como si se la dieras al OS cada vez, incluyendo a quién avisar), cadencia_texto en palabras, y un titulo corto. Después confirmá en 1–2 líneas qué quedó programado, cuándo corre y el costo estimado. Para ver o frenar tareas ya existen listar_tareas_programadas y frenar_tarea. NADA de efecto externo (mails, pagos) se ejecuta solo: cuando la tarea corra, esas acciones igual caerán en Pendientes.`
+    ? `\n\nMODO AGENDA — la agenda corre SOLO herramientas propias del OS, sin modelo: briefing_caja (briefing de caja del día), alias_pendientes (nombres de cliente que el eje no reconoce) e indices_economicos (inflación esperada del REM del BCRA). Si lo que pide el dueño es una de esas, preguntá sólo el cronograma que falte y LLAMÁ programar_tarea con herramienta, cadencia_texto en palabras y un titulo corto; costo por corrida: US$0. Si es otra cosa, decile claro que la agenda todavía no la sabe correr sola: no la programes ni prometas que va a correr. Para ver o frenar tareas existen listar_tareas_programadas y frenar_tarea.`
     : ''
 
   // LECTURA vs ESCRITURA. El manual pesado de ESCRIBIR Drive (crear/editar/pivots/formato,
@@ -1447,12 +1447,15 @@ const server = http.createServer(async (req, res) => {
 
       // Crear una recurrencia (ej. "todos los lunes revisá cobranzas").
       if (req.url === '/schedule') {
-        const { title, directive, cadence } = data
-        if (!directive || !cadence) return send(res, 400, { error: 'faltan directive y cadence' })
-        const s = await createSchedule({
-          tenantId: CTX.context.tenantId, createdBy: DIRECTOR_PRINCIPAL,
-          title: (title || directive).slice(0, 120), directive: directive.slice(0, 2000), cadence,
-        })
+        const { title, directive, cadence, herramienta, entrada } = data
+        if (!herramienta || !cadence) return send(res, 400, { error: 'faltan herramienta y cadence (la agenda corre herramientas propias, no directivas)' })
+        let s
+        try {
+          s = await createSchedule({
+            tenantId: CTX.context.tenantId, createdBy: DIRECTOR_PRINCIPAL,
+            title: (title || directive || herramienta).slice(0, 120), directive: directive ? directive.slice(0, 2000) : null, cadence, herramienta, entrada,
+          })
+        } catch (e) { return send(res, 400, { error: String(e?.message ?? e) }) }
         log.info('recurrencia creada', { id: s.id, cadence })
         return send(res, 200, { ok: true, schedule: s })
       }

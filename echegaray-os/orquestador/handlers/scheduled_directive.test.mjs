@@ -45,3 +45,9 @@ test('textoDeResultado prefiere texto, después resumen', () => {
   assert.equal(textoDeResultado({ resumen: 'b' }), 'b')
   assert.equal(textoDeResultado(null), '(sin respuesta)')
 })
+
+test('no se puede crear una recurrencia sin herramienta propia', async () => {
+  const { createSchedule } = await import('../lib/schedules.mjs')
+  await assert.rejects(createSchedule({ title: 't', directive: 'revisá cobranzas', cadence: 'daily:08:00' }), /sólo corre herramientas propias/)
+  await assert.rejects(createSchedule({ title: 't', cadence: 'daily:08:00', herramienta: 'sincronizar_nomina' }), /no es una/)
+})

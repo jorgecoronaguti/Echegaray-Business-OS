@@ -27,21 +27,36 @@ export function linkDeTablas(html) {
 /**
  * PURO: de las filas de la hoja «Cuadros de resultados» saca la MEDIANA de la variación mensual del
  * IPC nivel general. Filas como ["Aug-26","var. % mensual","1.7",...].
+ *
+ * ESTRICTO A PROPÓSITO (auditoría 26/09): debajo viene el IPC NÚCLEO con los mismos meses y valores
+ * creíbles. Si el bloque se leyera «hasta la próxima fila vacía» y el BCRA las sacara, el núcleo
+ * pisaría al nivel general sin un solo error. Por eso: la columna se busca por su encabezado
+ * «Mediana», el bloque termina en el primer rótulo que no es un período, y un mes repetido invalida
+ * todo. Ante cualquier duda devuelve [] y el llamador no escribe nada.
  * @returns {Array<{periodo:string, variacion:number}>}
  */
 export function variacionesDelCuadro(filas) {
   const i0 = filas.findIndex((f) => /IPC nivel general/i.test(String(f?.[0] ?? '')))
   if (i0 < 0) return []
+  const enc = filas[i0 + 1] ?? []
+  const col = enc.findIndex((c) => /^\s*mediana\s*$/i.test(String(c ?? '')))
+  if (!/per[ií]odo/i.test(String(enc[0] ?? '')) || col < 0) return []
   const out = []
-  for (const f of filas.slice(i0 + 1)) {
-    if (!f?.length) { if (out.length) break; continue }
-    const m = /^([a-z]{3})-(\d{2})$/i.exec(String(f[0]).trim())
+  for (const f of filas.slice(i0 + 2)) {
+    const c0 = String(f?.[0] ?? '').trim()
+    if (!c0) { if (out.length) break; continue }
+    // Un período del REM es «Aug-26», «próx. 12 meses» o un año; cualquier otra cosa es el título
+    // del bloque siguiente (IPC núcleo, tasa, tipo de cambio): ahí se termina.
+    if (!/^[a-z]{3}-\d{2}$/i.test(c0) && !/^pr[oó]x/i.test(c0) && !/^\d{4}$/.test(c0)) break
+    const m = /^([a-z]{3})-(\d{2})$/i.exec(c0)
     if (!m || !/mensual/i.test(String(f[1] ?? ''))) continue
     const mes = MES_EN[m[1].toLowerCase()]
-    const v = Number(String(f[2]).replace(',', '.'))
+    const v = Number(String(f[col]).replace(',', '.'))
     // Mismo filtro que el parser viejo: un IPC mensual fuera de 0–15% es un error de lectura.
-    if (!mes || !Number.isFinite(v) || v <= 0 || v > 15) continue
-    out.push({ periodo: `20${m[2]}-${String(mes).padStart(2, '0')}`, variacion: Math.round((v / 100) * 1e6) / 1e6 })
+    if (!mes || !Number.isFinite(v) || v <= 0 || v > 15) return []
+    const periodo = `20${m[2]}-${String(mes).padStart(2, '0')}`
+    if (out.some((x) => x.periodo === periodo)) return []
+    out.push({ periodo, variacion: Math.round((v / 100) * 1e6) / 1e6 })
   }
   return out
 }

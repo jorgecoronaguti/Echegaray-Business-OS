@@ -67,7 +67,7 @@ export function formatIndices(r) {
 export async function actualizarIndices({ leer = leerRemBcra, forzar = false } = {}) {
   // ¿Hace falta leer? El REM sale una vez por mes; se refresca si el dato tiene más de 7 días.
   const { rows: ult } = await query(
-    "select max(leido_en) ultimo, count(*)::int n from public.indice_economico where indice='ipc'",
+    "select max(leido_en) ultimo, count(*)::int n from public.indice_economico where indice='ipc' and tipo='proyeccion'",
   )
   const dias = ult[0]?.ultimo ? Math.floor((Date.now() - new Date(ult[0].ultimo)) / 86400000) : 999
   let nuevos = 0, sinParsear = false, cambios = [], edicion = null, errorLectura = null

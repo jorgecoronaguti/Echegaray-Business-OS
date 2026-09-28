@@ -39,12 +39,19 @@ export function computeNextRun(cadence, from = new Date()) {
   return toUTC(setHM(new Date(ar.getTime() + 86400000), 8, 0))
 }
 
-export async function createSchedule({ tenantId, createdBy = null, title, directive, cadence, nextRunAt }) {
+/** Las herramientas propias que la agenda sabe correr sin modelo (handlers/scheduled_directive.mjs).
+ *  Una recurrencia sin una de éstas no correría nunca: por eso no se deja crear. */
+export const HERRAMIENTAS_DE_AGENDA = Object.freeze(['briefing_caja', 'alias_pendientes', 'indices_economicos'])
+
+export async function createSchedule({ tenantId, createdBy = null, title, directive, cadence, nextRunAt, herramienta, entrada = {} }) {
+  if (!HERRAMIENTAS_DE_AGENDA.includes(herramienta)) {
+    throw new Error(`la agenda sólo corre herramientas propias (${HERRAMIENTAS_DE_AGENDA.join(', ')}); «${herramienta ?? ''}» no es una`)
+  }
   const next = nextRunAt ? new Date(nextRunAt) : computeNextRun(cadence) || new Date(Date.now() + 60000)
   const { rows } = await query(
-    `insert into orq.schedules (tenant_id, created_by, title, directive, cadence, next_run_at)
-     values ($1,$2,$3,$4,$5,$6) returning *`,
-    [tenantId, createdBy, title, directive, cadence, next.toISOString()],
+    `insert into orq.schedules (tenant_id, created_by, title, directive, cadence, next_run_at, herramienta, entrada)
+     values ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
+    [tenantId, createdBy, title, directive ?? herramienta, cadence, next.toISOString(), herramienta, entrada ?? {}],
   )
   return rows[0]
 }

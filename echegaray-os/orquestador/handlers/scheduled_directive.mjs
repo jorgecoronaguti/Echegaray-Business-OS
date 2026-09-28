@@ -9,9 +9,11 @@
 // herramientas propias de inteligencia para que todo se siga basando en Claude — hay que cambiar eso».
 //
 // Ahora cada recurrencia NOMBRA su herramienta (`orq.schedules.herramienta`) y acá se corre directo.
-// Sólo herramientas de LECTURA: una escritura programada no pasa por la aprobación del dueño, así
-// que no se habilita por esta puerta. Sin herramienta, la recurrencia no corre y lo deja escrito.
-import { setScheduleResult } from '../lib/schedules.mjs'
+// Sólo las de `HERRAMIENTAS_DE_AGENDA`, y ninguna escribe en Google (Sheet/Drive): una escritura
+// programada en el Sheet no pasa por la aprobación del dueño. `indices_economicos` sí escribe su propia
+// tabla (`public.indice_economico`): es su función, y el Sheet lo baja el pipeline con su guarda.
+// Sin herramienta, la recurrencia no corre y lo deja escrito.
+import { setScheduleResult, HERRAMIENTAS_DE_AGENDA } from '../lib/schedules.mjs'
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { briefingCajaTools } from '../lib/tools/briefing-caja-tool.mjs'
 import { aliasPendientesTools } from '../lib/tools/alias-pendientes-tool.mjs'
@@ -21,7 +23,7 @@ import { indicesTools } from '../lib/tools/indices-tool.mjs'
 export function herramientasDeAgenda(google) {
   const mapa = new Map()
   for (const def of Object.values({ ...briefingCajaTools(google), ...aliasPendientesTools(google), ...indicesTools() })) {
-    if (def.capability === 'drive.read') mapa.set(def.schema.name, def)
+    if (def.capability === 'drive.read' && HERRAMIENTAS_DE_AGENDA.includes(def.schema.name)) mapa.set(def.schema.name, def)
   }
   return mapa
 }

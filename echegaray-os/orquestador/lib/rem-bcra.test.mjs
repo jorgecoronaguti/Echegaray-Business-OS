@@ -31,6 +31,20 @@ test('no mezcla el IPC núcleo ni los interanuales', () => {
   assert.ok(!variacionesDelCuadro(FILAS).some((v) => v.variacion > 0.05))
 })
 
+test('sin filas vacías entre bloques, el IPC núcleo no se cuela', () => {
+  const pegadas = FILAS.filter((f) => f.length)
+  assert.deepEqual(variacionesDelCuadro(pegadas).map((v) => v.periodo), ['2026-08', '2026-09', '2026-12', '2027-01'])
+})
+
+test('un mes repetido o una columna sin «Mediana» invalidan todo', () => {
+  const rep = FILAS.slice(0, 6).concat([['Aug-26', 'var. % mensual', '1.9', '1.9']])
+  assert.deepEqual(variacionesDelCuadro(rep), [])
+  const sinMediana = FILAS.map((f, i) => (i === 4 ? ['Período', 'Referencia', 'Promedio', 'Mediana'] : f))
+  assert.equal(variacionesDelCuadro(sinMediana)[0].variacion, 0.018)
+  const sinEncabezado = FILAS.map((f, i) => (i === 4 ? ['Período', 'Referencia', 'Promedio'] : f))
+  assert.deepEqual(variacionesDelCuadro(sinEncabezado), [])
+})
+
 test('sin el bloque del IPC nivel general no devuelve nada', () => {
   assert.deepEqual(variacionesDelCuadro([['Tasa de interés (TAMAR)'], ['Sep-26', 'TNA; %', '24.1']]), [])
 })
