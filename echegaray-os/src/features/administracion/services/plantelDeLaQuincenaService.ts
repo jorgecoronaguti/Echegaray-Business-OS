@@ -18,7 +18,7 @@ import { laSesionEsDePrueba, leerCuilesDelLegajo, leerSubcontratoDePersonas, sub
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import type { Quincena } from './quincena.ts'
 import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
-import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 const sinTabla = (e: { code?: string; message: string }): boolean =>
   e.code === '42P01' || /does not exist/i.test(e.message)
@@ -26,6 +26,8 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export interface PersonaDelDirectorio extends PersonaDelPlantel {
   fechaIngreso: string | null
   fechaEgreso: string | null
+  /** LA CLAVE DE ORDEN (apellido primero, del legajo). `nombre` es para mostrar y empieza por la pila. */
+  nombreOrden: string
 }
 
 /** `persona_directorio` → lo que la regla necesita. */
@@ -34,7 +36,7 @@ export function personaDelDirectorio(r: {
   fecha_ingreso?: string | null; fecha_egreso?: string | null
 }): PersonaDelDirectorio {
   return {
-    id: r.id, nombre: nombreDePersonaONull(r) ?? '', enLaEmpresa: r.en_la_empresa === true,
+    id: r.id, nombre: nombreDePersonaONull(r) ?? '', nombreOrden: claveDeOrden(r), enLaEmpresa: r.en_la_empresa === true,
     fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
     fechaEgreso: r.fecha_egreso ? String(r.fecha_egreso).slice(0, 10) : null,
   }

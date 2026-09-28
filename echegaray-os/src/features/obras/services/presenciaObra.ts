@@ -17,7 +17,7 @@
 //    en su propio grupo: esconderlo dejaría a una persona trabajando fuera de la pantalla.
 
 import { esTrabajada } from './tipoHora.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Lo mínimo de una marca. Es un subconjunto de `FilaPresencia` a propósito: esta regla no tiene por
  *  qué recompilarse cuando la vista agregue una columna. */
@@ -38,6 +38,8 @@ export interface MarcaDelDia {
 export interface AsignadoDeObra {
   persona_id: string
   persona_nombre: string | null
+  /** La clave de orden (legajo, apellido primero) que ya resolvió `personalService`. Sin ella, el legajo de la marca. */
+  persona_nombre_orden?: string | null
   rol: string
   cuadrilla: string | null
   hasta: string | null
@@ -48,6 +50,8 @@ export const SIN_CUADRILLA = 'Sin cuadrilla'
 export interface FilaHoy {
   personaId: string
   nombre: string
+  /** LA CLAVE DE ORDEN (apellido primero). `nombre` se muestra y empieza por la pila: no ordena. */
+  nombreOrden: string
   /** Categoría de convenio o puesto: lo que la persona hace acá. `null` se dice, no se rellena. */
   rol: string | null
   marca: MarcaDelDia | null
@@ -107,6 +111,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     lista.push({
       personaId: a.persona_id,
       nombre: a.persona_nombre ? nombreDePersona(a.persona_nombre) : nombreDePersona(marca),
+      nombreOrden: a.persona_nombre_orden || claveDeOrden(marca ?? a.persona_nombre),
       rol: marca?.categoria ?? marca?.puesto ?? a.rol,
       marca,
       asignado: true,
@@ -123,6 +128,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     lista.push({
       personaId,
       nombre: nombreDePersona(marca),
+      nombreOrden: claveDeOrden(marca),
       rol: marca.categoria ?? marca.puesto,
       marca,
       asignado: false,
@@ -133,7 +139,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
   const grupos: GrupoHoy[] = [...filasPorCuadrilla.entries()]
     .map(([cuadrilla, filas]) => ({
       cuadrilla,
-      filas: filas.slice().sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')),
+      filas: filas.slice().sort((x, y) => x.nombreOrden.localeCompare(y.nombreOrden, 'es')),
       presentes: filas.filter((f) => f.marca).length,
       asignados: asignadosPorCuadrilla.get(cuadrilla) ?? 0,
     }))

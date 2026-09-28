@@ -18,8 +18,8 @@ import {
 //  5. Que «Sin obra» se mezcle con una obra o no quede al final.
 
 const FECHA = '2026-09-17' // jueves
-const juan: PersonaDeLaCarga = { id: 'juan', nombre: 'Juan', categoria: 'oficial', esJefe: false }
-const jefa: PersonaDeLaCarga = { id: 'ana', nombre: 'Ana', categoria: null, esJefe: true }
+const juan: PersonaDeLaCarga = { id: 'juan', nombre: 'Juan', nombreOrden: 'Juan', categoria: 'oficial', esJefe: false }
+const jefa: PersonaDeLaCarga = { id: 'ana', nombre: 'Ana', nombreOrden: 'Ana', categoria: null, esJefe: true }
 const asig = (persona_id: string, obra_id: string, desde: string | null = '2026-09-01', hasta: string | null = null): AsignacionDelDia =>
   ({ persona_id, obra_id, desde, hasta })
 const hh = (persona_id: string, obra: string | null, horas: number, tipo_hora = 'normal'): HoraDelDiaConObra =>
@@ -73,7 +73,7 @@ test('decisión 2: el jefe de obra SE LISTA para marcar, y sin presentismo', () 
 
 test('grupos por nombre de obra con «Sin obra» al final; el filtro separa sin obra de las obras', () => {
   const filas = armarCargaDelDia({
-    fecha: FECHA, personas: [juan, jefa, { id: 'leo', nombre: 'Leo', categoria: 'ayudante', esJefe: false }],
+    fecha: FECHA, personas: [juan, jefa, { id: 'leo', nombre: 'Leo', nombreOrden: 'Leo', categoria: 'ayudante', esJefe: false }],
     presencias: [], horas: [], asignaciones: [asig('juan', 'b'), asig('ana', 'a')],
   })
   const grupos = agruparPorObra(filas, { a: 'Zeta', b: 'Alfa' })

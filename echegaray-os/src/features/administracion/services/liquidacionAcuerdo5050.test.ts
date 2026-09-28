@@ -27,7 +27,7 @@ const TARIFA: TarifaVigente = {
 }
 
 const base: EntradaDeLinea = {
-  personaId: 'p1', nombre: 'AGUERO CRISTIAN', horas: 100, tarifa: TARIFA,
+  personaId: 'p1', nombre: 'AGUERO CRISTIAN', nombreOrden: 'AGUERO CRISTIAN', horas: 100, tarifa: TARIFA,
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }
 

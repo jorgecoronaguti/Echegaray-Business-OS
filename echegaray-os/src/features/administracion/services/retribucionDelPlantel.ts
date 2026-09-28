@@ -34,7 +34,12 @@ import type { Quincena } from './quincena.ts'
 import type { RotuloValorHora } from './valorHoraDelLegajo.ts'
 
 /** Lo que se toma de una línea del cuadro: la parte retribuida y de quién es. */
-export type LineaDelCuadro = LineaRetribuida & { personaId: string; nombre: string }
+export type LineaDelCuadro = LineaRetribuida & {
+  personaId: string
+  nombre: string
+  /** La clave de orden del legajo (apellido primero) que trae `LineaLiquidada`. Sin ella, `nombre`. */
+  nombreOrden?: string
+}
 
 /** Una quincena ya leída con `getLiquidacionDeLaQuincena`. Si falló, `cuadros` vacío. */
 export interface QuincenaLeida {
@@ -60,13 +65,14 @@ export function quincenaDeLaPersona(l: QuincenaLeida, personaId: string): Quince
 export function plantelActivo(lecturas: readonly QuincenaLeida[]): { personaId: string; nombre: string }[] {
   const ultima = [...lecturas].sort((a, b) => (a.quincena.desde < b.quincena.desde ? 1 : -1))[0]
   if (!ultima) return []
-  const vistos = new Map<string, string>()
+  // Se ordena por la clave del legajo (apellido primero), no por el nombre que se muestra.
+  const vistos = new Map<string, { nombre: string; orden: string }>()
   for (const c of ultima.cuadros) {
     if (c.grupo === 'final') continue
-    for (const l of c.lineas) if (!vistos.has(l.personaId)) vistos.set(l.personaId, l.nombre)
+    for (const l of c.lineas) if (!vistos.has(l.personaId)) vistos.set(l.personaId, { nombre: l.nombre, orden: l.nombreOrden ?? l.nombre })
   }
-  return [...vistos].map(([personaId, nombre]) => ({ personaId, nombre }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  return [...vistos].sort(([, a], [, b]) => a.orden.localeCompare(b.orden, 'es'))
+    .map(([personaId, { nombre }]) => ({ personaId, nombre }))
 }
 
 export type Medida = 'pagado' | 'liquidado'

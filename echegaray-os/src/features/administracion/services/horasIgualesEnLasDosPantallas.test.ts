@@ -50,13 +50,13 @@ const REGISTROS: Fila[] = [
 const totalDeHoras = (): number | null => armarQuincenaPorObra({
   asignaciones: [], registros: REGISTROS,
   obras: { 'obra-a': { id: 'obra-a', nombre: 'A', cliente: null }, 'obra-b': { id: 'obra-b', nombre: 'B', cliente: null } },
-  dias: DIAS, personas: { p: { nombre: 'P', nota: null } }, hoy: '2026-09-15',
+  dias: DIAS, personas: { p: { nombre: 'P', nombreOrden: 'P', nota: null } }, hoy: '2026-09-15',
 })[0]?.horas ?? null
 
 test('INVARIANTE: el total por persona de Horas es la columna Horas de Liquidación', () => {
   const liq = horasDeQuincena(q, REGISTROS)
   const linea = aplicarOverrides(liquidarLinea({
-    personaId: 'p', nombre: 'P', horas: liq.horas, horasEquivalentes: liq.horasEquivalentes,
+    personaId: 'p', nombre: 'P', nombreOrden: 'P', horas: liq.horas, horasEquivalentes: liq.horasEquivalentes,
     tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-09-01', origen: 't' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros'), {}, 'obreros')
@@ -71,7 +71,7 @@ test('LA PLATA USA HORAS EQUIVALENTES: la extra al 1,5 se paga, pero no cambia l
   assert.equal(liq.horasEquivalentes, 42.3, '40,8 + 3 × 0,5')
   assert.deepEqual(liq.extras, [{ coeficiente: 1.5, horas: 3 }])
   const l = liquidarLinea({
-    personaId: 'p', nombre: 'P', horas: liq.horas, horasEquivalentes: liq.horasEquivalentes,
+    personaId: 'p', nombre: 'P', nombreOrden: 'P', horas: liq.horas, horasEquivalentes: liq.horasEquivalentes,
     tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-09-01', origen: 't' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros')

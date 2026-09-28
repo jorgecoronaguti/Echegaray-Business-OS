@@ -328,7 +328,7 @@ export async function getQuincenaPorObra(
       personas: {
         ...Object.fromEntries(plantel.personas.map((p) => {
           const baja = marcaDeBaja(p)?.texto ?? null
-          return [p.id, { nombre: p.nombre, nota: baja, baja }]
+          return [p.id, { nombre: p.nombre, nombreOrden: p.nombreOrden, nota: baja, baja }]
         })),
         ...(await plantelDe(supabase, sinAsignacion, desde, hasta)),
       },

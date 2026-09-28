@@ -24,7 +24,7 @@ const TARIFA: TarifaVigente = {
 }
 
 const base: EntradaDeLinea = {
-  personaId: 'p1', nombre: 'PRUEBA', horas: 100, tarifa: TARIFA,
+  personaId: 'p1', nombre: 'PRUEBA', nombreOrden: 'PRUEBA', horas: 100, tarifa: TARIFA,
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }
 

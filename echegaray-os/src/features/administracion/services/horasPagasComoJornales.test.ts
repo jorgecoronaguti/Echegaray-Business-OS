@@ -85,7 +85,7 @@ test('Rosales Diego 01–15/09: 70 h y $411.180 — la jornada completada por la
   assert.equal(h.horas, 70)
   assert.equal(h.horasEquivalentes, 70)
   const linea = liquidarLinea({
-    personaId: '4d0372ce-f299-4034-9c7f-846ddd0b8765', nombre: 'ROSALES DIEGO JOSE', horas: h.horas, horasEquivalentes: h.horasEquivalentes,
+    personaId: '4d0372ce-f299-4034-9c7f-846ddd0b8765', nombre: 'ROSALES DIEGO JOSE', nombreOrden: 'ROSALES DIEGO JOSE', horas: h.horas, horasEquivalentes: h.horasEquivalentes,
     tarifa: { valorHora: 5874, netoMensual: null, desde: '2026-08-16', origen: 'liquidacion_linea sellada' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros')

@@ -30,11 +30,11 @@ const RECIBO: ReciboDeSueldo = {
   bruto: 317400, neto: 230240.12, driveFileId: null,
 }
 const obrero = (id: string, horas: number) => liquidarLinea({
-  personaId: id, nombre: id, horas, tarifa: { valorHora: 5874, netoMensual: null, desde: '2026-08-16', origen: 't' },
+  personaId: id, nombre: id, nombreOrden: id, horas, tarifa: { valorHora: 5874, netoMensual: null, desde: '2026-08-16', origen: 't' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'obreros')
 const mensual = liquidarLinea({
-  personaId: 'maldonado', nombre: 'MALDONADO', horas: 89, tarifa: { valorHora: null, netoMensual: 1800000, desde: '2026-08-01', origen: 't' },
+  personaId: 'maldonado', nombre: 'MALDONADO', nombreOrden: 'MALDONADO', horas: 89, tarifa: { valorHora: null, netoMensual: 1800000, desde: '2026-08-01', origen: 't' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'oficina')
 
@@ -55,7 +55,7 @@ test('EL PIE CIERRA CON UN MENSUAL Y DOS OBREROS: Neto + Negro + Sueldos mensual
 test('LA QUINCENA CERRADA EXPLICA LA PLATA: negro = total sellado − neto, en la fila y en el pie', () => {
   // Agüero, 16/08: neto 215.564,62, total 639.218.
   const sellada = sinOverrides(liquidarLinea({
-    personaId: 'aguero', nombre: 'AGUERO', horas: 107, tarifa: { valorHora: 5974, netoMensual: null, desde: '2026-08-16', origen: 'sellada' },
+    personaId: 'aguero', nombre: 'AGUERO', nombreOrden: 'AGUERO', horas: 107, tarifa: { valorHora: 5974, netoMensual: null, desde: '2026-08-16', origen: 'sellada' },
     adelanto: 0, yaTransferido: 0, reciboNeto: 215564.62, giroEnElLote: true,
   }, 'obreros'))
   assert.equal(sellada.cobra, 639218)
@@ -86,7 +86,7 @@ test('LA GRILLA: el mensual va en su propio cuadro y su subtotal no se mezcla co
 test('LOS JEFES MUESTRAN SUS HORAS: la columna Horas de un mensual no es «—»', () => {
   const [oficina] = armarCuadros({
     quincena: quincenaDe('2026-09-01'),
-    personas: [{ id: 'maldonado', nombre: 'MALDONADO', cuil: null, enLaEmpresa: true, esJefe: true }],
+    personas: [{ id: 'maldonado', nombre: 'MALDONADO', nombreOrden: 'MALDONADO', cuil: null, enLaEmpresa: true, esJefe: true }],
     tarifas: [{ persona_id: 'maldonado', desde: '2026-08-01', valor_hora: null, neto_mensual: 1800000, origen: 't' }],
     horas: new Map([['maldonado', { horas: 89, horasEquivalentes: 89, presentesSinHoras: 0 }]]),
     recibos: [], adelantos: [], redondeos: new Map(),

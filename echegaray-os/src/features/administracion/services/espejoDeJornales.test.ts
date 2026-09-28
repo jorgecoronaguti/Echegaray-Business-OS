@@ -14,14 +14,14 @@ import { sinOverrides } from './liquidacionOverrides.ts'
 const Q = { desde: '2026-09-01', hasta: '2026-09-15' } as const
 
 const linea = (horas: number | null, valorHora: number | null = 3650) => sinOverrides(liquidarLinea({
-  personaId: 'p1', nombre: 'Maldonado', horas,
+  personaId: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', horas,
   tarifa: valorHora == null ? null : { valorHora, netoMensual: null, desde: '2026-01-01', origen: 'test' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'obreros'))
 
 const base = (extra: Partial<DatosDelEspejo> = {}): DatosDelEspejo => ({
   quincena: Q,
-  personas: [{ id: 'p1', nombre: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' }],
+  personas: [{ id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' }],
   registros: [],
   presencias: [],
   lineas: { p1: { grupo: 'obreros', linea: linea(0) } },
@@ -137,8 +137,8 @@ test('UNA PERSONA QUE EL BLOQUE NO TIENE NO «DIFIERE»: NO SE PUDO COMPARAR', (
 test('EL PIE NO SUMA A QUIEN NO TIENE TARIFA, Y LO CUENTA', () => {
   const filas = filasDelEspejo(base({
     personas: [
-      { id: 'p1', nombre: 'Maldonado', valorHora: 3650, convenio: null },
-      { id: 'p2', nombre: 'Alaniz', valorHora: null, convenio: null },
+      { id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 3650, convenio: null },
+      { id: 'p2', nombre: 'Alaniz', nombreOrden: 'Alaniz', valorHora: null, convenio: null },
     ],
     registros: [{ persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 }],
     lineas: {
@@ -159,9 +159,9 @@ test('EL PIE NO SUMA A QUIEN NO TIENE TARIFA, Y LO CUENTA', () => {
 test('EL ORDEN ES EL DEL MÓDULO PERSONAL: jefes primero y alfabético en español', () => {
   const filas = filasDelEspejo(base({
     personas: [
-      { id: 'p1', nombre: 'Ñandú', valorHora: 1, convenio: null },
-      { id: 'p2', nombre: 'Zogbe', valorHora: 1, convenio: null },
-      { id: 'p3', nombre: 'Villa', valorHora: 1, convenio: null, esJefe: true },
+      { id: 'p1', nombre: 'Ñandú', nombreOrden: 'Ñandú', valorHora: 1, convenio: null },
+      { id: 'p2', nombre: 'Zogbe', nombreOrden: 'Zogbe', valorHora: 1, convenio: null },
+      { id: 'p3', nombre: 'Villa', nombreOrden: 'Villa', valorHora: 1, convenio: null, esJefe: true },
     ],
     lineas: {
       p1: { grupo: 'obreros', linea: linea(0) },
@@ -176,8 +176,8 @@ test('EL ORDEN ES EL DEL MÓDULO PERSONAL: jefes primero y alfabético en españ
 test('SIN LÍNEA DE PAGO LA PERSONA NO SE DIBUJA: media fila se lee como una liquidación perdida', () => {
   const filas = filasDelEspejo(base({
     personas: [
-      { id: 'p1', nombre: 'Maldonado', valorHora: 1, convenio: null },
-      { id: 'p9', nombre: 'Sin actividad', valorHora: 1, convenio: null },
+      { id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 1, convenio: null },
+      { id: 'p9', nombre: 'Sin actividad', nombreOrden: 'Sin actividad', valorHora: 1, convenio: null },
     ],
   }))
   assert.deepEqual(filas.map((f) => f.personaId), ['p1'])

@@ -60,8 +60,8 @@ function datosDeRosales(): DatosDelEspejo {
   return {
     quincena: quincenaDe('2026-09-01'),
     personas: [
-      { id: 'r', nombre: 'ROSALES DIEGO JOSE', valorHora: 5874, convenio: null, fechaIngreso: '2024-08-12', categoria: 'oficial' },
-      { id: 'a', nombre: 'AGUERO CRISTIAN', valorHora: 5974, convenio: null, fechaIngreso: '2025-05-26', categoria: 'oficial' },
+      { id: 'r', nombre: 'ROSALES DIEGO JOSE', nombreOrden: 'ROSALES DIEGO JOSE', valorHora: 5874, convenio: null, fechaIngreso: '2024-08-12', categoria: 'oficial' },
+      { id: 'a', nombre: 'AGUERO CRISTIAN', nombreOrden: 'AGUERO CRISTIAN', valorHora: 5974, convenio: null, fechaIngreso: '2025-05-26', categoria: 'oficial' },
     ],
     registros: [
       JORNALES('1', '2026-09-01', 9), JORNALES('2', '2026-09-02', 9), JORNALES('3', '2026-09-03', 9),

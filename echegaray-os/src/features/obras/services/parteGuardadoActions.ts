@@ -20,7 +20,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { nombreDePersona } from '@/shared/personas/nombre'
+import { claveDeOrden, nombreDePersona } from '@/shared/personas/nombre'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { quitarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import { borrarPedidos, pedirMaterialAction } from '@/features/materiales/services/acciones'
@@ -84,9 +84,13 @@ async function leer(supabase: Supa, obraId: string, fecha: string): Promise<R<Pa
   const ausentes = new Set(((marcas.data ?? []) as { persona_id: string; estado: string }[]).filter((m) => m.estado !== 'presente').map((m) => m.persona_id))
   const ids = [...new Set([...horas.keys(), ...ausentes])]
   const nombres = new Map<string, string>()
+  const claves = new Map<string, string>()
   if (ids.length) {
     const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids)
-    for (const p of (data ?? []) as { id: string; nombre_completo: string; nombre_para_mostrar: string | null }[]) nombres.set(p.id, nombreDePersona(p))
+    for (const p of (data ?? []) as { id: string; nombre_completo: string; nombre_para_mostrar: string | null }[]) {
+      nombres.set(p.id, nombreDePersona(p))
+      claves.set(p.id, claveDeOrden(p))
+    }
   }
   const actividades = new Map(((acts.data ?? []) as { actividad_id: string; nombre: string; metodo_avance: string; unidad: string | null; avance_pct: number | null; cantidad_ejecutada: number | null; actividad_padre_id: string | null }[]).map((a) => [a.actividad_id, a]))
   const etiqueta = (id: string | null) => {
@@ -100,7 +104,7 @@ async function leer(supabase: Supa, obraId: string, fecha: string): Promise<R<Pa
     const presente = h != null && h > 0
     const tarea = presente ? (reg.tareas[id] ?? null) : null
     return { persona_id: id, nombre: nombres.get(id) ?? 'sin nombre', estado: presente ? 'presente' : 'ausente', horas: presente ? h : null, tarea_id: tarea, tarea_nombre: etiqueta(tarea) }
-  }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }).sort((a, b) => (claves.get(a.persona_id) ?? a.nombre).localeCompare(claves.get(b.persona_id) ?? b.nombre, 'es'))
 
   const avances = ((ejec.data ?? []) as { id: string; actividad_id: string; cantidad: number | null; avance_pct: number | null }[]).map((e) => {
     const a = actividades.get(e.actividad_id)

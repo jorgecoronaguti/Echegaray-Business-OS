@@ -9,7 +9,7 @@ const Q = { desde: '2026-09-01', hasta: '2026-09-15' } as const
 
 const base = (extra: Partial<DatosDeGrilla> = {}): DatosDeGrilla => ({
   quincena: Q,
-  personas: [{ id: 'p1', nombre: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' }],
+  personas: [{ id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' }],
   registros: [],
   presencias: [],
   personaDeRegistro: () => 'p1',
@@ -49,7 +49,7 @@ test('UN DÍA SIN HORAS NO ES UNA FALTA, Y UNA AUSENCIA SIN MOTIVO VALE 0 h', ()
 test('SIN RETRIBUCIÓN CARGADA LA FILA NO ESTÁ «AL DÍA» AUNQUE TENGA TODAS LAS HORAS', () => {
   const dias = ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04']
   const [fila] = filasDeGrilla(base({
-    personas: [{ id: 'p1', nombre: 'Castillo', valorHora: null, convenio: 'UOCRA' }],
+    personas: [{ id: 'p1', nombre: 'Castillo', nombreOrden: 'Castillo', valorHora: null, convenio: 'UOCRA' }],
     registros: dias.map((fecha) => ({ fecha, tipo_hora: 'normal', horas: fecha === '2026-09-04' ? 8 : 9 })),
     hoy: '2026-09-04',
   }))
@@ -61,8 +61,8 @@ test('SIN RETRIBUCIÓN CARGADA LA FILA NO ESTÁ «AL DÍA» AUNQUE TENGA TODAS L
 test('EL CIERRE ESTÁ TRABADO MIENTRAS HAYA PENDIENTES, Y DICE POR QUÉ', () => {
   const filas = filasDeGrilla(base({
     personas: [
-      { id: 'p1', nombre: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' },
-      { id: 'p2', nombre: 'Castillo', valorHora: null, convenio: 'UOCRA' },
+      { id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 3650, convenio: 'UOCRA' },
+      { id: 'p2', nombre: 'Castillo', nombreOrden: 'Castillo', valorHora: null, convenio: 'UOCRA' },
     ],
     personaDeRegistro: () => 'p1',
     personaDePresencia: () => 'p1',
@@ -139,9 +139,9 @@ test('LA GRILLA ORDENA COMO EL PLANTEL Y LA ASISTENCIA: POR NOMBRE, Y PUBLICA QU
   // en un lugar distinto en cada solapa.
   const filas = filasDeGrilla(base({
     personas: [
-      { id: 'p3', nombre: 'Reta', valorHora: 1, convenio: null },
-      { id: 'p1', nombre: 'Álvarez', valorHora: 1, convenio: null, esJefe: true },
-      { id: 'p2', nombre: 'Maldonado', valorHora: 1, convenio: null },
+      { id: 'p3', nombre: 'Reta', nombreOrden: 'Reta', valorHora: 1, convenio: null },
+      { id: 'p1', nombre: 'Álvarez', nombreOrden: 'Álvarez', valorHora: 1, convenio: null, esJefe: true },
+      { id: 'p2', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 1, convenio: null },
     ],
     personaDeRegistro: () => 'nadie',
     personaDePresencia: () => 'nadie',

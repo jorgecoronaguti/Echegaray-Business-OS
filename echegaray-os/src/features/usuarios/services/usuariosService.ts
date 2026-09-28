@@ -18,7 +18,7 @@ import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoUsuario, ObraDeUsuario, ObraElegible, UsuarioGestion } from '../types'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
-import { nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 /**
  * EL BLOQUEO, LEÍDO DEL USUARIO DE AUTH.
@@ -58,6 +58,8 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
     const { data: personas } = await admin.from('personas').select('id, nombre_completo, nombre_para_mostrar')
     const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, nombreDePersona(x as { nombre_completo?: string | null; nombre_para_mostrar?: string | null })]))
+    // Se muestra el nombre de pila primero, pero la lista se ORDENA por el legajo (apellido primero).
+    const ordenPersona = new Map((personas ?? []).map((x) => [x.id as string, claveDeOrden(x as { nombre_completo?: string | null })]))
     if (pErr) return { data: null, error: pErr.message }
 
     const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p]))
@@ -106,9 +108,13 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     })
 
     // Administración primero —es la lista corta y la que se audita—, después por nombre.
+    const claveDeUsuario = (u: UsuarioGestion): string => {
+      const personaId = perfilDe.get(u.id)?.persona_id as string | undefined
+      return (personaId ? ordenPersona.get(personaId) : undefined) || claveDeOrden(u.nombre ?? u.email ?? '')
+    }
     filas.sort((a, b) => {
       if (a.area !== b.area) return a.area === 'administracion' ? -1 : 1
-      return (a.nombre ?? a.email ?? '').localeCompare(b.nombre ?? b.email ?? '', 'es')
+      return claveDeUsuario(a).localeCompare(claveDeUsuario(b), 'es')
     })
     return { data: filas, error: null }
   } catch (err) {

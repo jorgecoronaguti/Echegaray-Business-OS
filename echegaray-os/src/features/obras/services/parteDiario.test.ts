@@ -230,9 +230,9 @@ test('la bajada de la fecha grande (M08): «sin parte cargado» o cuántos frent
 test('quién vino: horas, ausente y sin marcar, con el resumen del diseño y la bajada «Cuadrilla 1 · oficial»', () => {
   const chips = chipsDeGente(
     [
-      { id: 'p1', nombre_completo: 'QUIROGA RODOLFO', cuadrilla: '1', categoria: 'oficial' },
-      { id: 'p2', nombre_completo: 'RUIZ CARLOS', cuadrilla: 'Cuadrilla Norte', categoria: 'medio_oficial' },
-      { id: 'p3', nombre_completo: 'GÓMEZ SARA', cuadrilla: null, categoria: null },
+      { id: 'p1', nombre_completo: 'QUIROGA RODOLFO', nombreOrden: 'QUIROGA RODOLFO', cuadrilla: '1', categoria: 'oficial' },
+      { id: 'p2', nombre_completo: 'RUIZ CARLOS', nombreOrden: 'RUIZ CARLOS', cuadrilla: 'Cuadrilla Norte', categoria: 'medio_oficial' },
+      { id: 'p3', nombre_completo: 'GÓMEZ SARA', nombreOrden: 'GÓMEZ SARA', cuadrilla: null, categoria: null },
     ],
     [
       { fecha: '2026-09-07', horas: 9, tipo_hora: 'normal', persona_id: 'p1' },

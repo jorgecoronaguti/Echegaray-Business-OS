@@ -108,7 +108,7 @@ test('LAS FILAS SALEN DE LA GRILLA, NO DE UNA SEGUNDA LECTURA', () => {
   const Q = { desde: '2026-09-01', hasta: '2026-09-15' } as const
   const grilla = filasDeGrilla({
     quincena: Q,
-    personas: [{ id: 'p1', nombre: 'Quiroga', valorHora: 3650, convenio: null }],
+    personas: [{ id: 'p1', nombre: 'Quiroga', nombreOrden: 'Quiroga', valorHora: 3650, convenio: null }],
     registros: [
       { fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
       { fecha: '2026-09-02', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },

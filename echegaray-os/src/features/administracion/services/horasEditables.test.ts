@@ -27,7 +27,7 @@ const RECIBO: ReciboDeSueldo = {
   horasBlanco: 50, bruto: 317400, neto: 230240.12, driveFileId: null,
 }
 const base = () => liquidarLinea({
-  personaId: 'rosales', nombre: 'ROSALES', horas: 94,
+  personaId: 'rosales', nombre: 'ROSALES', nombreOrden: 'ROSALES', horas: 94,
   tarifa: { valorHora: 5874, netoMensual: null, desde: '2026-08-16', origen: 't' },
   adelanto: 0, yaTransferido: 0, reciboNeto: 230240.12, giroEnElLote: true,
 }, 'obreros')

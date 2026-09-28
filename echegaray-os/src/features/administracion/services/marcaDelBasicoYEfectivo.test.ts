@@ -44,7 +44,7 @@ test('CONVENIOS COMPARA CON LA MISMA FUNCIÓN: el $/h del recibo, y el vigente s
   assert.deepEqual(valorHoraAComparar(null, 5874), { valorHora: 5874, origen: 'vigente' })
   assert.deepEqual(valorHoraAComparar(null, null), { valorHora: null, origen: null })
   const ESCALA: FilaEscala[] = [{ convenio: 'UOCRA', categoria: 'oficial', desde: '2026-08-01', valorHora: 6348, fuente: 't' }]
-  const l = exponerAlPiso({ personaId: 'p', nombre: 'P', convenio: 'UOCRA', categoria: 'oficial', valorHora: 6000, origenTarifa: 'recibo Q2-08/2026', origenValorHora: 'recibo' }, ESCALA, '2026-09-15', 97)
+  const l = exponerAlPiso({ personaId: 'p', nombre: 'P', nombreOrden: 'P', convenio: 'UOCRA', categoria: 'oficial', valorHora: 6000, origenTarifa: 'recibo Q2-08/2026', origenValorHora: 'recibo' }, ESCALA, '2026-09-15', 97)
   assert.deepEqual({ bajo: l.bajoElPiso, dif: l.diferenciaHora, brecha: l.brechaPct },
     { bajo: true, dif: compararConElPiso(6000, 6348)!.diferenciaHora, brecha: compararConElPiso(6000, 6348)!.brechaPct })
   // El servicio pide la función, no la reimplementa.

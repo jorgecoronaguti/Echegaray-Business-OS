@@ -24,7 +24,7 @@ const TOLERANCIA = 0.05
 const base = baseDelEstimado('Q2-08/2026', REGLAS_GENERADAS, [], 1)
 const blanco = entradaDeBlanco({ personaId: 'rosales', cuil: '20-35850878-3', periodo: 'Q2-08/2026', recibos: [], pisoCategoria: 6348, netoDeNomina: null, base })
 const entrada: EntradaDeLinea = {
-  personaId: 'rosales', nombre: 'Rosales', horas: 100,
+  personaId: 'rosales', nombre: 'Rosales', nombreOrden: 'Rosales', horas: 100,
   tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-08-01', origen: 'sheet:_J_OBREROS' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }

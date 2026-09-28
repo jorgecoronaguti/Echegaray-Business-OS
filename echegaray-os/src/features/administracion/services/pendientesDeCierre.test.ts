@@ -21,7 +21,7 @@ test('LOS DÍAS SIN CARGAR SON LOS MISMOS QUE CUENTA LA FILA DE LA GRILLA', () =
   const q = quincenaDe('2026-09-01')
   const filas = filasDeGrilla({
     quincena: q,
-    personas: [{ id: 'p1', nombre: 'Zogbe Fabian', valorHora: 3650, convenio: null }],
+    personas: [{ id: 'p1', nombre: 'Zogbe Fabian', nombreOrden: 'Zogbe Fabian', valorHora: 3650, convenio: null }],
     registros: [], presencias: [],
     personaDeRegistro: () => 'p1', personaDePresencia: () => 'p1',
     hoy: '2026-09-08',

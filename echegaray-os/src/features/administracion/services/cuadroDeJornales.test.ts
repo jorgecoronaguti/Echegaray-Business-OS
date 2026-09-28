@@ -87,7 +87,7 @@ const linea = (personaId: string): LineaConOverrides => ({
 test('el espejo trae alta, categoría y horas por tipo; el total por tipo recorta con las filas recibidas', () => {
   const quincena = quincenaDe('2026-09-01')
   const persona = (id: string, nombre: string) => ({
-    id, nombre, valorHora: 5000, convenio: null, fechaIngreso: '2024-03-11', categoria: 'oficial',
+    id, nombre, nombreOrden: nombre, valorHora: 5000, convenio: null, fechaIngreso: '2024-03-11', categoria: 'oficial',
   })
   const datos: DatosDelEspejo = {
     quincena,

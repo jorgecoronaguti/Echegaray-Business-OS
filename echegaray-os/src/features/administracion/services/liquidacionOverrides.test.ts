@@ -16,7 +16,7 @@ import { liquidarLinea, type EntradaDeLinea } from './liquidacionQuincena.ts'
 //     indistinguible de «vacío».
 
 const entrada: EntradaDeLinea = {
-  personaId: 'p1', nombre: 'Pérez', horas: 100,
+  personaId: 'p1', nombre: 'Pérez', nombreOrden: 'Pérez', horas: 100,
   tarifa: { valorHora: 1000, netoMensual: null, desde: '2026-09-01', origen: 'sheet:_J_OBREROS' },
   adelanto: 0, yaTransferido: 20_000, reciboNeto: 30_000, giroEnElLote: true,
 }
@@ -309,7 +309,7 @@ test('EL CIERRE NO ESCRIBE LAS COLUMNAS DE PAGO', () => {
 // el cargador escribe en `pagado_banco` como una afirmación; o que el flag mueva un importe de la cadena.
 
 const entradaSinRecibo: EntradaDeLinea = {
-  personaId: 'p2', nombre: 'Quiroga', horas: 100,
+  personaId: 'p2', nombre: 'Quiroga', nombreOrden: 'Quiroga', horas: 100,
   tarifa: { valorHora: 6014.6, netoMensual: null, desde: '2026-01-01', origen: 'sheet:_J_OBREROS' },
   adelanto: 178_644, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }

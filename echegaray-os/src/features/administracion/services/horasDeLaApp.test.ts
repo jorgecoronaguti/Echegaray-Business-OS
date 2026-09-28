@@ -42,7 +42,7 @@ const ESPEJO_QUIROGA_A = { horas: 75, cobra: 371250, adelanto: null, yaTransferi
 
 const lineaDe = (registros: RegistroDeQuincena[], valorHora: number, extra: Partial<Parameters<typeof liquidarLinea>[0]> = {}) =>
   liquidarLinea({
-    personaId: 'p', nombre: 'x', horas: horasDeQuincena(q, registros).horas,
+    personaId: 'p', nombre: 'x', nombreOrden: 'x', horas: horasDeQuincena(q, registros).horas,
     tarifa: { valorHora, netoMensual: null, desde: '2026-09-01', origen: 'test' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false, ...extra,
   }, 'obreros')
@@ -97,7 +97,7 @@ test('la fila cierra: cobra − adelanto − ya transferido = banco + efectivo',
 
 test('una quincena cerrada no cambia: la foto sellada no recibe ni app ni JORNALES', () => {
   const base = liquidarLinea({
-    personaId: 'p', nombre: 'x', horas: 75,
+    personaId: 'p', nombre: 'x', nombreOrden: 'x', horas: 75,
     tarifa: { valorHora: 4950, netoMensual: null, desde: '2026-09-01', origen: 'liquidacion_linea sellada' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros')
@@ -109,7 +109,7 @@ test('una quincena cerrada no cambia: la foto sellada no recibe ni app ni JORNAL
 
 test('un mensual no cambia: su cobra sigue con la precedencia de siempre', () => {
   const ofi = liquidarLinea({
-    personaId: 'm', nombre: 'Maldonado', horas: 80,
+    personaId: 'm', nombre: 'Maldonado', nombreOrden: 'Maldonado', horas: 80,
     tarifa: { valorHora: null, netoMensual: 1800000, desde: '2026-09-01', origen: 'test' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'oficina')

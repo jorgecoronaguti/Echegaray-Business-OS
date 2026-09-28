@@ -22,7 +22,7 @@ const MALDONADO = 'maldonado'
 const NIEVAS = 'nievas'
 
 const jefe = (id: string, nombre: string): PersonaDeLiquidacion =>
-  ({ id, nombre, cuil: null, enLaEmpresa: true, esJefe: true, conActividad: true })
+  ({ id, nombre, nombreOrden: nombre, cuil: null, enLaEmpresa: true, esJefe: true, conActividad: true })
 
 const datos = (extra: Partial<DatosDeCuadros> = {}): DatosDeCuadros => ({
   quincena: AGO2,

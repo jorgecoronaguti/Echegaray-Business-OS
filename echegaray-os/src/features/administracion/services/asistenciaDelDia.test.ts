@@ -13,7 +13,7 @@ import type { Esperado } from './presencia.ts'
 // abajo puede mirar la otra.
 
 const reg = (p: Partial<RegistroDelDia> & { persona_id: string }): RegistroDelDia => ({
-  nombre: null, categoria: null, obra_id: 'obra-1', obra: 'Obra Uno',
+  nombre: null, nombreOrden: '', categoria: null, obra_id: 'obra-1', obra: 'Obra Uno',
   horas: 8, tipo_hora: 'normal', notas: null, ...p,
 })
 

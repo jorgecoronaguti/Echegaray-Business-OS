@@ -27,7 +27,7 @@ const fila = (linea: LineaConOverrides, grupo: GrupoLiquidacion, celdas: unknown
 
 // Un obrero con blanco + negro: 100 h, recibo 50 h con neto 230.000, $/h negro 6.000 → negro 300.000.
 const obrero = (id: string, ov: Parameters<typeof aplicarOverrides>[1] = {}) => aplicarOverrides(liquidarLinea({
-  personaId: id, nombre: id, horas: 100, tarifa: { valorHora: 6000, netoMensual: null, desde: '2026-09-01', origen: 't' },
+  personaId: id, nombre: id, nombreOrden: id, horas: 100, tarifa: { valorHora: 6000, netoMensual: null, desde: '2026-09-01', origen: 't' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'obreros'), ov, 'obreros', null, {
   recibo: { personaId: id, cuil: null, periodo: 'Q2-09/2026', categoria: 'OFICIAL', valorHora: 6348, horasBlanco: 50, bruto: 317400, neto: 230000, driveFileId: null },
@@ -36,7 +36,7 @@ const obrero = (id: string, ov: Parameters<typeof aplicarOverrides>[1] = {}) => 
 
 // Maldonado y Nievas: $1.800.000 por mes, sin recibo de la quincena. Es la captura.
 const jefe = (id: string, extra: { reciboNeto?: number | null; porBanco?: number } = {}) => aplicarOverrides(liquidarLinea({
-  personaId: id, nombre: id, horas: 9, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'acuerdo' },
+  personaId: id, nombre: id, nombreOrden: id, horas: 9, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'acuerdo' },
   adelanto: 0, yaTransferido: 0, reciboNeto: extra.reciboNeto ?? null, giroEnElLote: false, esJefe: true,
 }, 'oficina'), extra.porBanco == null ? {} : { porBanco: extra.porBanco }, 'oficina')
 
@@ -108,7 +108,7 @@ test('los subtotales no se mezclan: el cierre de jornaleros ya no arrastra los s
 
 test('cuando no cierra dice por cuánto y por qué, sin repartir lo que no sabe', () => {
   const sinNegro = aplicarOverrides(liquidarLinea({
-    personaId: 'x', nombre: 'x', horas: 10, tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-09-01', origen: 't' },
+    personaId: 'x', nombre: 'x', nombreOrden: 'x', horas: 10, tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-09-01', origen: 't' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros'), {}, 'obreros')
   // Sin modelo blanco + negro: tiene cobra 50.000, pero `negroDeLaFila` = cobra − banco, así que sí hay saldo.

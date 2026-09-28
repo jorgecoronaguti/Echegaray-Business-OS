@@ -324,7 +324,7 @@ export async function getLiquidacionDeLaQuincena(
     filasDeGrilla({
       quincena: q,
       personas: activas.map((p) => ({
-        id: p.id, nombre: p.nombre, valorHora: null, convenio: null, esJefe: p.esJefe,
+        id: p.id, nombre: p.nombre, nombreOrden: p.nombreOrden, valorHora: null, convenio: null, esJefe: p.esJefe,
       })),
       registros: (registros.data ?? []) as (RegistroDeQuincena & { persona_id: string })[],
       presencias: (presencias.data ?? []) as (PresenciaDeQuincena & { persona_id: string })[],

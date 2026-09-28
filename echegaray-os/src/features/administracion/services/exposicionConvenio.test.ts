@@ -21,7 +21,7 @@ const ESCALA: FilaEscala[] = [
 ]
 
 const persona = (p: Partial<PersonaExpuesta> = {}): PersonaExpuesta => ({
-  personaId: 'p1', nombre: 'Alaniz Emanuel', convenio: '0076/75 UOCRA', categoria: 'ayudante',
+  personaId: 'p1', nombre: 'Alaniz Emanuel', nombreOrden: 'Alaniz Emanuel', convenio: '0076/75 UOCRA', categoria: 'ayudante',
   valorHora: 3650, origenTarifa: 'sheet:_J_OBREROS', ...p,
 })
 

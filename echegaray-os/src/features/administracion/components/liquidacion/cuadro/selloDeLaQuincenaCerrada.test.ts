@@ -86,7 +86,7 @@ test('EL $/H DEL SELLO ES EL DE `liquidacion_linea`, NO EL DE `persona_tarifa` (
   // «Se liquidó a $4.000/h · cobra $36.000» sobre $38.700 entregados. Ahora se prueba con un fixture donde la tarifa
   // vigente y la sellada difieren, de punta a punta: cuadro sellado → sello → renglón de la fila.
   const vigente: LineaLiquidada = {
-    personaId: 'bazan', nombre: 'BAZAN JUAN', esJefe: false, horas: 9, horasEquivalentes: 9, extras: [], valorHora: 4000,
+    personaId: 'bazan', nombre: 'BAZAN JUAN', nombreOrden: 'BAZAN JUAN', esJefe: false, horas: 9, horasEquivalentes: 9, extras: [], valorHora: 4000,
     netoMensual: null, modalidad: 'hora', cobra: 36000, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 36000,
     total: 36000, efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: 18000, efectivoAcuerdo: 18000,
     reciboSinGiro: false, origenTarifa: 'liquidacion_linea sellada quincena 2026-01-01',
@@ -95,7 +95,7 @@ test('EL $/H DEL SELLO ES EL DE `liquidacion_linea`, NO EL DE `persona_tarifa` (
     grupo: 'obreros',
     selladas: [{ personaId: 'bazan', horas: 9, valorHora: 4300, cobra: 38700, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 38700, total: 38700 }],
     vivas: [vigente],
-    personas: new Map([['bazan', { id: 'bazan', nombre: 'BAZAN JUAN', esJefe: false }]]),
+    personas: new Map([['bazan', { id: 'bazan', nombre: 'BAZAN JUAN', nombreOrden: 'BAZAN JUAN', esJefe: false }]]),
     selladosEnLaQuincena: new Set(['bazan']),
     redondeos: new Map(),
   })

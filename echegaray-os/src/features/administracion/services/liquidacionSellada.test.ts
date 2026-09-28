@@ -20,7 +20,7 @@ import type { LineaLiquidada } from './liquidacionQuincena.ts'
 
 /** Una línea VIVA como la arma `liquidarLinea` hoy: horas de `registros_hh` × tarifa vigente de `persona_tarifa`. */
 const viva = (personaId: string, nombre: string, extra: Partial<LineaLiquidada> = {}): LineaLiquidada => ({
-  personaId, nombre, esJefe: false,
+  personaId, nombre, nombreOrden: nombre, esJefe: false,
   horas: 8, horasEquivalentes: 8, extras: [], valorHora: 4000, netoMensual: null, modalidad: 'hora',
   cobra: 32000, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 32000, total: 32000,
   efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: 16000, efectivoAcuerdo: 16000,
@@ -33,7 +33,9 @@ const sellada = (personaId: string, extra: Partial<LineaSelladaLeida> = {}): Lin
   ...extra,
 })
 
-const personas = (...ps: PersonaSellable[]): Map<string, PersonaSellable> => new Map(ps.map((p) => [p.id, p]))
+// El orden no es lo que prueba este archivo: la clave de orden es el mismo nombre (que acá ya viene apellido primero).
+const personas = (...ps: Omit<PersonaSellable, 'nombreOrden'>[]): Map<string, PersonaSellable> =>
+  new Map(ps.map((p) => [p.id, { ...p, nombreOrden: p.nombre }]))
 
 test('BAZÁN, 16–31/03: el $/h y el cobra son los SELLADOS ($4.300 · $38.700), no la tarifa vigente ($4.000 · $36.000)', () => {
   const { lineas, sinLinea } = cuadroSellado({
@@ -100,7 +102,7 @@ test('EL PIE DEL CUADRO CERRADO ES LA SUMA DE LAS FILAS SELLADAS: 20 líneas · 
   // Veinte fixtures que suman lo que la 1ª de junio tiene sellado; lo vivo suma menos (1.676,5 h · $7.970.750).
   const selladas: LineaSelladaLeida[] = []
   const vivas: LineaLiquidada[] = []
-  const dir: PersonaSellable[] = []
+  const dir: Omit<PersonaSellable, 'nombreOrden'>[] = []
   for (let i = 0; i < 20; i++) {
     const id = `p${i}`
     const horas = i === 0 ? 1886.5 - 19 * 94 : 94

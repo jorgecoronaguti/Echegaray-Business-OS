@@ -13,7 +13,7 @@ import { liquidarLinea } from './liquidacionQuincena.ts'
 // 1 al 15 de septiembre de 2026: 9 días lun-jue × 9 h + 2 viernes × 8 h = 97 h.
 const Q = { desde: '2026-09-01', hasta: '2026-09-15' } as const
 const MALDONADO: PersonaDeGrilla = {
-  id: 'p1', nombre: 'Maldonado', valorHora: 3650, convenio: 'UOCRA', modalidad: 'hora',
+  id: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', valorHora: 3650, convenio: 'UOCRA', modalidad: 'hora',
 }
 
 const base = (extra: Partial<DatosDeGrilla> = {}): DatosDeGrilla => ({
@@ -72,7 +72,7 @@ test('UNA LICENCIA YA RESUELTA NO SE REEMPLAZA POR LA JORNADA POR DEFECTO', () =
 
 test('SIN TARIFA EL IMPORTE ES NULL Y LA MASA LO CUENTA APARTE, NUNCA COMO 0', () => {
   const castillo: PersonaDeGrilla = {
-    id: 'p2', nombre: 'Castillo', valorHora: null, convenio: 'UOCRA', modalidad: 'hora',
+    id: 'p2', nombre: 'Castillo', nombreOrden: 'Castillo', valorHora: null, convenio: 'UOCRA', modalidad: 'hora',
   }
   const datos = base({
     personas: [MALDONADO, castillo],
@@ -94,14 +94,14 @@ test('SIN TARIFA EL IMPORTE ES NULL Y LA MASA LO CUENTA APARTE, NUNCA COMO 0', (
 
 test('OFICINA COBRA SU NETO MENSUAL: EL MISMO IMPORTE QUE `liquidarLinea` DA HOY', () => {
   const nievas: PersonaDeGrilla = {
-    id: 'p3', nombre: 'Nievas', valorHora: null, netoMensual: 1800000, convenio: 'fuera de convenio',
+    id: 'p3', nombre: 'Nievas', nombreOrden: 'Nievas', valorHora: null, netoMensual: 1800000, convenio: 'fuera de convenio',
     modalidad: 'mensual', esJefe: true,
   }
   const datos = base({ personas: [nievas], personaDeRegistro: () => 'p3', personaDePresencia: () => 'p3' })
   const [fila] = filasDeGrilla(datos)
   const p = proyeccionDeFila(fila, nievas, datos.hoy)
   const esperado = liquidarLinea({
-    personaId: 'p3', nombre: 'Nievas', horas: 0,
+    personaId: 'p3', nombre: 'Nievas', nombreOrden: 'Nievas', horas: 0,
     tarifa: { valorHora: null, netoMensual: 1800000, desde: '2026-01-01', origen: 'persona_tarifa' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'oficina').cobra

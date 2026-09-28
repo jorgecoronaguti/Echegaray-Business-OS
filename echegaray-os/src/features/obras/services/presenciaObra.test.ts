@@ -202,3 +202,15 @@ test('el texto busca también por rol: se busca «ayudante», no sólo un apelli
   const r = hoyEnObra([asignado({ persona_id: 'a', rol: 'ayudante' })], [])
   assert.equal(filtrarHoy(r.grupos, { texto: 'ayud' }).length, 1)
 })
+
+test('ORDEN POR APELLIDO (28/09): Hoy en obra ordena la cuadrilla por el legajo, no por el nombre mostrado', () => {
+  const conOrden = (persona_id: string, persona_nombre: string, persona_nombre_orden: string) =>
+    ({ persona_id, persona_nombre, persona_nombre_orden, rol: 'integrante', cuadrilla: '1', hasta: null })
+  const r = hoyEnObra([
+    conOrden('m', 'Emiliano Maldonado', 'maldonado batista emiliano miguel'),
+    conOrden('n', 'Juan Pablo Nievas', 'nievas villegas juan pablo'),
+    conOrden('d', 'Diego Aballay', 'aballay diego'),
+    conOrden('c', 'Jorge Corona', 'corona gutierrez jorge'),
+  ], [])
+  assert.deepEqual(r.grupos[0].filas.map((f) => f.nombre), ['Diego Aballay', 'Jorge Corona', 'Emiliano Maldonado', 'Juan Pablo Nievas'])
+})

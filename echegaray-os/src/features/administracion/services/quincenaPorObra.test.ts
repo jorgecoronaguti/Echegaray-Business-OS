@@ -40,7 +40,7 @@ const CERRADA = 'mamposteria-vieja'
 const asig = (
   persona_id: string, nombre: string, obra_id: string, nota: string | null = null,
   desde: string | null = null, hasta: string | null = null, elegible = true,
-): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta, elegible })
+): AsignacionQuincena => ({ persona_id, nombre, nombreOrden: nombre, nota, obra_id, desde, hasta, elegible })
 const reg = (
   persona_id: string, obra_id: string | null, fecha: string, horas: number,
   tipo_hora = 'normal', notas: string | null = null,
@@ -216,7 +216,7 @@ test('SIN OBRA ACTIVA, LA COLUMNA OBRA MUESTRA EL CLIENTE', () => {
 
   const sinActiva = armarQuincenaPorObra({
     // p9 aporta el nombre de p9; p5 no tiene ninguna asignación vigente y sólo tiene horas.
-    asignaciones: [{ persona_id: 'p5', nombre: 'Zogbe Walter', nota: 'oficial', obra_id: 'obra-cerrada' }],
+    asignaciones: [{ persona_id: 'p5', nombre: 'Zogbe Walter', nombreOrden: 'Zogbe Walter', nota: 'oficial', obra_id: 'obra-cerrada' }],
     registros: [reg('p5', MAMPO, L, 8.8)],
     obras: OBRAS, dias: DIAS, hoy: HOY,
   })
@@ -238,7 +238,7 @@ test('NINGÚN SLUG SALE JAMÁS DE ACÁ', () => {
   // lo prohibió textualmente. Se prueban las tres salidas: el rótulo, el nombre del tramo, y el
   // caso en que la obra NO está en el catálogo (RLS) — ahí tampoco se cae al id.
   const filas = armarQuincenaPorObra({
-    asignaciones: [{ persona_id: 'p6', nombre: 'Aguero Cristian', nota: null, obra_id: 'obra-que-no-veo' }],
+    asignaciones: [{ persona_id: 'p6', nombre: 'Aguero Cristian', nombreOrden: 'Aguero Cristian', nota: null, obra_id: 'obra-que-no-veo' }],
     registros: [reg('p6', 'obra-que-no-veo', L, 8.8), reg('p6', MAMPO, M, 4)],
     obras: OBRAS, dias: DIAS, hoy: HOY,
   })
@@ -257,7 +257,7 @@ test('NINGÚN SLUG SALE JAMÁS DE ACÁ', () => {
 
 test('cuando la obra no tiene cliente cargado se usa su NOMBRE, nunca el id', () => {
   const filas = armarQuincenaPorObra({
-    asignaciones: [{ persona_id: 'p7', nombre: 'Nievas Juan', nota: null, obra_id: 'sin-cliente' }],
+    asignaciones: [{ persona_id: 'p7', nombre: 'Nievas Juan', nombreOrden: 'Nievas Juan', nota: null, obra_id: 'sin-cliente' }],
     registros: [reg('p7', 'sin-cliente', L, 8)],
     obras: OBRAS, dias: DIAS, hoy: HOY,
   })
@@ -400,7 +400,7 @@ test('los chips cuentan personas por rótulo, no por obra técnica', () => {
 // que pasaba era una licencia larga.
 
 const QUIROGA: Record<string, PersonaRotulo> = {
-  q1: { nombre: 'QUIROGA ALEXANDER SEBASTIAN', nota: 'oficial' },
+  q1: { nombre: 'QUIROGA ALEXANDER SEBASTIAN', nombreOrden: 'QUIROGA ALEXANDER SEBASTIAN', nota: 'oficial' },
 }
 
 test('UNA PERSONA CON SÓLO LICENCIAS EN LA QUINCENA TIENE SU FILA, con celdas L y total —', () => {
@@ -657,7 +657,7 @@ test('UNA AUSENCIA SIN OBRA PONE A SU PERSONA EN LA GRILLA Y NO FABRICA «horas 
   // del desplegable como «horas en …». La ausencia CON obra (el legado de JORNALES) rotulaba a la
   // persona en La Estrella; sin obra no rotula nada, y la fila igual existe: excluirla la dejaría
   // fuera de la grilla, que es peor que rotularla mal.
-  const persona = { p1: { nombre: 'GONZALEZ TOBARES', nota: null } }
+  const persona = { p1: { nombre: 'GONZALEZ TOBARES', nombreOrden: 'GONZALEZ TOBARES', nota: null } }
   const sinObra = armar({ asignaciones: [], registros: [reg('p1', null, L, 9, 'ausencia')], personas: persona })
   assert.equal(sinObra.length, 1, 'la persona con una ausencia sin obra tiene que estar en la grilla')
   assert.equal(sinObra[0].rotuloObra, SIN_OBRA)
@@ -858,4 +858,19 @@ test('QUINCENA EN CURSO: sigue siendo la obra de HOY, editable', () => {
   })
   assert.equal(filas[0].obraEsDeHoy, true)
   assert.equal(filas[0].rotuloObra, OBRAS[MAMPO].nombre)
+})
+
+test('ORDEN POR APELLIDO (28/09): la grilla ordena por `nombreOrden` (legajo), no por el nombre que se muestra', () => {
+  const a = (persona_id: string, nombre: string, nombreOrden: string): AsignacionQuincena =>
+    ({ persona_id, nombre, nombreOrden, nota: null, obra_id: 'la-estrella', desde: null, hasta: null, elegible: true })
+  const filas = armar({
+    asignaciones: [
+      a('m', 'Emiliano Maldonado', 'maldonado batista emiliano miguel'),
+      a('n', 'Juan Pablo Nievas', 'nievas villegas juan pablo'),
+      a('d', 'Diego Aballay', 'aballay diego'),
+      a('c', 'Jorge Corona', 'corona gutierrez jorge'),
+    ],
+    registros: [],
+  })
+  assert.deepEqual(filas.map((f) => f.persona.nombre), ['Diego Aballay', 'Jorge Corona', 'Emiliano Maldonado', 'Juan Pablo Nievas'])
 })

@@ -19,7 +19,7 @@ import { estadoDeCierre } from './liquidacionCierre.ts'
 const Q = quincenaDe('2026-09-05')
 
 const persona = (id: string, nombre: string, cuil: string | null): PersonaDeLiquidacion =>
-  ({ id, nombre, cuil, enLaEmpresa: true })
+  ({ id, nombre, nombreOrden: nombre, cuil, enLaEmpresa: true })
 
 const porHora = (persona_id: string, valor_hora: number): FilaTarifa =>
   ({ persona_id, desde: '2026-09-01', valor_hora, neto_mensual: null, origen: 'sheet:_J_OBREROS' })
@@ -221,11 +221,11 @@ test('la misma persona de Oficina SIN tarifa cargada bloquea el cierre por «sin
 
 test('LOS CUADROS SALEN OFICINA PRIMERO, Y CADA LÍNEA SABE SI ES JEFE', () => {
   const nievas: PersonaDeLiquidacion =
-    { id: 'j1', nombre: 'Nievas Villegas Juan Pablo', cuil: '204', enLaEmpresa: true, esJefe: true }
+    { id: 'j1', nombre: 'Nievas Villegas Juan Pablo', nombreOrden: 'Nievas Villegas Juan Pablo', cuil: '204', enLaEmpresa: true, esJefe: true }
   const tello: PersonaDeLiquidacion =
-    { id: 'o1', nombre: 'Tello Juan', cuil: '203', enLaEmpresa: true, esJefe: false }
+    { id: 'o1', nombre: 'Tello Juan', nombreOrden: 'Tello Juan', cuil: '203', enLaEmpresa: true, esJefe: false }
   const aguero: PersonaDeLiquidacion =
-    { id: 'o2', nombre: 'Aguero Cristian', cuil: '202', enLaEmpresa: true, esJefe: false }
+    { id: 'o2', nombre: 'Aguero Cristian', nombreOrden: 'Aguero Cristian', cuil: '202', enLaEmpresa: true, esJefe: false }
   const cuadros = armarCuadros(base({
     // Llegan en el orden de la base: obrero, jefe, obrero.
     personas: [tello, nievas, aguero],

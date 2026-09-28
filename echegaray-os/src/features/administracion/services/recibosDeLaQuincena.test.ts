@@ -168,7 +168,7 @@ test('el pie de Recibos por banco es EL MISMO número que el pie del cuadro de l
   }
   const datos: DatosDelEspejo = {
     quincena: quincenaDe('2026-08-16'),
-    personas: ['a', 'b', 'c'].map((id) => ({ id, nombre: id.toUpperCase(), valorHora: 5000, convenio: null })),
+    personas: ['a', 'b', 'c'].map((id) => ({ id, nombre: id.toUpperCase(), nombreOrden: id.toUpperCase(), valorHora: 5000, convenio: null })),
     registros: [], presencias: [], lineas, cuadrosCerrados: new Set(),
     horasDeLaPlanilla: new Map(), diasDeLaPlanilla: new Map(), hayEspejo: false, hoy: '2026-09-14',
   }

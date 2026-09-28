@@ -15,7 +15,7 @@ import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { quincenaDe } from './quincena.ts'
 
 const q = quincenaDe('2026-08-16')
-const ALANIZ = { id: 'alaniz', nombre: 'ALANIZ EMANUEL ARIEL', cuil: '20-38218815-3', enLaEmpresa: true }
+const ALANIZ = { id: 'alaniz', nombre: 'ALANIZ EMANUEL ARIEL', nombreOrden: 'ALANIZ EMANUEL ARIEL', cuil: '20-38218815-3', enLaEmpresa: true }
 
 test('LA LÍNEA DE LIQUIDACIÓN ENCUENTRA EL RECIBO Y EL GIRO DEL LOTE DE UN CUIL CON GUIONES', () => {
   const [obreros] = armarCuadros({

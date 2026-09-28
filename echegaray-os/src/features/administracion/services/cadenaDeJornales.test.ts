@@ -17,7 +17,7 @@ import { liquidarLinea } from './liquidacionQuincena.ts'
 
 /** 80 h × $5.000 = $400.000 de COBRA, sin nada restado. */
 const linea = (extra: Partial<Parameters<typeof liquidarLinea>[0]> = {}) => liquidarLinea({
-  personaId: 'p1', nombre: 'Maldonado', horas: 80,
+  personaId: 'p1', nombre: 'Maldonado', nombreOrden: 'Maldonado', horas: 80,
   tarifa: { valorHora: 5000, netoMensual: null, desde: '2026-01-01', origen: 'test' },
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   ...extra,
@@ -107,7 +107,7 @@ test('EN OBREROS EL COBRA DE JORNALES YA NO RESUELVE «SIN TARIFA»: queda como 
   // Dueño, 14/09/2026: el cobra de un obrero sale de las horas del cuadro × $/h. Sin $/h no hay
   // importe que afirmar; la cifra de la planilla se ve en la marca, no se paga desde acá.
   const base = liquidarLinea({
-    personaId: 'p2', nombre: 'Sin tarifa', horas: 80, tarifa: null,
+    personaId: 'p2', nombre: 'Sin tarifa', nombreOrden: 'Sin tarifa', horas: 80, tarifa: null,
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros')
   assert.equal(base.sinTarifa, true)
@@ -121,7 +121,7 @@ test('EN OBREROS EL COBRA DE JORNALES YA NO RESUELVE «SIN TARIFA»: queda como 
 
 test('EN OFICINA EL COBRA DE JORNALES SIGUE RESOLVIENDO «SIN TARIFA»', () => {
   const base = liquidarLinea({
-    personaId: 'p3', nombre: 'Oficina', horas: 80, tarifa: null,
+    personaId: 'p3', nombre: 'Oficina', nombreOrden: 'Oficina', horas: 80, tarifa: null,
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'oficina')
   const l = aplicarOverrides(base, {}, 'oficina', { cobra: 1800000 })

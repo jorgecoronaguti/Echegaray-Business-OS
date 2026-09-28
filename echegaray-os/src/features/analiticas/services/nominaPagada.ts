@@ -1,4 +1,4 @@
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 // LO QUE SE LE PAGÓ A LA GENTE EN EL AÑO, EN BLANCO Y EN NEGRO, SIN CARGAS SOCIALES.
 //
 // Dueño, 22/09/2026: *«la sección "nómina" del módulo de analíticas no es de utilidad así como está;
@@ -279,6 +279,10 @@ export function pagoDeNomina(d: {
 
   const nombres = new Map(d.personas.map((p) => [p.id, nombreDePersona({ nombre_completo: texto(p.nombre_completo), nombre_para_mostrar: p.nombre_para_mostrar == null ? null : texto(p.nombre_para_mostrar) })]))
   const nombreDe = (id: string): string => nombres.get(id) ?? 'sin nombre en el directorio'
+  // El empate de importe se desata por APELLIDO (el legajo), no por el nombre de pila que se muestra.
+  const ordenes = new Map(d.personas.map((p) => [p.id, claveDeOrden({ nombre_completo: texto(p.nombre_completo) })]))
+  const porApellido = (x: { personaId: string; nombre: string }, y: { personaId: string; nombre: string }) =>
+    (ordenes.get(x.personaId) ?? x.nombre).localeCompare(ordenes.get(y.personaId) ?? y.nombre, 'es')
   const porPersona = new Map<string, PersonaPagada[]>()
   const avisos = {
     sinRecibo: vacio(), sinLinea: vacio(), reciboMayor: vacio(), mesesSinCerrar: 0, quincenasAbiertas: 0,
@@ -316,7 +320,7 @@ export function pagoDeNomina(d: {
       f.negro = efectivo
       f.total = r2(banco + efectivo)
       f.personas = entregado.length
-      porPersona.set(mes, entregado.sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre)))
+      porPersona.set(mes, entregado.sort((x, y) => y.total - x.total || porApellido(x, y)))
       return f
     }
     f.medida = 'quincena_cerrada'
@@ -344,7 +348,7 @@ export function pagoDeNomina(d: {
     f.negro = negro
     f.total = r2(blanco + negro)
     f.personas = gente.length
-    porPersona.set(mes, gente.sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre)))
+    porPersona.set(mes, gente.sort((x, y) => y.total - x.total || porApellido(x, y)))
     return f
   })
 

@@ -18,7 +18,7 @@ const RECIBO: ReciboDeSueldo = {
 }
 
 const base = (horas: number, grupo: 'obreros' | 'oficina' = 'obreros') => liquidarLinea({
-  personaId: 'rosales', nombre: 'ROSALES DIEGO JOSE', horas,
+  personaId: 'rosales', nombre: 'ROSALES DIEGO JOSE', nombreOrden: 'ROSALES DIEGO JOSE', horas,
   tarifa: grupo === 'obreros'
     ? { valorHora: 5874, netoMensual: null, desde: '2026-08-16', origen: 'test' }
     : { valorHora: null, netoMensual: 1800000, desde: '2026-08-16', origen: 'test' },
@@ -66,7 +66,7 @@ test('SIN NETO: cobra null, marcado «sin neto» y no «sin tarifa»; el pie lo 
     personaId: 'rosales', cuil: null, periodo: 'Q1-09/2026', recibos: [], pisoCategoria: 6348, netoDeNomina: null,
   })
   const b = liquidarLinea({
-    personaId: 'rosales', nombre: 'R', horas: 62,
+    personaId: 'rosales', nombre: 'R', nombreOrden: 'R', horas: 62,
     tarifa: { valorHora: 5874, netoMensual: null, desde: '2026-09-01', origen: 'test' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'obreros')

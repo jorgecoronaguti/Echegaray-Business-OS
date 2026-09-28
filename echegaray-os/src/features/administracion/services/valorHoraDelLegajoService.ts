@@ -147,7 +147,7 @@ export function pisoDe(escalaData: unknown, cctData: unknown, p: PersonaDelRotul
   }))
   const firmado = exponerAlPiso(
     {
-      personaId: p.personaId, nombre: '', convenio: p.convenio, categoria: p.categoria,
+      personaId: p.personaId, nombre: '', nombreOrden: '', convenio: p.convenio, categoria: p.categoria,
       valorHora: null, origenTarifa: null,
     },
     escalas, p.hoy, 0,

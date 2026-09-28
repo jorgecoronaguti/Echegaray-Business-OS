@@ -28,8 +28,8 @@ const REGISTROS = [
   { persona_id: 'videla', obra_id: 'obra', fecha: '2026-03-03', horas: 8, tipo_hora: 'normal' },
 ]
 const ASIGNACIONES = [
-  { persona_id: 'aguero', nombre: 'AGUERO', nota: null, obra_id: 'obra', desde: '2026-01-01', hasta: null },
-  { persona_id: 'castillo', nombre: 'CASTILLO', nota: null, obra_id: 'obra', desde: '2026-01-01', hasta: null },
+  { persona_id: 'aguero', nombre: 'AGUERO', nombreOrden: 'AGUERO', nota: null, obra_id: 'obra', desde: '2026-01-01', hasta: null },
+  { persona_id: 'castillo', nombre: 'CASTILLO', nombreOrden: 'CASTILLO', nota: null, obra_id: 'obra', desde: '2026-01-01', hasta: null },
 ]
 
 test('INVARIANTE: las personas de Horas son las de Liquidación (el plantel de la quincena)', () => {
@@ -42,7 +42,7 @@ test('INVARIANTE: las personas de Horas son las de Liquidación (el plantel de l
     asignaciones: ASIGNACIONES, registros: REGISTROS,
     obras: { obra: { id: 'obra', nombre: 'OBRA', cliente: null, estado: 'activa' } },
     dias: diasDeLaQuincenaSinDomingos(q), hoy: '2026-09-14',
-    personas: Object.fromEntries(plantel.activas.map((p) => [p.id, { nombre: p.nombre, nota: marcaDeBaja(p)?.texto ?? null }])),
+    personas: Object.fromEntries(plantel.activas.map((p) => [p.id, { nombre: p.nombre, nombreOrden: p.nombre, nota: marcaDeBaja(p)?.texto ?? null }])),
     plantel: liquidacion,
   })
   assert.deepEqual(new Set(filas.map((f) => f.clave)), liquidacion,
@@ -56,7 +56,7 @@ test('SIN PLANTEL (llamador anterior) LAS FILAS SIGUEN SALIENDO DE ASIGNACIONES 
     asignaciones: ASIGNACIONES, registros: REGISTROS,
     obras: { obra: { id: 'obra', nombre: 'OBRA', cliente: null, estado: 'activa' } },
     dias: diasDeLaQuincenaSinDomingos(q), hoy: '2026-09-14',
-    personas: { videla: { nombre: 'VIDELA', nota: null } },
+    personas: { videla: { nombre: 'VIDELA', nombreOrden: 'VIDELA', nota: null } },
   })
   assert.deepEqual(filas.map((f) => f.clave).sort(), ['aguero', 'castillo', 'videla'])
 })

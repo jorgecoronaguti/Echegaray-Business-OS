@@ -71,6 +71,7 @@ function cobraCon(p: PersonaDeGrilla, horas: number, grupo: GrupoLiquidacion) {
   return liquidarLinea({
     personaId: p.id,
     nombre: p.nombre,
+    nombreOrden: p.nombreOrden,
     horas,
     tarifa: { valorHora: p.valorHora, netoMensual: p.netoMensual ?? null, desde: '', origen: 'tarifa vigente' },
     adelanto: 0,

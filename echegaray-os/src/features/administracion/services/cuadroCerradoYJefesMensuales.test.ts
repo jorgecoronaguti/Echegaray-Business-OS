@@ -61,7 +61,7 @@ test('SIN NETO, EL JEFE NO ESTÁ «SIN TARIFA»; QUIEN NO ES JEFE, SÍ', () => {
 })
 
 const jefeSinNeto = (importeCargado: number | null) => liquidarLinea({
-  personaId: 'maldonado', nombre: 'MALDONADO', horas: 44, tarifa: null, esJefe: true, importeCargado,
+  personaId: 'maldonado', nombre: 'MALDONADO', nombreOrden: 'MALDONADO', horas: 44, tarifa: null, esJefe: true, importeCargado,
   adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
 }, 'oficina')
 
@@ -70,7 +70,7 @@ test('EL RÓTULO DICE LO QUE HAY: importe de la planilla, o «mensual · importe
   assert.equal(jefeSinNeto(null).cobra, null, 'nunca se inventa un sueldo')
   assert.equal(rotuloDelMensual(jefeSinNeto(398200)), 'mensual · importe cargado de la planilla')
   const conNeto = liquidarLinea({
-    personaId: 'nievas', nombre: 'NIEVAS', horas: 46, esJefe: true,
+    personaId: 'nievas', nombre: 'NIEVAS', nombreOrden: 'NIEVAS', horas: 46, esJefe: true,
     tarifa: { valorHora: null, netoMensual: 1800000, desde: '2026-09-01', origen: 'acuerdo' },
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
   }, 'oficina')
