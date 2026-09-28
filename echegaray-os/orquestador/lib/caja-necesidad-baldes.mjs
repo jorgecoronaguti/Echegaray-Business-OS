@@ -92,9 +92,11 @@ export const SALIDAS = Object.freeze([
   // YA EXISTÍA, hecho el 16/08 para las tarjetas ejecutivas (`DEUDA` / `PLAN` en `caja-tarjetas.mjs`):
   // `esFacturaCargada` en `libro-extractores-compras.mjs` decide `COMPROMETIDO` (factura con
   // comprobante, "Pendiente") en vez de `PROYECTADO` (sin comprobante: estimación) mirando la propia
-  // fila. `VENCIDO` hereda de cuál de las dos era — nunca inventa aval.
+  // fila. Límite: `VENCIDO` NO conserva el origen — `estadoContraCorte` (libro-movimientos.mjs) pasa
+  // a VENCIDO también lo PROYECTADO con fecha anterior al corte (Compras sin comprobante, nómina e
+  // impuestos proyectados). En este gráfico pesa poco: la ventana arranca hoy y lo vencido es de antes.
   //
-  //   · «Proveedores» ahora es `DEUDA` = COMPROMETIDO + VENCIDO — SIEMPRE con un comprobante o una
+  //   · «Proveedores» ahora es `DEUDA` = COMPROMETIDO + VENCIDO — con un comprobante o una
   //     obligación ya vencida detrás (la factura Pendiente con N° de comprobante, el cheque librado y
   //     no debitado, el plan de pago de ARCA comprometido).
   //   · «Estimado (sin factura)» es `PLAN` = PROYECTADO — el plan de obra, la Estructura esperada, los
