@@ -104,9 +104,12 @@ test('un Banco del panel distinto del neto del recibo se avisa en pantalla, sin 
   assert.ok(r.avisos.some((a) => /Banco del panel/.test(a) && /manual/.test(a)))
 })
 
-test('los conceptos reales que no dan el neto del pie del recibo se avisan', () => {
+test('los conceptos reales que no dan el neto del pie del recibo no se imprimen (control independiente)', () => {
   const r = armar(sueldo({ estado: 'recibo', conceptosReales: REAL.conceptos, totalesReales: { haberes: null, descuentos: null, neto: 1 } }))
   assert.ok(r.avisos.some((a) => /pie del recibo/.test(a)))
+  assert.equal(r.cuadra, false)
+  const ok = armar(sueldo({ estado: 'recibo', conceptosReales: REAL.conceptos, totalesReales: { haberes: null, descuentos: null, neto: r.neto } }))
+  assert.equal(ok.cuadra, true)
 })
 
 test('estimado sin contribuciones con número: no imprime un costo total empleador', () => {

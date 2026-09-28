@@ -87,8 +87,10 @@ function desdeElReal(s: SueldoBlancoNegro, real: readonly ConceptoDeRecibo[]): R
   const avisos: string[] = []
   // UN CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO: los conceptos salieron del cuerpo del PDF y el neto de
   // `recibo_sueldo_linea` de su pie. Si no coinciden, el detalle cargado está incompleto.
+  // Y ES EL ÚNICO CONTROL QUE PUEDE DECIR QUE NO: `cuadra` no puede salir de la misma suma que se imprime.
   const netoDelPie = s.totalesReales?.neto ?? null
-  if (netoDelPie != null && Math.abs(netoDelPie - t.neto) > 0.01) {
+  const noCoincideConElPie = netoDelPie != null && Math.abs(netoDelPie - t.neto) > 0.01
+  if (noCoincideConElPie) {
     avisos.push(`los conceptos cargados dan un neto de ${$(t.neto)} y el pie del recibo dice ${$(netoDelPie)}: mirá el PDF`)
   }
   return {
@@ -99,7 +101,7 @@ function desdeElReal(s: SueldoBlancoNegro, real: readonly ConceptoDeRecibo[]): R
     totalRemunerativo: sumaONull(rem), totalNoRemunerativo: sumaONull(noRem), totalDescuentos: t.descuentos,
     sueldoBruto: t.haberes, neto: t.neto,
     contribucionesEmpleador: t.contribuciones, costoTotalEmpleador: t.costoTotal,
-    cuadra: true, avisos, driveFileId: s.driveFileId,
+    cuadra: !noCoincideConElPie, avisos, driveFileId: s.driveFileId,
   }
 }
 
@@ -145,7 +147,7 @@ export function reciboFormatoContador(s: SueldoBlancoNegro | null | undefined): 
 /** Lo que el papel afirma tiene que cerrar, y lo que difiera del panel se dice en la pantalla. */
 function controlar(r: ReciboContador, s: SueldoBlancoNegro): ReciboContador {
   const { totalRemunerativo: rem, totalNoRemunerativo: nr, totalDescuentos: d, neto } = r
-  const cuadra = rem != null && nr != null && d != null && neto != null && Math.abs(r2(rem + nr - d) - neto) <= 0.01
+  const cuadra = r.cuadra && rem != null && nr != null && d != null && neto != null && Math.abs(r2(rem + nr - d) - neto) <= 0.01
   const avisos = [...r.avisos]
   if (neto == null) avisos.push('hay un concepto sin número (regla dudosa): el neto no se puede afirmar y no se imprime')
   else if (!cuadra) avisos.push(`remunerativo + no remunerativo − descuentos no da el neto ${$(neto)}: no se imprime`)
