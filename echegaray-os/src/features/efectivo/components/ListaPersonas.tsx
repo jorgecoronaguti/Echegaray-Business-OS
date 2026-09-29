@@ -5,6 +5,7 @@
 // En el teléfono la fila se apila en dos líneas —nombre y saldo arriba, el resto abajo—: una tabla de cinco
 // columnas obligaba a desplazarse de costado.
 
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { ddmm, numero, pesos, type FiltroLista } from '../logica/entregas'
 import type { PersonaConEfectivo } from '../logica/personas'
@@ -29,9 +30,9 @@ export function ListaPersonas({ personas, filtro, puestos }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} data-testid="efectivo-personas">
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{TITULO[filtro]}</div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }} data-testid="efectivo-recortes">
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }} data-testid="efectivo-recortes">
           {RECORTES.map(([f, t]) => (
-            <Link key={f} href={urlEfectivo({ f })} prefetch={false} scroll={false} style={chip(activo === f)} aria-current={activo === f ? 'true' : undefined}>
+            <Link key={f} href={urlEfectivo({ f })} prefetch={false} scroll={false} className="max-md:min-h-11 max-md:px-3" style={chip(activo === f)} aria-current={activo === f ? 'true' : undefined}>
               {t}
             </Link>
           ))}
@@ -64,22 +65,38 @@ function FilaPersona({ p, puesto }: { p: PersonaConEfectivo; puesto: string | nu
   ].filter(Boolean).join(' · ')
   return (
     <Link
-      href={urlEfectivo({ persona: p.id })} prefetch={false} className={`${HOVER_FILA} max-md:!py-2`}
+      href={urlEfectivo({ persona: p.id })} prefetch={false} className={`${HOVER_FILA} grid gap-1 max-md:py-3 md:items-center md:gap-x-4 md:[grid-template-columns:var(--cols)]`}
       data-testid="fila-persona" data-persona={p.id}
-      style={{ display: 'grid', gridTemplateColumns: COLUMNAS, gap: '4px 16px', minHeight: ALTO_V2.fila, alignItems: 'center', borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px', color: sinSaldo ? V.apagado : V.tinta }}
+      // Las columnas van por variable y sólo desde `md`: un gridTemplateColumns en línea le ganaba a la clase y
+      // el teléfono conservaba las cinco columnas (536 px de ancho, scroll de costado).
+      style={{ '--cols': COLUMNAS, minHeight: ALTO_V2.fila, borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px', color: sinSaldo ? V.apagado : V.tinta } as CSSProperties}
     >
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <span className="truncate" style={{ fontWeight: 500 }}>{p.nombre}</span>
-        <span className="truncate" style={{ fontSize: '12px', color: V.tenue }}>{detalle}</span>
+        <span className="md:truncate" style={{ fontWeight: 500 }}>{p.nombre}</span>
+        <span className="md:truncate" style={{ fontSize: '12px', color: V.tenue }}>{detalle}</span>
       </div>
-      <div style={{ textAlign: 'right', fontFamily: MONO, fontWeight: 600, color: sinSaldo ? V.tenue : V.tinta }}>{numero(p.enMano)}</div>
+      {/* Teléfono: tarjeta apilada, las tres cifras con su rótulo en una fila. */}
+      <div className="grid grid-cols-3 gap-2 md:hidden" style={{ fontFamily: MONO }}>
+        <CifraMovil rotulo="En su poder" valor={numero(p.enMano)} color={sinSaldo ? V.tenue : V.tinta} fuerte />
+        <CifraMovil rotulo="Entregado" valor={numero(p.entregado)} color={V.tinta} />
+        <CifraMovil rotulo="Rendido" valor={numero(p.rendido)} color={V.tintaSuave} />
+      </div>
+      <div className="max-md:hidden" style={{ textAlign: 'right', fontFamily: MONO, fontWeight: 600, color: sinSaldo ? V.tenue : V.tinta }}>{numero(p.enMano)}</div>
       <div className="max-md:hidden" style={{ textAlign: 'right', fontFamily: MONO }}>{numero(p.entregado)}</div>
       <div className="max-md:hidden" style={{ textAlign: 'right', fontFamily: MONO, color: V.tintaSuave }}>{numero(p.rendido)}</div>
       <div style={{ fontSize: '12.5px', color: V.apagado, minWidth: 0 }}>
-        <span className="md:hidden" style={{ fontFamily: MONO, fontSize: '11.5px', display: 'block' }}>Entregado {numero(p.entregado)} · Rendido {numero(p.rendido)}</span>
         {p.ultima ? <span>{p.ultima.texto} · {ddmm(p.ultima.dia)}</span> : <span style={{ color: V.tenue }}>sin actividad</span>}
       </div>
     </Link>
+  )
+}
+
+function CifraMovil({ rotulo, valor, color, fuerte }: { rotulo: string; valor: string; color: string; fuerte?: boolean }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ ...eyebrow, fontFamily: 'inherit' }}>{rotulo}</div>
+      <div className="tabular-nums" style={{ fontWeight: fuerte ? 600 : 400, color }}>{valor}</div>
+    </div>
   )
 }
 
@@ -88,7 +105,7 @@ function FilaAnuladas({ p }: { p: PersonaConEfectivo }) {
   return (
     <Link
       href={urlEfectivo({ persona: p.id })} prefetch={false} className={HOVER_FILA} data-testid="fila-persona" data-persona={p.id}
-      style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', minHeight: ALTO_V2.fila, alignItems: 'center', borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px', color: V.apagado }}
+      style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', minHeight: ALTO_V2.fila, alignItems: 'center', minWidth: 0, borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px', color: V.apagado }}
     >
       <span style={{ fontWeight: 500, color: V.tinta }}>{p.nombre}</span>
       <span style={{ fontFamily: MONO, fontSize: '12px' }}>{p.anuladas.map((e) => e.codigo).sort().join(' · ')}</span>

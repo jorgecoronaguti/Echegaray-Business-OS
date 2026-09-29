@@ -6,6 +6,7 @@
 // Lo más nuevo arriba, como el resto del OS. El saldo de cada línea es el posterior al movimiento; si el corrido
 // no coincide con lo que dice la base se avisa en vez de callarlo (un control no se valida contra sí mismo).
 
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import type { Cronologia, Movimiento, PersonaConEfectivo } from '../logica/personas'
 import { ROTULO_COMPROBANTE, ddmm, numero, pesos } from '../logica/entregas'
@@ -57,7 +58,7 @@ export function FichaPersona({ p, cronologia, puesto }: { p: PersonaConEfectivo;
         <div data-testid="persona-anuladas" style={{ fontSize: '12.5px', color: V.tenue }}>
           Anuladas, sin efecto en el saldo:{' '}
           {p.anuladas.map((e, i) => (
-            <span key={e.id}>{i > 0 && ' · '}<Link href={urlEfectivo({ entrega: e.codigo })} prefetch={false} style={{ fontFamily: MONO, textDecoration: 'underline', textUnderlineOffset: 2 }}>{e.codigo}</Link></span>
+            <span key={e.id}>{i > 0 && ' · '}<Link href={urlEfectivo({ entrega: e.codigo })} prefetch={false} className="max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:px-1" style={{ fontFamily: MONO, textDecoration: 'underline', textUnderlineOffset: 2 }}>{e.codigo}</Link></span>
           ))}
         </div>
       )}
@@ -75,22 +76,32 @@ function FilaMovimiento({ m }: { m: Movimiento }) {
   const { texto, sub, href } = describir(m)
   const esRendicion = m.tipo === 'rendicion'
   const importe = m.tipo === 'en_camino' ? '' : `${m.delta > 0 ? '+' : '−'}${numero(Math.abs(m.delta))}`
-  const base = { display: 'grid', gridTemplateColumns: COLUMNAS, gap: '2px 16px', minHeight: ALTO_V2.fila, alignItems: 'center', borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px' } as const
+  // Columnas por variable y sólo desde `md`: en línea le ganaban a la clase y el teléfono seguía con cinco columnas.
+  const base = { '--cols': COLUMNAS, minHeight: ALTO_V2.fila, borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px' } as CSSProperties
+  const clase = 'grid gap-x-4 gap-y-0.5 max-md:py-3 md:items-center md:[grid-template-columns:var(--cols)]'
+  const signo = m.tipo === 'entrega' ? V.tinta : V.tintaSuave
   const contenido = (
     <>
-      <div style={{ fontFamily: MONO, fontSize: '12.5px', color: V.apagado }}>{ddmm(m.dia)}</div>
-      <div style={{ fontFamily: MONO, fontSize: '12px', color: V.apagado }}>{m.entrega.codigo}</div>
-      <div style={{ minWidth: 0, paddingLeft: esRendicion || m.tipo === 'en_camino' ? 16 : 0, borderLeft: esRendicion || m.tipo === 'en_camino' ? `2px solid ${V.linea}` : undefined }}>
-        <div className="truncate" style={{ fontWeight: m.tipo === 'entrega' ? 500 : 400, color: m.tipo === 'en_camino' ? V.apagado : V.tinta }}>{texto}</div>
-        {sub && <div className="truncate" style={{ fontSize: '12px', color: V.tenue }}>{sub}</div>}
+      <div className="max-md:flex max-md:items-baseline max-md:gap-2" style={{ fontFamily: MONO, fontSize: '12.5px', color: V.apagado }}>
+        <span>{ddmm(m.dia)}</span>
+        <span className="md:hidden" style={{ fontSize: '12px' }}>{m.entrega.codigo}</span>
       </div>
-      <div style={{ textAlign: 'right', fontFamily: MONO, color: m.tipo === 'entrega' ? V.tinta : V.tintaSuave }}>{importe}</div>
-      <div style={{ textAlign: 'right', fontFamily: MONO, fontWeight: 600, color: m.saldo < 0 ? V.warn : V.tinta }}>{m.tipo === 'en_camino' ? '' : numero(m.saldo)}</div>
+      <div className="max-md:hidden" style={{ fontFamily: MONO, fontSize: '12px', color: V.apagado }}>{m.entrega.codigo}</div>
+      <div style={{ minWidth: 0, paddingLeft: esRendicion || m.tipo === 'en_camino' ? 16 : 0, borderLeft: esRendicion || m.tipo === 'en_camino' ? `2px solid ${V.linea}` : undefined }}>
+        <div className="md:truncate" style={{ fontWeight: m.tipo === 'entrega' ? 500 : 400, color: m.tipo === 'en_camino' ? V.apagado : V.tinta }}>{texto}</div>
+        {sub && <div className="md:truncate" style={{ fontSize: '12px', color: V.tenue }}>{sub}</div>}
+      </div>
+      <div className="tabular-nums max-md:flex max-md:justify-between" style={{ textAlign: 'right', fontFamily: MONO, color: signo }}>
+        <span className="md:hidden" style={{ ...eyebrow, fontFamily: 'inherit' }}>{importe ? 'Importe' : ''}</span>{importe}
+      </div>
+      <div className="tabular-nums max-md:flex max-md:justify-between" style={{ textAlign: 'right', fontFamily: MONO, fontWeight: 600, color: m.saldo < 0 ? V.warn : V.tinta }}>
+        <span className="md:hidden" style={{ ...eyebrow, fontFamily: 'inherit' }}>{m.tipo === 'en_camino' ? '' : 'Saldo'}</span>{m.tipo === 'en_camino' ? '' : numero(m.saldo)}
+      </div>
     </>
   )
   return href
-    ? <Link href={href} prefetch={false} className={HOVER_FILA} style={base} data-testid="fila-movimiento" data-tipo={m.tipo}>{contenido}</Link>
-    : <div style={base} data-testid="fila-movimiento" data-tipo={m.tipo}>{contenido}</div>
+    ? <Link href={href} prefetch={false} className={`${HOVER_FILA} ${clase}`} style={base} data-testid="fila-movimiento" data-tipo={m.tipo}>{contenido}</Link>
+    : <div className={clase} style={base} data-testid="fila-movimiento" data-tipo={m.tipo}>{contenido}</div>
 }
 
 function describir(m: Movimiento): { texto: string; sub: string | null; href: string | null } {
