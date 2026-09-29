@@ -29,6 +29,7 @@ import { revalidatePath } from 'next/cache'
 import { invalidarFichaCliente } from '@/features/clientes/services/invalidarFicha'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
+import { sembrarContratoDeObra } from './sembrarContrato'
 import {
   altaSchema, columnasDelPaso, ESQUEMA_PASO, idDeObra, pasoSiguiente, urlPaso, vacioANull,
   type PasoQueGuarda,
@@ -65,6 +66,9 @@ export async function crearBorradorObra(form: FormData): Promise<Resultado> {
   })
   if (error) return { ok: false, error: error.message }
 
+  // Si ya hay presupuesto aprobado u OC vinculados, el contrato nace con la obra. Si no, el paso
+  // «Contrato» lo dice en pantalla: acá no hay dónde mostrar nada, la acción redirige.
+  await sembrarContratoDeObra(supabase, id, d.cliente_id)
   await invalidarFichaCliente(supabase, null)
   revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   redirect(urlPaso(id, 'responsable'))
@@ -107,6 +111,9 @@ export async function guardarPasoObra(
     if (error) return { ok: false, error: error.message }
   }
 
+  // El presupuesto o la OC pudieron llegar después del borrador: cada paso reintenta la siembra
+  // (idempotente, no pisa una fila cargada). Sin `ve_economia` la RPC rechaza y el paso sigue igual.
+  if (paso === 'contrato') await sembrarContratoDeObra(supabase, obraId, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras')
   const siguiente = pasoSiguiente(paso)
   if (siguiente) redirect(urlPaso(obraId, siguiente))

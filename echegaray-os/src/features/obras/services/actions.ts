@@ -21,6 +21,7 @@ import { finNoAnteriorAlInicio } from './validacionFechas'
 import { claveDeActividad } from './claves'
 import { haceCiclo } from './cronograma'
 import { debeFijarMonto, montoAnterior } from './alta'
+import { avisoDeSiembra, sembrarContratoDeObra } from './sembrarContrato'
 
 export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
 
@@ -126,10 +127,13 @@ export async function crearObra(form: FormData): Promise<Resultado> {
   // el mensaje dice exactamente qué quedó afuera en vez de un «algo salió mal» sobre una obra que sí
   // se creó.
   const eMonto = await fijarMontoSiCambio(supabase, id, form, vacioANull(d.monto_contratado))
+  // El precio también entra a `obra_contrato` (de donde lo lee la ficha del cliente): del
+  // presupuesto aprobado o la OC vinculados. Sin origen NO se crea fila y el aviso lo dice.
+  const aviso = avisoDeSiembra(await sembrarContratoDeObra(supabase, id, d.cliente_id))
   await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes', 'layout'); revalidatePath('/obras')
   if (eMonto) return { ok: true, id, mensaje: `Obra creada, pero el monto contratado no se guardó: ${eMonto}` }
-  return { ok: true, id }
+  return aviso ? { ok: true, id, mensaje: `Obra creada. ${aviso}` } : { ok: true, id }
 }
 
 export async function editarObra(obraId: string, form: FormData): Promise<Resultado> {

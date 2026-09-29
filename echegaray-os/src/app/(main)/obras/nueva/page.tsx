@@ -97,6 +97,11 @@ export default async function NuevaObraPage({
     obraId ? supabase.from('obra_asignacion').select('id', { count: 'exact', head: true }).eq('obra_id', obraId).then((r) => r.count ?? 0) : 0,
     obraId ? supabase.from('obra_actividad').select('id', { count: 'exact', head: true }).eq('obra_id', obraId).eq('archivada', false).then((r) => r.count ?? 0) : 0,
   ])
+  // El paso «Contrato» dice si la obra ya tiene su fila en `obra_contrato` (la que lee la ficha del
+  // cliente): sin ella el total del cliente se anula, y eso no puede pasar callado.
+  const sinContrato = paso === 'contrato' && veContrato && obraId
+    ? !(await supabase.from('obra_contrato').select('obra_id').eq('obra_id', obraId).maybeSingle()).data
+    : false
   const vivas = actividades.filter((a) => !a.archivada)
   const hechos = pasosHechos(obra ? {
     jefe_obra: obra.jefe_obra, fecha_inicio_plan: obra.fecha_inicio_plan, fecha_fin_plan: obra.fecha_fin_plan,
@@ -183,6 +188,13 @@ export default async function NuevaObraPage({
                   </>
                 )}
                 {/* `veEconomia` decide si el campo EXISTE: la clave ausente no es un vacío (ver `actionsAlta`). */}
+                {paso === 'contrato' && sinContrato && (
+                    <Aviso tono="warn">
+                      Esta obra todavía no tiene fila en el contrato: sin presupuesto aprobado ni OC en pesos con importe
+                      neto vinculados, el precio no se puede sembrar solo y la ficha del cliente no suma esta obra.
+                      Se carga desde el papel.
+                    </Aviso>
+                )}
                 {paso === 'contrato' && veContrato && (
                   <CampoAlta rotulo="Monto contratado ($)" mono>
                     <InputAlta type="number" name="monto_contratado" min={0} step="0.01" defaultValue={v(obra.monto_contratado)} />
