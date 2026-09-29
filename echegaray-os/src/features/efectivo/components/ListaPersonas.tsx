@@ -45,7 +45,7 @@ export function ListaPersonas({ personas, filtro, puestos }: {
         personas.map((p) => <FilaAnuladas key={p.id} p={p} />)
       ) : (
         <div>
-          <div className="max-md:hidden" style={{ display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
+          <div className="grid max-md:hidden" style={{ gridTemplateColumns: COLUMNAS, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
             <div>Persona</div><div style={{ textAlign: 'right' }}>En su poder</div><div style={{ textAlign: 'right' }}>Entregado</div>
             <div style={{ textAlign: 'right' }}>Rendido</div><div>Última actividad</div>
           </div>

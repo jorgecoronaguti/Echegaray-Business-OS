@@ -46,7 +46,7 @@ export function FichaPersona({ p, cronologia, puesto }: { p: PersonaConEfectivo;
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
         <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Entregas y rendiciones</div>
-        <div className="max-md:hidden" style={{ display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
+        <div className="grid max-md:hidden" style={{ gridTemplateColumns: COLUMNAS, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
           <div>Fecha</div><div>Entrega</div><div>Movimiento</div><div style={{ textAlign: 'right' }}>Importe</div><div style={{ textAlign: 'right' }}>Saldo</div>
         </div>
         {cronologia.movimientos.length === 0

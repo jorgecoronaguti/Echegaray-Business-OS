@@ -44,7 +44,7 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="revisar-comprobante" data-estado={c.estado}>
       <div style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 14, padding: '0 20px', background: SUPERFICIE, borderBottom: `1px solid ${V.linea}`, fontSize: '13px', flexWrap: 'wrap' }}>
-        <Link href={volver} prefetch={false} style={{ fontWeight: 500 }}>{e.codigo} · {e.persona} · {destino}</Link>
+        <Link href={volver} prefetch={false} className="inline-flex items-center max-md:min-h-11" style={{ fontWeight: 500 }}>{e.codigo} · {e.persona} · {destino}</Link>
         <span style={{ color: V.apagado }}>
           {cola.length} {cola.length === 1 ? 'comprobante' : 'comprobantes'} por imputar · {pesos(sumaCola)}
         </span>
