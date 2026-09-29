@@ -169,6 +169,10 @@ test('un cargo NO es un consumo, y cada uno se reconoce por su concepto', () => 
   assert.equal(cargos[2].base, 815850.03, 'la base de la percepción verifica el consumo en dólares')
   assert.equal(clasificarLinea('INTERESES POR FINANCIACION').concepto, 'interes_financiacion')
   assert.equal(clasificarLinea('MERPAGO*MODICAMOTOS').tipo, 'consumo', 'lo que no se reconoce se ve, no se reparte')
+  // 29/09/2026 (resumen 201606): «CR.RG 5617 30% M» es la devolución de la percepción, con importe
+  // NEGATIVO. Cayó en `consumo` y el total de consumos del banco no cerraba (dif. -244.755,01).
+  assert.deepEqual(clasificarLinea('CR.RG 5617 30% M'), { tipo: 'cargo', concepto: 'rg5617_credito' })
+  assert.deepEqual(clasificarLinea('CR RG5617 30%'), { tipo: 'cargo', concepto: 'rg5617_credito' })
 })
 
 test('el plan de cuotas se abre: cuota 8 de 18', () => {

@@ -203,6 +203,8 @@ export function clasificarLinea(desc = '') {
   if (/^IMPUESTO DE SELLOS\s+P\b/.test(d)) return { tipo: 'cargo', concepto: 'sellos_provinciales' }
   if (/^IMPUESTO DE SELLOS/.test(d)) return { tipo: 'cargo', concepto: 'sellos' }
   if (/^DB\.?\s*RG\s*5617/.test(d)) return { tipo: 'cargo', concepto: 'rg5617' }
+  // CR.RG 5617 = devolución (crédito) de la percepción: importe negativo, es un cargo, no un consumo.
+  if (/^CR\.?\s*RG\s*5617/.test(d)) return { tipo: 'cargo', concepto: 'rg5617_credito' }
   if (/^(DB\.?\s*)?PERCEP/.test(d)) return { tipo: 'cargo', concepto: 'percepcion' }
   if (/\bI\.?V\.?A\.?\b/.test(d)) return { tipo: 'cargo', concepto: 'iva' }
   if (/INTERES(ES)?\s+(POR\s+)?FINANCIA/.test(d)) return { tipo: 'cargo', concepto: 'interes_financiacion' }

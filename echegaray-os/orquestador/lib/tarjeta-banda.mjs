@@ -135,6 +135,7 @@ const NOMBRE_CARGO = {
   sellos: 'Impuesto de sellos',
   sellos_provinciales: 'Impuesto de sellos provincial',
   rg5617: 'Percepción RG 5617',
+  rg5617_credito: 'Crédito percepción RG 5617',
   iva: 'IVA',
   interes_financiacion: 'Intereses de financiación',
   punitorio: 'Intereses punitorios',
