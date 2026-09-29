@@ -13,6 +13,14 @@
 // `recibo_sueldo_concepto`, `nomina_recibo_neto`, `recibo_empleado`, `haberes_acreditados_banco`,
 // `jornal_quincena`): fecha reconocida, fecha de pago de aportes, nombre del banco, sección. El encabezado del
 // PDF del estudio (donde están) no se importó a ninguna columna.
+//
+// LA FECHA DE PAGO SÍ TIENE FUENTE (`nomina_recibo_neto.fecha_pago`, y `jornal_quincena.fecha_pago` como segunda):
+// la medición del 29/09 la dio por ausente por mirar el legajo y no las tablas de nómina; la auditoría lo corrigió.
+// Se lee en `fechaDePagoDelRecibo.ts` y llega por el detalle laboral.
+//
+// UN DATO INFERIDO NO SE PRESENTA COMO HECHO (regla de oro 2): lleva «*» y una nota al pie que dice de dónde salió.
+// Son inferencias la calificación (es el oficio del legajo), la antigüedad (calculada desde el ingreso, no la
+// reconocida), el lugar de pago (domicilio del empleador) y la fecha si viene de `jornal_quincena`.
 
 import type { DetalleLaboral } from './detalleLaboral.ts'
 import { EMPLEADOR, periodoDePago } from './reciboFormatoContador.ts'
@@ -28,8 +36,15 @@ export interface DatosDelLegajoParaRecibo {
   seccion: string | null
   modalidad: string | null
   obraSocial: string | null
-  lugarDePago: string
+  /** «domicilio*, dd/mm/aaaa»; sin fecha real, «domicilio*, —». */
+  lugarYFechaDePago: string
+  /** Una línea por dato marcado con «*», para el pie del papel. */
+  notasInferidas: string[]
 }
+
+const MARCA = '*'
+const RAYA = '—'
+const fechaDdMmAaaa = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
 /** Un campo del legajo por su rótulo; los mismos que muestra `DetalleLaboralDeLaPersona`. `null` = sin cargar. */
 export function campoDelLegajo(detalle: DetalleLaboral | undefined, rotulo: string): string | null {
@@ -59,20 +74,34 @@ export function datosDelLegajoParaRecibo(
   detalle: DetalleLaboral | undefined, quincena: { desde: string; hasta: string }, ingresoIso: string | null,
 ): DatosDelLegajoParaRecibo {
   const p = periodoDePago(quincena.desde)
+  const notas: string[] = []
+  const inferido = (valor: string | null, nota: string): string | null => {
+    if (valor == null) return null
+    notas.push(nota)
+    return `${valor}${MARCA}`
+  }
+  const pago = detalle?.fechaDePago ?? null
+  // Del recibo del estudio es un hecho; la de la quincena puede ser un supuesto y se marca.
+  const fecha = pago == null ? RAYA : pago.origen === 'recibo' ? fechaDdMmAaaa(pago.fecha) : `${fechaDdMmAaaa(pago.fecha)}${MARCA}`
+  if (pago?.origen === 'jornal') notas.push('FECHA DE PAGO: fecha de caja de la quincena, puede ser un supuesto; no es la del recibo del estudio.')
+  const antiguedad = inferido(antiguedadAl(quincena.hasta, null, ingresoIso),
+    'ANTIGÜEDAD: calculada desde la fecha de ingreso; no es la antigüedad reconocida.')
+  // La «calificación profesional» del papel es el oficio del legajo (ALBAÑIL); la categoría UOCRA va aparte.
+  const calificacion = inferido(campoDelLegajo(detalle, 'Oficio'),
+    'CALIFICACIÓN PROFESIONAL: es el oficio del legajo, no la calificación que fija el estudio.')
+  notas.push('LUGAR DE PAGO: domicilio del empleador; el lugar de pago no está registrado.')
   return {
     legajo: campoDelLegajo(detalle, 'Legajo'),
     cuil: campoDelLegajo(detalle, 'CUIL'),
     fechaReconocida: null,
-    antiguedad: antiguedadAl(quincena.hasta, null, ingresoIso),
-    // La «calificación profesional» del papel es el oficio del legajo (ALBAÑIL); la categoría UOCRA va aparte.
-    calificacion: campoDelLegajo(detalle, 'Oficio'),
+    antiguedad,
+    calificacion,
     periodo: `${p.mes}/${p.anio}`,
     banco: null,
     seccion: null,
     modalidad: modalidadLegible(campoDelLegajo(detalle, 'Modalidad')),
     obraSocial: campoDelLegajo(detalle, 'Obra social'),
-    // El lugar es el domicilio del empleador que imprime el recibo del estudio. La fecha de pago sólo existe
-    // en `nomina_recibo_neto` cuando llegó el recibo real; hasta entonces no se escribe una.
-    lugarDePago: EMPLEADOR.domicilio,
+    lugarYFechaDePago: `${EMPLEADOR.domicilio}${MARCA}, ${fecha}`,
+    notasInferidas: notas,
   }
 }

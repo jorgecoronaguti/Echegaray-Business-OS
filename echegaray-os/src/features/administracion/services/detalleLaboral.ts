@@ -9,6 +9,8 @@
 import type { DatosDePersona } from './grillaHorasQuincenaService.ts'
 import type { EstadoDeFila, FilaDeGrilla } from './grillaHorasQuincena.ts'
 import type { MesDeHH } from './panelDePersona.ts'
+import { fechaDePagoDe, type FechaDePago } from './fechaDePagoDelRecibo.ts'
+import type { FilaRecibo } from './liquidacionCuadros.ts'
 
 export interface CampoDelLegajo {
   rotulo: string
@@ -28,6 +30,8 @@ export interface DetalleLaboral {
   bolsillo: number | null
   /** `null` = alícuotas sin cargar → «sin base», nunca un número (R1). ESTIMADO: cargas sin validar. */
   costoCargado: number | null
+  /** Cuándo se pagó esta quincena (`nomina_recibo_neto` o `jornal_quincena`). `null` = ninguna la tiene: no se inventa. */
+  fechaDePago: FechaDePago | null
 }
 
 export function detalleLaboralDe(e: {
@@ -35,6 +39,7 @@ export function detalleLaboralDe(e: {
   fila?: FilaDeGrilla
   cobra?: number | null
   multiplicador: number | null
+  fechaDePago?: FechaDePago | null
 }): DetalleLaboral {
   const bolsillo = e.cobra ?? (e.persona.valorHora == null ? null : (e.fila?.cargadas ?? 0) * e.persona.valorHora)
   return {
@@ -47,7 +52,15 @@ export function detalleLaboralDe(e: {
     estado: e.fila?.estado ?? null,
     bolsillo,
     costoCargado: bolsillo != null && e.multiplicador != null ? bolsillo * e.multiplicador : null,
+    fechaDePago: e.fechaDePago ?? null,
   }
+}
+
+/** Lo leído de la base sobre el pago de la quincena; `periodo` es la clave de `nomina_recibo_neto` (`Q2-09/2026`). */
+export interface PagosDeLaQuincena {
+  recibos: readonly FilaRecibo[]
+  periodo: string
+  jornalFechaPago: string | null
 }
 
 /** Una entrada por persona del padrón de la quincena. Viaja serializable al panel de cliente. */
@@ -55,13 +68,17 @@ export function detallesLaboralesDeLaQuincena(c: {
   datos: { porPersona: Record<string, DatosDePersona> }
   grilla: readonly FilaDeGrilla[]
   liquidacion: { cuadros: readonly { lineas: readonly { personaId: string; cobra: number | null }[] }[] }
-}, multiplicador: number | null): Record<string, DetalleLaboral> {
+}, multiplicador: number | null, pagos?: PagosDeLaQuincena): Record<string, DetalleLaboral> {
   const cobra = new Map<string, number | null>()
   for (const cuadro of c.liquidacion.cuadros) for (const l of cuadro.lineas) cobra.set(l.personaId, l.cobra)
   const salida: Record<string, DetalleLaboral> = {}
   for (const [id, persona] of Object.entries(c.datos.porPersona)) {
     salida[id] = detalleLaboralDe({
       persona, fila: c.grilla.find((f) => f.personaId === id), cobra: cobra.get(id), multiplicador,
+      fechaDePago: pagos == null ? null : fechaDePagoDe({
+        recibos: pagos.recibos, periodo: pagos.periodo, jornalFechaPago: pagos.jornalFechaPago,
+        cuil: persona.legajo.find((f) => f.rotulo === 'CUIL')?.valor ?? null,
+      }),
     })
   }
   return salida

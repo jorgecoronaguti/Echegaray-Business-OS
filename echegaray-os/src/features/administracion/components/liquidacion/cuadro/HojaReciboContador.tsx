@@ -56,7 +56,8 @@ export interface EmpleadoDelRecibo {
   seccion?: string | null
   modalidad?: string | null
   obraSocial?: string | null
-  lugarDePago?: string | null
+  lugarYFechaDePago?: string | null
+  notasInferidas?: string[]
 }
 
 export function HojaReciboContador({ hoja, recibo, empleado, quincena }: {
@@ -81,7 +82,13 @@ export function HojaReciboContador({ hoja, recibo, empleado, quincena }: {
         ['CALIFICACIÓN PROFESIONAL', empleado.calificacion ?? null, true], ['F. PAGO APORTES', null], ['PERIODO', empleado.periodo ?? null], ['BANCO', empleado.banco ?? null],
       ]} />
       <Datos celdas={[['CATEGORÍA LABORAL', recibo.categoria, true], ['SECCIÓN', empleado.seccion ?? null, true], ['MODALIDAD DE CONTRATACIÓN', empleado.modalidad ?? null, true]]} />
-      <Datos celdas={[['OBRA SOCIAL', empleado.obraSocial ?? null, true], ['LUGAR Y FECHA DE PAGO', empleado.lugarDePago ?? null, true], ['PERIODO DE PAGO', p.texto, true]]} />
+      <Datos celdas={[['OBRA SOCIAL', empleado.obraSocial ?? null, true], ['LUGAR Y FECHA DE PAGO', empleado.lugarYFechaDePago ?? null, true], ['PERIODO DE PAGO', p.texto, true]]} />
+
+      {(empleado.notasInferidas?.length ?? 0) > 0 && (
+        <div data-testid="recibo-contador-notas" style={{ ...SIN_CORTE, fontSize: '9.5px', color: GRIS, lineHeight: 1.35 }}>
+          {empleado.notasInferidas?.map((n) => <div key={n}>{`* Dato inferido: ${n}`}</div>)}
+        </div>
+      )}
 
       {recibo.contribuciones.length > 0 && <Contribuciones recibo={recibo} />}
 

@@ -334,7 +334,7 @@ function agruparCorrecciones(
 }
 
 /** Los cuatro bloques del legajo real. «sin cargar» lo escribe la pantalla: acá `null` viaja como es. */
-function armarPersona(
+export function armarPersona(
   p: FilaDirectorio, l: FilaPersona | undefined, valorHora: number | null,
   suyas: FilaHH[], q: Quincena, nombres: Map<string, string>, adelanto: number | null,
   mesesHH: MesDeHH[],
