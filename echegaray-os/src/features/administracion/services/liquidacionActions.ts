@@ -38,6 +38,7 @@ import { leerCuadroDeLaQuincena } from './cuadroDeLaQuincenaService'
 import { pendientesPorPersona } from './grillaHorasQuincena'
 import { avisoDeAutocierre, decisionDeAutocierre, type LineaCongelada } from './autocierreDeQuincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
+import { pagoAlMarcarPagada } from './pagoAlMarcarPagada'
 import { escribirRedondeo, verificarGuardadoDelRedondeo } from './efectivoRedondeado'
 
 const RUTA = '/administracion/personas'
@@ -459,6 +460,9 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
 // `pagoDeLaQuincena.ts`, así se le pagó el 100 % por un lado o repartido— y sella la línea con fecha y autor. Lo
 // que había antes en esas dos celdas, con sus cuentas, se guarda en `pagada_antes`: deshacer la marca lo devuelve
 // tal cual, no a cero.
+//
+// EXCEPCIÓN (29/09/2026): si el dueño ya anotó un importe (banco o efectivo ≠ 0), NO se completa nada: se conserva
+// tal cual y la marca sólo sella; el saldo sin cubrir queda visible como pendiente (`pagoAlMarcarPagada.ts`).
 
 const pagadaSchema = ventanaSchema.extend({
   persona_id: z.string().uuid(),
@@ -466,8 +470,6 @@ const pagadaSchema = ventanaSchema.extend({
 })
 
 const MIGRACION_PAGADA = '20260916T1300_liquidacion_linea_pagada.sql'
-
-const r2 = (n: number): number => Math.round(n * 100) / 100
 
 type AntesDeLaMarca = {
   pagado_banco: number | null
@@ -536,6 +538,11 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
     const { data: sesion } = await supabase.auth.getUser()
     if (!sesion.user) return { ok: false, error: 'Sin sesión.' }
     const p = linea.pago
+    // LO ANOTADO POR EL DUEÑO NO SE PISA: con algo tecleado la marca sólo sella (`pagoAlMarcarPagada`).
+    const pago = pagoAlMarcarPagada(
+      { banco: linea.pagadoBanco, efectivo: linea.pagadoEfectivo },
+      { banco: p.saldoBanco, efectivo: p.saldoEfectivo },
+    )
     const antes: AntesDeLaMarca = {
       pagado_banco: num(fila?.pagado_banco), pagado_efectivo: num(fila?.pagado_efectivo),
       formulas: {
@@ -547,9 +554,10 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
       liquidacion_id: cab.id, persona_id: personaId,
       // LO QUE FALTABA DE CADA LADO SE DA POR PAGADO. El saldo compensado ya descontó el exceso del otro lado; un
       // saldo negativo (cobró de más) no se «paga»: queda como está y la marca sólo sella.
-      pagado_banco: r2(linea.pagadoBanco + Math.max(0, p.saldoBanco ?? 0)),
-      pagado_efectivo: r2(linea.pagadoEfectivo + Math.max(0, p.saldoEfectivo ?? 0)),
-      formulas: sinCuentasDePago(fila?.formulas),
+      pagado_banco: pago.pagadoBanco,
+      pagado_efectivo: pago.pagadoEfectivo,
+      // Lo anotado se conserva con sus cuentas; sin nada anotado se quitan como siempre.
+      formulas: pago.conservaLoAnotado ? (fila?.formulas ?? {}) : sinCuentasDePago(fila?.formulas),
       pagada_en: new Date().toISOString(), pagada_por: sesion.user.id, pagada_antes: antes,
     }
   }
