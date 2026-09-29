@@ -64,6 +64,33 @@ export async function aplicarEleccion(d, { fajoId, indices = [], campo, valor } 
 }
 
 /**
+ * Pone la FECHA que la persona contestó en los ítems que no la tenían (29/09/2026: «fecha de ayer»).
+ * Misma forma que `aplicarEleccion`: sólo toca los ítems indicados y sólo si la fecha estaba faltando;
+ * nunca pisa una fecha leída. `fechaVia` deja constancia de que la dijo la persona, no el papel.
+ */
+export async function aplicarFecha(d, { fajoId, indices = [], valor } = {}) {
+  const { port, repo = repoReal, log = null } = d
+  const fajo = await repo.fajoPorId(port, fajoId)
+  if (!fajo) return { que: RESULTADO.SIN_FAJO }
+  if (fajo.estado !== ESTADO.ABIERTO) return { que: RESULTADO.CERRADO, fajo }
+  const items = [...(fajo.items ?? [])]
+  const aplicados = []
+  for (const i of indices) {
+    const it = items[i]
+    if (!it || !valor) continue
+    items[i] = { ...it, comprobante: { ...(it.comprobante ?? {}), fecha: valor, fechaVia: 'respuesta' } }
+    aplicados.push(i)
+  }
+  if (!aplicados.length) return { que: RESULTADO.INVALIDA, fajo }
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return { que: RESULTADO.CERRADO, fajo }
+  log?.info?.('comprobantes: fecha contestada', { fajo: fajo.id, indices: aplicados })
+  const vivos = guardado.items ?? []
+  const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
+  return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo), aplicados }
+}
+
+/**
  * Contesta un PROBABLE duplicado y guarda el fajo. Misma fuente para el botón y para el texto.
  *
  * ═══ POR QUÉ EXISTE (25/08) ═══

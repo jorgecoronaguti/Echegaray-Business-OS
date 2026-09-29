@@ -236,7 +236,14 @@ export function crearHiloConPregunta({ port = null } = {}) {
     try {
       const r = await port.query(
         `select 1 from public.efectivo_iniciales where estado = 'pregunta' and root_post_id = $1 limit 1`, [String(rootId)])
-      return Boolean(r?.rows?.length)
+      if (r?.rows?.length) return true
+      // Y el hilo de un FAJO DE COMPROBANTES abierto (29/09/2026): el bot pregunta la fecha o la obra en
+      // el hilo del papel y la respuesta escrita se descartaba «por guarda». Una consulta indexada por
+      // la raíz del hilo; sin fajo abierto, no entra.
+      const f = await port.query(
+        `select 1 from comunicacion.comprobante_fajos
+          where estado = 'abierto' and (root_post_id = $1 or aviso_post_id = $1 or $1 = any(post_ids)) limit 1`, [String(rootId)])
+      return Boolean(f?.rows?.length)
     } catch { return false }
   }
 }

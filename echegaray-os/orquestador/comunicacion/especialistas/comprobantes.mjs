@@ -43,7 +43,7 @@
 import { TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { atenderRespuesta } from '../comprobantes/respuesta.mjs'
-import { interpretarRespuesta, MAX_LARGO } from '../../lib/comprobantes/respuesta-texto.mjs'
+import { interpretarRespuesta, RESPUESTA, MAX_LARGO } from '../../lib/comprobantes/respuesta-texto.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
 import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import { conLaTanda } from '../comprobantes/tanda.mjs'
@@ -104,6 +104,13 @@ function plano(texto) {
  * FALLA HACIA AFUERA: si la base no contesta, se devuelve null y el mensaje sigue su camino. Un
  * reclamo fabricado sobre una lectura fallida secuestraría el mensaje para no poder atenderlo.
  */
+/** ¿El mensaje cuelga del hilo donde el bot dejó su pregunta? (raíz = el post del fajo o su aviso). */
+function enElHiloDelFajo(fajo, rootId) {
+  if (!rootId) return false
+  const r = String(rootId)
+  return r === fajo.root_post_id || r === fajo.aviso_post_id || (fajo.post_ids ?? []).includes(r)
+}
+
 async function reclamoDeRespuesta(texto, ctx = {}) {
   const t = String(texto ?? '').trim()
   if (!t || t.length > MAX_LARGO) return null
@@ -114,9 +121,15 @@ async function reclamoDeRespuesta(texto, ctx = {}) {
   try {
     const fajo = await repo.fajoAbierto(port, { plataforma: ctx.actor?.plataforma ?? 'mattermost', userId, channelId })
     if (!fajo) return null
-    const respuesta = interpretarRespuesta(fajo, t)
-    if (!respuesta) return null
-    return { destino: 'responder', confianza: 1, fajo, respuesta }
+    const respuesta = interpretarRespuesta(fajo, t, { ahora: ctx.ahora })
+    if (respuesta) return { destino: 'responder', confianza: 1, fajo, respuesta }
+    // DENTRO DEL HILO DE LA PREGUNTA, callar no es una opción (29/09/2026): «fecha de ayer» se perdió
+    // sin una palabra. Si el mensaje cuelga del hilo del propio fajo y no se entiende, se repregunta
+    // nombrando lo que falta. Fuera del hilo (charla suelta en el canal) sigue sin reclamarse.
+    if (enElHiloDelFajo(fajo, ctx.actor?.root_post_id)) {
+      return { destino: 'responder', confianza: 1, fajo, respuesta: { que: RESPUESTA.NO_ENTENDIDA } }
+    }
+    return null
   } catch { return null }
 }
 

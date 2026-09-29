@@ -36,6 +36,7 @@
 // esa opción ESTABA OFRECIDA — nunca a uno donde no se ofreció, que sería inventarle una imputación.
 
 import { opcionesDe, opcionesDelDesplegable, imputacionPendiente, indiceDuplicadoAbierto, indiceClaseAbierta } from './fajo.mjs'
+import { faltantesDe, MOTIVO, POLITICA } from './faltantes.mjs'
 
 /** Techo de largo de la respuesta. Un nombre de obra es corto; un párrafo es otra conversación. */
 export const MAX_LARGO = 120
@@ -46,7 +47,79 @@ export const RESPUESTA = Object.freeze({
   DESCARTAR: 'descartar',
   DUPLICADO: 'duplicado',
   CLASE: 'clase',
+  // 29/09/2026: el bot preguntó la fecha y «fecha de ayer» no la entendía nadie.
+  FECHA: 'fecha',
+  // Es una respuesta DENTRO del hilo de la pregunta que no se pudo interpretar: se repregunta.
+  NO_ENTENDIDA: 'no_entendida',
 })
+
+// ═══ LA FECHA, CONTESTADA ESCRIBIENDO (29/09/2026) ═══
+//
+// El bot pregunta «no pude leer la fecha» y la respuesta natural es «de ayer», «28/09», «el 25 de
+// septiembre». Se interpreta sólo cuando algún ítem tiene la fecha como faltante, contra el día de hoy
+// en Argentina, y nunca devuelve una fecha futura o imposible: un dato inventado es peor que uno vacío.
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/** Y/M/D de hoy en San Juan (UTC-3 fijo), sin depender de la zona de la máquina. */
+function hoyAR(ahora) {
+  const d = new Date((ahora instanceof Date ? ahora : new Date(ahora ?? Date.now())).getTime() - 3 * 3600_000)
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }
+}
+const utc = ({ y, m, d }) => Date.UTC(y, m - 1, d)
+const dd = (n) => String(n).padStart(2, '0')
+
+function armar(y, m, d, hoy) {
+  const t = new Date(Date.UTC(y, m - 1, d))
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return null   // 31/02
+  if (y < 2000 || t.getTime() > utc(hoy)) return null                                                 // futura
+  return `${dd(d)}/${dd(m)}/${y}`
+}
+
+/** «DD/MM/AAAA» o null. `t` ya viene en `plano`. */
+export function interpretarFecha(t, { ahora } = {}) {
+  const hoy = hoyAR(ahora)
+  const s = String(t ?? '').replace(/^((la|es|fue|era|del|de|el|dia|fecha|factura|emitida|emitio|seria)\s+)+/, '').trim()
+  const rel = (dias) => { const x = new Date(utc(hoy) - dias * 86400_000); return armar(x.getUTCFullYear(), x.getUTCMonth() + 1, x.getUTCDate(), hoy) }
+  if (s === 'hoy') return rel(0)
+  if (s === 'ayer') return rel(1)
+  if (s === 'anteayer' || s === 'antes de ayer' || s === 'antesdeayer') return rel(2)
+  let m = s.match(/^(\d{1,2})[ /-](\d{1,2})(?:[ /-](\d{2}|\d{4}))?$/)
+  if (m) {
+    const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : hoy.y
+    return armar(y, Number(m[2]), Number(m[1]), hoy)
+  }
+  m = s.match(/^(\d{1,2}) de ([a-z]+)(?: de (\d{4}))?$/)
+  if (m) {
+    const mes = MESES.indexOf(m[2] === 'setiembre' ? 'septiembre' : m[2]) + 1
+    if (mes) return armar(m[3] ? Number(m[3]) : hoy.y, mes, Number(m[1]), hoy)
+  }
+  m = s.match(/^(\d{1,2})$/)   // «el 25»: ese día de este mes, o del anterior si todavía no llegó
+  if (m && t.startsWith('el ')) {
+    const d = Number(m[1])
+    return armar(hoy.y, hoy.m, d, hoy) ?? (hoy.m === 1 ? armar(hoy.y - 1, 12, d, hoy) : armar(hoy.y, hoy.m - 1, d, hoy))
+  }
+  return null
+}
+
+/** Índices de los ítems a los que les falta la fecha (hueco o ilegible). */
+export function indicesSinFecha(items = []) {
+  const out = []
+  items.forEach((it, i) => {
+    let f = []
+    try { f = faltantesDe(it, POLITICA.CHAT) } catch { f = [] }
+    if (f.some((x) => x.codigo === MOTIVO.FECHA || x.codigo === MOTIVO.FECHA_IMPOSIBLE)) out.push(i)
+  })
+  return out
+}
+
+const ORDINALES = { primera: 1, primero: 1, segunda: 2, segundo: 2, tercera: 3, tercero: 3, cuarta: 4, cuarto: 4, quinta: 5, quinto: 5 }
+/** «2», «la 2», «opcion 2», «la segunda» → 2. Sólo esa forma: un número dentro de una frase no cuenta. */
+function ordinalDe(t) {
+  const m = t.match(/^(?:(?:la|el|opcion|numero|nro|n|#)\s*)*(\d{1,2}|primera|primero|segunda|segundo|tercera|tercero|cuarta|cuarto|quinta|quinto)$/)
+  if (!m) return null
+  return ORDINALES[m[1]] ?? Number(m[1])
+}
 
 /** Minúsculas, sin acentos, sin puntuación de borde, espacios colapsados. */
 export function plano(texto) {
@@ -142,7 +215,7 @@ function contienePalabra(pajar, aguja) {
  *   `null` = ESTO NO ES PARA MÍ. Es la respuesta más importante de la función: devolver algo cuando
  *   no se entendió sería robarle el mensaje a otro especialista.
  */
-export function interpretarRespuesta(fajo, texto) {
+export function interpretarRespuesta(fajo, texto, { ahora } = {}) {
   const t = plano(texto)
   if (!t || t.length > MAX_LARGO) return null
   const items = Array.isArray(fajo?.items) ? fajo.items : []
@@ -162,6 +235,32 @@ export function interpretarRespuesta(fajo, texto) {
   // factura no hay nada que imputar.
   const clase = indiceClaseAbierta(items)
   if (clase >= 0 && RE_ES_FACTURA.test(t)) return { que: RESPUESTA.CLASE, valor: 'factura', indices: [clase] }
+
+  // La FECHA, sólo si la pregunta abierta es la fecha.
+  const sinFecha = indicesSinFecha(items)
+  if (sinFecha.length) {
+    const f = interpretarFecha(t, { ahora })
+    if (f) return { que: RESPUESTA.FECHA, valor: f, indices: sinFecha }
+  }
+
+  // Un NÚMERO contesta la opción de esa posición, en el orden en que se le ofrecieron (el mismo de
+  // la tarjeta y de la repregunta). Sólo con un único campo pendiente: si hay dos no se sabe de cuál.
+  const n = ordinalDe(t)
+  if (n) {
+    const porCampo = new Map()
+    items.forEach((it, i) => {
+      for (const { campo, valor } of ofrecidasDe(it)) {
+        const e = porCampo.get(campo) ?? new Map()
+        const idx = e.get(valor) ?? { valor, indices: [] }
+        idx.indices.push(i); e.set(valor, idx); porCampo.set(campo, e)
+      }
+    })
+    if (porCampo.size === 1) {
+      const [[campo, mapa]] = porCampo
+      const lista = [...mapa.values()]
+      if (lista[n - 1]) return { que: RESPUESTA.OPCION, campo, valor: lista[n - 1].valor, indices: lista[n - 1].indices }
+    }
+  }
 
   // Se junta TODO lo ofrecido, con el índice del ítem que lo ofreció, y se busca el texto ahí.
   const exactos = new Map()   // "campo valor" -> {campo, valor, indices:Set}
