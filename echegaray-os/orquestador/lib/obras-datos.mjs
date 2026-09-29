@@ -572,20 +572,13 @@ export const OBRAS_FUTURAS = [
     obra: 'PLATEA TANQUE GASOIL',
     ventaTexto: 'Platea para tanque de combustible',
     // Cobranzas fila 104 (OC 00002-00002345, 25/09/2026): $1.209.118,58 neto. Código OB-0072.
-    // COSTO COTIZADO cargado 29/09/2026 (presupuestos-cotizados.mjs v1 aprobado): $548.209,99 directo.
-    // Sin fechas del dueño: las fechas de egreso son la convención declarada (15 del mes de la OC).
+    // El costo cotizado ($548.209,99 directo) está cargado en presupuestos-cotizados.mjs (v1 aprobado) y se ve en
+    // obra_economia. Acá va `sinCosto` porque sin fechas del dueño la grilla no puede proyectar egresos y su
+    // TOTAL rompería (#VALUE!, visto 29/09). No se inventan fechas.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    // MO $212.051,65 + cargas $300.747,30 (Presupuesto, col. O + Q).
-    moCargasPesos: 512_798.95,
-    jornalPesos: 212_051.65,
-    egresos: [
-      {
-        concepto: 'Materiales, equipos y subcontratos (Presupuesto col. P)', proveedor: 'A DEFINIR', familia: 'Materiales',
-        monto: 35_411.04, fechaEstimada: '2026-09-15',
-        nota: 'Platea para tanque de combustible .xlsm · Presupuesto · Σ col. P = $35.411,04. NO incluye los materiales que el PDF estima aparte (mallas, ripio, arena, cemento).',
-      },
-    ],
-    noCaja: { maquinaPropia: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    sinCosto: 'Costo cotizado en presupuestos del OS ($548.209,99); sin fechas de obra no se proyecta a la grilla.',
     pctEjecutado: 0,
     notas: 'CÁLCULO: costo de la planilla (Platea para tanque de combustible .xlsm, Presupuesto). Total $548.209,99 = MO+cargas $512.798,95 + otros $35.411,04. Cotiza SOLO mano de obra; materiales fuera. Venta: Cobranzas fila 104 (OC 2345, $1.209.118,58 neto). DESCONOCIDO: fechas de obra.',
   },
@@ -596,18 +589,13 @@ export const OBRAS_FUTURAS = [
     ventaTexto: 'Adicional Playón Dilución de Ácido',
     // Cobranzas fila 105 (OC 00002-00002361, 25/09/2026): $5.025.105,97 neto. Código OB-0073, adicional
     // de OB-0022 (obra_padre_id = messina-playon-dilucion-acido).
-    // COSTO COTIZADO cargado 29/09/2026 (presupuestos-cotizados.mjs v1 aprobado): $2.227.391,30 directo.
+    // El costo cotizado ($2.227.391,30 directo) está cargado en presupuestos-cotizados.mjs (v1 aprobado) y se ve en
+    // obra_economia. Acá va `sinCosto` porque sin fechas del dueño la grilla no puede proyectar egresos y su
+    // TOTAL rompería (#VALUE!, visto 29/09). No se inventan fechas.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 679_799.82,
-    jornalPesos: 679_799.82,
-    egresos: [
-      {
-        concepto: 'Máquina, materiales y subcontrato (explosión del costo)', proveedor: 'A DEFINIR', familia: 'Materiales',
-        monto: 1_547_591.48, fechaEstimada: '2026-09-15',
-        nota: 'Costo - ADICIONAL Playon para dilucion de acidos.pdf: máquina+materiales $1.462.059,65 (mini excavadora $1.137.700) + subcontrato $85.531,83',
-      },
-    ],
-    noCaja: { maquinaPropia: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    sinCosto: 'Costo cotizado en presupuestos del OS ($2.227.391,30); sin fechas de obra no se proyecta a la grilla.',
     pctEjecutado: 0,
     notas: 'CÁLCULO: costo de la explosión (PDF de costo + Adicional.xlsm). Total $2.227.391,30 = MO $679.799,82 + máquina/materiales $1.462.059,65 + subcontrato $85.531,83. Venta: Cobranzas fila 105 (OC 2361, $5.025.105,97 neto). DESCONOCIDO: fechas de obra.',
   },
