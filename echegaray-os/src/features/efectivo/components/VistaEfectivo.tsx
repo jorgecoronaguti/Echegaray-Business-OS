@@ -4,6 +4,7 @@
 // Permisos: los de Compras (`esAdministracion()` — Dirección, Administración y Jefe de obra).
 //
 //   sin `entrega`                  D01 la lista, con D02 al costado si `panel=entregar`
+//   `persona`                      la persona con efectivo: sus entregas y rendiciones en una línea de tiempo (29/09/2026)
 //   `entrega`                      D03 la ficha, con D06 (`panel=devolucion`) o D05 (ticket observado)
 //   `entrega` + `comprobante`      D04 revisar el ticket (D05 si está observado)
 
@@ -15,15 +16,18 @@ import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { seccionesDeCompras } from '@/features/administracion/services/seccionesDeCompras'
 import { destinoDe, esperando, filtroDeLista, pesos, resumir } from '../logica/entregas'
+import { agruparPorPersona, cronologiaDePersona } from '../logica/personas'
 import { MIGRACION } from '../logica/formularios'
 import { urlEfectivo } from '../logica/url'
-import { leerEfectivo, leerExtraDeFicha, urlDeFoto, type DatosEfectivo } from '../services/datos'
+import { leerComprasPorClave, leerEfectivo, leerExtraDeFicha, urlDeFoto, type DatosEfectivo } from '../services/datos'
 import { leerParaImputar } from '../services/imputar'
 import { leerEdicionDeFicha } from '../services/edicionDatos'
 import { PanelEditarComprobante, PanelEditarDevolucion, PanelEditarEntrega } from './Edicion'
 import { BotonExportar } from './Botones'
 import { FichaEntrega } from './FichaEntrega'
-import { ListaEntregas, Tarjetas } from './ListaEntregas'
+import { FichaPersona } from './FichaPersona'
+import { ListaPersonas } from './ListaPersonas'
+import { Tarjetas } from './Tarjetas'
 import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
 import { PanelImputar } from './PanelImputar'
@@ -79,7 +83,9 @@ export async function VistaEfectivo({ sp }: { sp: Params }) {
     <>
       <NavAdministracion />
       <RefrescarEnVivo tablas={TABLAS_DE.efectivo} />
-      {entrega ? await vistaFicha({ d, entrega, sp, abiertas, cabecera }) : vistaLista({ d, sp, abiertas, cabecera })}
+      {entrega ? await vistaFicha({ d, entrega, sp, abiertas, cabecera })
+        : sp.persona ? await vistaPersona({ d, sp, abiertas, cabecera })
+        : vistaLista({ d, sp, abiertas, cabecera })}
     </>
   )
 }
@@ -111,9 +117,7 @@ function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Param
         {/* Con el panel abierto, el teléfono muestra sólo el panel: apilado debajo quedaba fuera de la vista. */}
         <div className={`min-w-0 flex-1 max-md:!px-4 ${entregando ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: entregando ? 0.4 : 1 }}>
           <Tarjetas r={resumir(d.entregas, d.comprobantes, d.rendiciones, d.hoy)} />
-          <ListaEntregas
-            entregas={d.entregas} comprobantes={d.comprobantes} filtro={filtro} hoy={d.hoy} puestos={puestos} clienteDeObra={d.clienteDeObra}
-          />
+          <ListaPersonas personas={agruparPorPersona(d.entregas, d.rendiciones, d.devoluciones, d.hoy, filtro)} filtro={filtro} puestos={puestos} />
         </div>
         {entregando && (
           <PanelEntregar personas={d.personas} obras={d.obras} entregas={d.entregas} cerrarHref={urlEfectivo({ f: filtro })} />
@@ -183,8 +187,8 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   }
   const conPanel = devolviendo || !!observado || imputando || !!edicionPanel
   const volver = (
-    <Link href={urlEfectivo({})} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-entregas">
-      ← volver a las entregas
+    <Link href={urlEfectivo({ persona: e.persona_id })} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-entregas">
+      ← volver a {e.persona}
     </Link>
   )
   return (
@@ -209,6 +213,55 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
           />
         )}
         {observado && !devolviendo && !imputando && !edicionPanel && <PanelObservado c={observado} e={e} destino={destino} />}
+      </div>
+    </>
+  )
+}
+
+/**
+ * LA PERSONA: su cuenta y su línea de tiempo. Lee de la misma fuente que la lista (`d`) más las filas de Compras
+ * de sus rendiciones y tickets, que es lo que la ficha de cada entrega ya lee.
+ */
+async function vistaPersona({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Params; abiertas: number; cabecera: Cabecera }) {
+  const id = sp.persona ?? ''
+  const suyas = d.entregas.filter((e) => e.persona_id === id)
+  const ids = new Set(suyas.map((e) => e.id))
+  const p = agruparPorPersona(d.entregas, d.rendiciones, d.devoluciones, d.hoy, 'todas').find((x) => x.id === id)
+    ?? agruparPorPersona(d.entregas, d.rendiciones, d.devoluciones, d.hoy, 'anuladas').find((x) => x.id === id)
+  if (!p) {
+    return (
+      <>
+        {cabecera(undefined, abiertas)}
+        <div style={{ padding: 20 }}><Aviso tono="info">Esa persona no tiene entregas de efectivo. <Link href={urlEfectivo({})} className="underline">Ver las personas</Link></Aviso></div>
+      </>
+    )
+  }
+  const comprobantes = d.comprobantes.filter((c) => ids.has(c.entrega_id))
+  const rendiciones = d.rendiciones.filter((r) => ids.has(r.entrega_id))
+  const claves = [...new Set([...rendiciones.map((r) => r.compra_clave), ...comprobantes.map((c) => c.compra_clave).filter((x): x is string => !!x)])]
+  const compras = await leerComprasPorClave(claves)
+  const cronologia = cronologiaDePersona({
+    entregas: suyas, comprobantes, rendiciones, devoluciones: d.devoluciones.filter((x) => ids.has(x.entrega_id)), compras,
+  })
+  const puesto = d.personas.find((x) => x.id === id)?.puesto ?? null
+  const entregando = sp.panel === 'entregar'
+  const cerrar = urlEfectivo({ persona: id })
+  const accion = (
+    <span className="max-md:!flex max-md:!flex-col-reverse max-md:!items-stretch max-md:!gap-2 max-md:[&>*]:!min-h-[48px] max-md:[&>*]:!w-full max-md:[&>*]:!justify-center max-md:[&>*]:!text-[15px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}>
+      <Link href={urlEfectivo({})} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-personas">← volver a las personas</Link>
+      <Link href={urlEfectivo({ persona: id, panel: 'entregar' })} prefetch={false} scroll={false} style={botonOscuro} data-testid="abrir-entregar">
+        <span aria-hidden style={{ fontSize: '15px', lineHeight: 1 }}>+</span> Entregar efectivo
+      </Link>
+    </span>
+  )
+  return (
+    <>
+      {cabecera(entregando ? undefined : accion, abiertas, entregando && ANCHO_PANEL)}
+      <div className="flex flex-col lg:flex-row lg:items-start">
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${entregando ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: entregando ? 0.4 : 1 }}>
+          <FichaPersona p={p} cronologia={cronologia} puesto={puesto} />
+        </div>
+        {entregando && <PanelEntregar personas={d.personas} obras={d.obras} entregas={d.entregas} cerrarHref={cerrar} personaInicial={id} />}
       </div>
     </>
   )

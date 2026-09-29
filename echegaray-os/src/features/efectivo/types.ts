@@ -8,6 +8,9 @@ export interface Entrega {
   codigo: string
   persona_id: string
   persona: string
+  /** El legajo tal como lo trae la vista («MALDONADO BATISTA EMILIANO»): es lo único que ordena por apellido.
+   *  Lo pone `leerEfectivo` antes de reemplazar `persona` por el nombre para mostrar; no viene de la base. */
+  persona_legajo?: string
   obra_id: string | null
   obra: string | null
   estructura: boolean

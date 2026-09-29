@@ -2,6 +2,8 @@
 //
 //   /administracion/compras?vista=a-rendir                       D01 la lista (f=todas|obra|anuladas recorta)
 //   …&panel=entregar                                             D02 sobre D01
+//   …&persona=<persona_id>                                       la persona: sus entregas y rendiciones, con saldo corrido
+//   …&persona=<persona_id>&panel=entregar                        D02 sobre la persona, con ella ya elegida
 //   …&entrega=ER-0147                                            D03 la ficha
 //   …&entrega=ER-0147&panel=devolucion                           D06 sobre D03
 //   …&entrega=ER-0147&panel=imputar                              imputar una compra ya cargada (24/09/2026)
@@ -15,6 +17,8 @@ export const RUTA = '/administracion/compras'
 export interface EstadoURL {
   f?: 'abiertas' | 'todas' | 'obra' | 'anuladas'
   entrega?: string | null
+  /** El id de la persona cuya cronología se abre (29/09/2026: la unidad de la pantalla es la persona). */
+  persona?: string | null
   panel?: 'entregar' | 'devolucion' | 'imputar' | PanelEdicion | null
   comprobante?: string | null
   /** El id de lo que se edita en `editar-devolucion` / `editar-comprobante`. */
@@ -27,6 +31,7 @@ export function urlEfectivo(e: EstadoURL = {}): string {
   const p = new URLSearchParams({ vista: 'a-rendir' })
   if (e.f && e.f !== 'abiertas') p.set('f', e.f)
   if (e.entrega) p.set('entrega', e.entrega)
+  if (e.persona) p.set('persona', e.persona)
   if (e.panel) p.set('panel', e.panel)
   if (e.comprobante) p.set('comprobante', e.comprobante)
   if (e.item) p.set('item', e.item)

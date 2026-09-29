@@ -114,7 +114,7 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       estado: 'ok',
       datos: {
         entregas: ((entregas.data ?? []) as unknown as Entrega[]).map((e) => ({
-          ...e, persona: nombres.get(e.persona_id) ?? nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
+          ...e, persona_legajo: e.persona, persona: nombres.get(e.persona_id) ?? nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
           en_su_poder: num(e.en_su_poder), filas_rendidas: num(e.filas_rendidas),
         })),
         comprobantes: (comprobantes.data ?? []) as unknown as Comprobante[],
@@ -137,6 +137,20 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
   } catch (err) {
     return { estado: 'error', mensaje: err instanceof Error ? err.message : 'Error al conectar con Supabase' }
   }
+}
+
+/**
+ * LAS FILAS DE COMPRAS QUE RINDEN LAS ENTREGAS DE UNA PERSONA, por clave: la misma tabla y las mismas
+ * columnas que la ficha de una entrega (`leerExtraDeFicha`), pero para todas las entregas de la persona
+ * de una vez. La verdad del gasto es la fila de Compras; la cronología no la recalcula.
+ */
+export async function leerComprasPorClave(claves: string[]): Promise<Map<string, FilaDeCompras>> {
+  const mapa = new Map<string, FilaDeCompras>()
+  if (!claves.length) return mapa
+  const supabase = await createClient()
+  const { data } = await supabase.from('compra_sheet').select('fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago').in('clave', claves)
+  for (const c of (data ?? []) as FilaDeCompras[]) if (c.clave) mapa.set(c.clave, { ...c, total: c.total == null ? null : Number(c.total) })
+  return mapa
 }
 
 export interface ExtraDeFicha {

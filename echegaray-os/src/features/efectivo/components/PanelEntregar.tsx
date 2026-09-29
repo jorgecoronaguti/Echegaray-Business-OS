@@ -18,14 +18,20 @@ import {
   SUPERFICIE, V, areaTexto, botonClaroGrande, botonOscuroGrande, cajaConfirmar, campo, campoMonto, panel,
 } from './estilo'
 
-export function PanelEntregar({ personas, obras, entregas, cerrarHref }: {
+export function PanelEntregar({ personas, obras, entregas, cerrarHref, personaInicial = null }: {
   personas: PersonaOpcion[]
   obras: ObraOpcion[]
   entregas: Entrega[]
   cerrarHref: string
+  /** Se abre desde la ficha de una persona: ya se sabe a quién. Se propone su obra, como al elegirla a mano. */
+  personaInicial?: string | null
 }) {
   const router = useRouter()
-  const [b, setB] = useState<BorradorEntrega>({ persona: '', destino: 'obra', obra: '', monto: '', paraQue: '', esPrueba: false })
+  const [b, setB] = useState<BorradorEntrega>(() => {
+    const suya = personaInicial ? personas.find((p) => p.id === personaInicial)?.obraActual ?? null : null
+    const propone = suya && obras.some((o) => o.activa && o.id === suya) ? suya : ''
+    return { persona: personaInicial ?? '', destino: 'obra', obra: propone, monto: '', paraQue: '', esPrueba: false }
+  })
   const [error, setError] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()
   const set = (x: Partial<BorradorEntrega>) => { setB((v) => ({ ...v, ...x })); setError(null) }
@@ -49,7 +55,7 @@ export function PanelEntregar({ personas, obras, entregas, cerrarHref }: {
     empezar(async () => {
       const r = await entregarEfectivoAction(b)
       if (!r.ok) { setError(r.error); return }
-      router.push(urlEfectivo({ entrega: r.dato }))
+      router.push(urlEfectivo(personaInicial ? { persona: personaInicial } : { entrega: r.dato }))
     })
   }
 
