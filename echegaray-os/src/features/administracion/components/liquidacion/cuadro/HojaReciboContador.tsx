@@ -5,8 +5,8 @@
 // El orden y los rótulos son los del recibo oficial Q2-08/2026 (ver `reciboFormatoContador.ts`): empleador,
 // cuatro renglones de datos del empleado, contribuciones del empleador, CONCEPTO / UNIDAD / BASE / MONTO por
 // sección, composición salarial, neto, neto en letras, observaciones y firmas. Un dato que la app no tiene
-// (fecha de pago de aportes, banco, obra social, sección…) va con «—»: el papel del estudio los trae, y
-// escribir uno inventado sería peor que el hueco.
+// (fecha reconocida, pago de aportes, banco, sección) va con «—»: el papel del estudio los trae, y
+// escribir uno inventado sería peor que el hueco. De dónde sale cada uno: `datosDelReciboContador.ts`.
 //
 // ESTILOS EN LÍNEA, SIN CLASES: `imprimirHoja` copia el `outerHTML` a una ventana en blanco, donde ninguna
 // hoja de estilos de la app existe. Tampoco hay un solo cálculo acá: se dibuja lo que armó el servicio.
@@ -48,6 +48,15 @@ export interface EmpleadoDelRecibo {
   cuil: string | null
   /** ISO. */
   ingreso: string | null
+  fechaReconocida?: string | null
+  antiguedad?: string | null
+  calificacion?: string | null
+  periodo?: string | null
+  banco?: string | null
+  seccion?: string | null
+  modalidad?: string | null
+  obraSocial?: string | null
+  lugarDePago?: string | null
 }
 
 export function HojaReciboContador({ hoja, recibo, empleado, quincena }: {
@@ -68,11 +77,11 @@ export function HojaReciboContador({ hoja, recibo, empleado, quincena }: {
         ['REM. ASIGNADA', recibo.valorHora == null ? null : plata(recibo.valorHora)], ['SUELDO BRUTO', plata(recibo.sueldoBruto)], ['C.U.I.L.', empleado.cuil],
       ]} />
       <Datos celdas={[
-        ['FECHA INGRESO', empleado.ingreso ? fechaCorta(empleado.ingreso) : null], ['FECHA RECONOCIDA', null], ['ANTIGÜEDAD', null],
-        ['CALIFICACIÓN PROFESIONAL', null, true], ['F. PAGO APORTES', null], ['PERIODO', null], ['BANCO', null],
+        ['FECHA INGRESO', empleado.ingreso ? fechaCorta(empleado.ingreso) : null], ['FECHA RECONOCIDA', empleado.fechaReconocida ? fechaCorta(empleado.fechaReconocida) : null], ['ANTIGÜEDAD', empleado.antiguedad ?? null],
+        ['CALIFICACIÓN PROFESIONAL', empleado.calificacion ?? null, true], ['F. PAGO APORTES', null], ['PERIODO', empleado.periodo ?? null], ['BANCO', empleado.banco ?? null],
       ]} />
-      <Datos celdas={[['CATEGORÍA LABORAL', recibo.categoria, true], ['SECCIÓN', null, true], ['MODALIDAD DE CONTRATACIÓN', null, true]]} />
-      <Datos celdas={[['OBRA SOCIAL', null, true], ['LUGAR Y FECHA DE PAGO', null, true], ['PERIODO DE PAGO', p.texto, true]]} />
+      <Datos celdas={[['CATEGORÍA LABORAL', recibo.categoria, true], ['SECCIÓN', empleado.seccion ?? null, true], ['MODALIDAD DE CONTRATACIÓN', empleado.modalidad ?? null, true]]} />
+      <Datos celdas={[['OBRA SOCIAL', empleado.obraSocial ?? null, true], ['LUGAR Y FECHA DE PAGO', empleado.lugarDePago ?? null, true], ['PERIODO DE PAGO', p.texto, true]]} />
 
       {recibo.contribuciones.length > 0 && <Contribuciones recibo={recibo} />}
 

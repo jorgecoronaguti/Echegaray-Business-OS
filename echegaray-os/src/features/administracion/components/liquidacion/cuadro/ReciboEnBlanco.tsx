@@ -17,16 +17,13 @@ import { useRef, useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
+import { datosDelLegajoParaRecibo } from '../../../services/datosDelReciboContador'
 import { esReciboContador, reciboFormatoContador } from '../../../services/reciboFormatoContador'
 import { HojaReciboContador, type EmpleadoDelRecibo } from './HojaReciboContador'
 import { fechaCorta, imprimirHoja } from './HojaDelRecibo'
 import { urlDelRecibo } from './CeldasBlancoNegro'
 
 const BOTON = { padding: '9px 16px', lineHeight: '20px', borderRadius: 6, fontSize: '13px' } as const
-
-/** Un campo del legajo por su rótulo; los mismos que muestra `DetalleLaboralDeLaPersona`. `null` = sin cargar. */
-const delLegajo = (detalle: DetalleLaboral | undefined, rotulo: string): string | null =>
-  [...(detalle?.legajo ?? []), ...(detalle?.laboral ?? [])].find((c) => c.rotulo === rotulo)?.valor ?? null
 
 export function ReciboEnBlanco({ fila, quincena, detalle }: {
   fila: FilaDelEspejo
@@ -48,9 +45,8 @@ export function ReciboEnBlanco({ fila, quincena, detalle }: {
     )
   }
 
-  const empleado: EmpleadoDelRecibo = {
-    nombre: fila.nombre, legajo: delLegajo(detalle, 'Legajo'), cuil: delLegajo(detalle, 'CUIL'), ingreso: fila.alta,
-  }
+  const d = datosDelLegajoParaRecibo(detalle, quincena, fila.alta)
+  const empleado: EmpleadoDelRecibo = { nombre: fila.nombre, ingreso: fila.alta, ...d }
   const titulo = `Recibo en blanco${r.origen === 'estimado' ? ' ESTIMADO' : ''} ${fila.nombre} ${fechaCorta(quincena.desde)} al ${fechaCorta(quincena.hasta)}`
   const imprimir = () => setBloqueado(!imprimirHoja(hoja.current, titulo))
 

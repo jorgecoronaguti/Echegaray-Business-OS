@@ -106,7 +106,7 @@ interface FilaPersona {
   id: string; dni: string | null; cuil: string | null; fecha_nacimiento: string | null
   nacionalidad: string | null; telefono: string | null; email: string | null
   domicilio: string | null; contacto_emergencia: string | null; convenio_colectivo: string | null
-  modalidad_liquidacion: string | null; notas: string | null
+  modalidad_liquidacion: string | null; obra_social: string | null; notas: string | null
 }
 
 /** Las tres columnas de la ventana de los meses. Todo lo que `hhPorMes` mira, y nada más. */
@@ -150,7 +150,7 @@ export async function getDatosDeLaSolapaHoras(
       // cerrado y el $/h que liquida es `persona_tarifa`.
       supabase.from('persona_legajo').select(
         'id, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
-        'contacto_emergencia, convenio_colectivo, modalidad_liquidacion, notas'),
+        'contacto_emergencia, convenio_colectivo, modalidad_liquidacion, obra_social, notas'),
       // `neto_mensual` VIAJA. Sin él, Oficina —que cobra un neto acordado y por definición no tiene
       // valor hora— salía «sin retribución cargada» y trababa el cierre desde esta pantalla.
       supabase.from('persona_tarifa')
@@ -368,6 +368,7 @@ function armarPersona(
       { rotulo: 'Oficio', valor: p.especialidad },
       { rotulo: 'Puesto', valor: p.puesto },
       { rotulo: 'Modalidad', valor: l?.modalidad_liquidacion ?? null },
+      { rotulo: 'Obra social', valor: l?.obra_social ?? null },
       { rotulo: 'Retribución', valor: valorHora == null ? null : `${valorHora.toLocaleString('es-AR')} $/h` },
       { rotulo: 'Notas', valor: l?.notas ?? null },
     ],
