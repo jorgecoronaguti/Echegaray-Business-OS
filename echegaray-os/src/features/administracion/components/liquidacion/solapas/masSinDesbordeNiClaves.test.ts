@@ -40,3 +40,11 @@ test('QUINCENA: los errores no se suman dos veces y su clave no depende sólo de
   assert.ok(!/\.\.\.exposicion\.errores/.test(v), 'los errores de la exposición ya vienen en la liquidación')
   assert.match(v, /key=\{`\$\{e\.que\}-\$\{i\}`\}/)
 })
+
+test('«MÁS»: en el teléfono el menú se ancla a la barra y no al botón (medido: caja/costo/cierre salían x=-118)', () => {
+  const b = fuente('./BarraSolapas.tsx')
+  // Si el `<details>` vuelve a llevar `position: relative` en línea, gana a la clase y el menú se alinea al botón.
+  assert.match(b, /data-testid="liquidacion-mas" className="relative max-md:static"/)
+  assert.ok(!/liquidacion-mas"[^>]*style=\{\{[^}]*position: 'relative'/.test(b), 'el details no fija position en línea')
+  assert.match(b, /<summary className="max-md:min-h-11/)
+})

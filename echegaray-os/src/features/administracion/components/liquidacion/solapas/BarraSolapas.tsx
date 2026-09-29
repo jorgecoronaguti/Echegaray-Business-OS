@@ -55,8 +55,12 @@ export function BarraSolapas({ activa, hrefDe, escala, exportar }: {
           <EscalaVigente escala={escala} />
         </span>
       )}
-      <details data-testid="liquidacion-mas" style={{ marginLeft: escala === undefined ? 'auto' : 0, position: 'relative' }}>
-        <summary style={{
+      {/* EN EL TELÉFONO EL MENÚ SE ANCLA A LA BARRA, NO AL BOTÓN: «Más» cambia de lugar según la solapa (la escala
+            y el rótulo de la solapa lo empujan) y un menú alineado a su borde derecho salía 217 px por la
+            izquierda del viewport. La barra ocupa el ancho de la pantalla, así que `right: 0` siempre cabe. */}
+      <details data-testid="liquidacion-mas" className="relative max-md:static"
+        style={{ marginLeft: escala === undefined ? 'auto' : 0 }}>
+        <summary className="max-md:min-h-11 max-md:inline-flex max-md:items-center" style={{
           cursor: 'pointer', listStyle: 'none', padding: '4px 10px', borderRadius: 6,
           border: `1px solid ${V.lineaFuerte}`, color: V.tintaSuave, fontSize: '12.5px',
         }}>Más ▾</summary>
