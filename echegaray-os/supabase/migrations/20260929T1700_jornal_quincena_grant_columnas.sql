@@ -1,0 +1,12 @@
+-- LA FECHA DE PAGO DEL RECIBO EN BLANCO SE LEE CON LA SESIÓN DE QUIEN MIRA, ASÍ QUE LA SESIÓN TIENE QUE PODER LEERLA.
+--
+-- Rechazo del auditor (29/09/2026) sobre el recibo en blanco v2: `leerDetallesLaborales` consulta
+-- `jornal_quincena(fecha_pago)` con el rol `authenticated`, que no tiene SELECT sobre la tabla. La
+-- política `jornal_quincena_lectura` (`using true`) no alcanza: la RLS filtra filas, no da permiso.
+-- Resultado: la quincena 01–15/09 (fecha_pago 2026-09-16, que sólo existe acá) salía con «—».
+--
+-- Se da SELECT sólo sobre las cuatro columnas que lee la pantalla (la clave de búsqueda y la fecha),
+-- no sobre la tabla: el resto (importes proyectados de caja) sigue siendo de service_role. Con grant
+-- por columna, `select *` desde la app sigue fallando a propósito: nadie puede llevarse el resto sin
+-- pedir un grant nuevo.
+grant select (desde, hasta, clase, fecha_pago) on public.jornal_quincena to authenticated;
