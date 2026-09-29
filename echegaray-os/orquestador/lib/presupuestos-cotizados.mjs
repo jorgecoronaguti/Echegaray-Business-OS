@@ -28,10 +28,11 @@
 
 export const MOTIVO_BSA = 'recotización 2026 sin costo cotizado; pedido al dueño'
 
-/** Las 10 obras activas al 17/09/2026. Cada una tiene exactamente un presupuesto 'aprobado'. */
+/** Las 10 obras activas al 17/09/2026 + OB-0072 y OB-0073 (alta 29/09/2026). Cada una tiene exactamente un presupuesto 'aprobado'. */
 export const OBRAS_ACTIVAS = [
   'quattropani', 'le-comedor', 'messina-bsa', 'messina-playon-azufre', 'messina-playon-dilucion-acido',
-  'messina-pisos-120-rampa', 'messina-adicional-tercer-muro', 'instalacion-electrica',
+  'messina-pisos-120-rampa', 'messina-adicional-tercer-muro', 'messina-platea-tanque-gasoil',
+  'messina-adicional-playon-dilucion', 'instalacion-electrica',
   'pisos-industriales', 'entrepiso-y-escalera',
 ]
 
@@ -144,6 +145,28 @@ export const PRESUPUESTOS = [
       p('MO', 'Mano de obra · Presupuesto!O10', 2819280.00),
       p('CS', 'Cargas sociales · Presupuesto!Q10', 1723680.00),
       p('MA', 'Materiales · Presupuesto!P10', 640611.40),
+    ],
+  },
+  {
+    obra: 'messina-platea-tanque-gasoil', version: 1, estado: 'aprobado', fecha: '2026-08-29',
+    venta: 1209118.58, costoDirecto: 548209.99, costoIndirecto: 257658.70, margen: 322347.50, hh: null, inferencia: false,
+    fuente: 'Piso para tanque de combustible/Cotizacion/Platea para tanque de combustible .xlsm drive 17dBCoxeABj4ZvDKr7PFrzL6RiOMcjGX8 · venta = «Platea para tanque de combustible.pdf» (fechado 29/08/2026) = OC 00002-00002345 del 25/09/2026 ($1.209.118,58 neto; Cobranzas fila 104) · costo Presupuesto!H63 (= I9; ítems H10:H13) · GG Presupuesto!H65 · beneficio Presupuesto!H69',
+    notas: 'La cotización contempla SOLO mano de obra: los materiales los estima aparte el PDF (2 mallas del 6 de 6x2,44, 2 m3 de ripio clasificado, 2 m3 de arena gruesa lavada, 20 bolsas de cemento) y NO están valuados ni incluidos en este costo (la partida MA $35.411,04 es la P del Presupuesto, no esos materiales). Ítems: replanteo 15,75 m2 $19.210,91 · compactación NIWA 12 hr $226.018,80 · piso alisado MO 15,75 m2 $276.426,68 · aserrado y juntas 8 ml $26.553,60. El .xlsm da venta H82 = 1.209.118,50 (8 centavos menos que el PDF). HH no cargadas.',
+    partidas: [
+      p('MO', 'Mano de obra · Presupuesto!O (Σ ítems)', 212051.65),
+      p('CS', 'Cargas sociales · Presupuesto!Q (Σ ítems)', 300747.30),
+      p('MA', 'Materiales, equipos y subcontratos · Presupuesto!P (Σ ítems)', 35411.04),
+    ],
+  },
+  {
+    obra: 'messina-adicional-playon-dilucion', version: 1, estado: 'aprobado', fecha: '2026-09-11',
+    venta: 5025105.97, costoDirecto: 2227391.30, costoIndirecto: 1002326.09, margen: 1291887.00, hh: null, inferencia: false,
+    fuente: 'Cotizacion Interna/Adicional.xlsm drive 1VfYsn3fWgp7F-G_OwqaqqYqIsdkxJvoJ · venta = «Adicional - Excavaciones y ampliaciond de platea.pdf» drive 1iFqSI9beFR_9-zAr0J5XofaJ_uZSgRME (11/09/2026) = OC 00002-00002361 del 25/09/2026, «AMPLIACION HORMIGONADO» ($5.025.105,97 neto; Cobranzas fila 105) · costo Presupuesto!H60 (= «Costo - ADICIONAL Playon para dilucion de acidos.pdf» drive 168y1ULRYcx1052wkwMmiYpc2EEgJQVAh) · GG Presupuesto!H62 · beneficio Presupuesto!H66',
+    notas: 'Adicional de OB-0022 (obra_padre = messina-playon-dilucion-acido). Partidas por familia de la EXPLOSIÓN del PDF de costo: MO $679.799,82 · máquina + materiales $1.462.059,65 (mini excavadora $1.137.700) · subcontrato $85.531,83 (Pedro Tello, piso 19 m2). Tareas: flete 60 km, excavación 2 un, compactación 19 hr, piso 19 m2. Las líneas de MO del PDF suman 679.703,80 (96,02 menos que su encabezado: redondeo de la explosión); el total 2.227.391,30 cierra con el .xlsm. El .xlsm da OFERTA 5.015.146,70 (editado después del PDF). El mismo adicional figura como v2 «cotizado» de messina-playon-dilucion-acido: duplicado sin efecto en costo_objetivo, no se toca. HH no cargadas.',
+    partidas: [
+      p('MO', 'Mano de obra · explosión del PDF de costo (familia MANO DE OBRA)', 679799.82),
+      p('MA', 'Máquina + materiales · explosión del PDF de costo (mini excavadora 1.137.700 · gasoil · máquina propia)', 1462059.65),
+      p('SUB', 'Subcontrato · explosión del PDF de costo (Pedro Tello, piso 19 m2)', 85531.83),
     ],
   },
   {
@@ -274,6 +297,10 @@ export const DOCUMENTOS = [
   d('messina-playon-dilucion-acido', '1iFqSI9beFR_9-zAr0J5XofaJ_uZSgRME', 'Adicional - Excavaciones y ampliaciond de platea.pdf', 'cotizacion', PDF),
   d('messina-pisos-120-rampa', '1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6', 'Cotizacion piso 120m2.xlsm', 'cotizacion_interna', XLSM),
   d('messina-pisos-120-rampa', '1QioaEfc-FDbareikGjc2W0TzJ8wPclWr', 'Rampa 19:2.pdf', 'cotizacion', PDF),
+  d('messina-platea-tanque-gasoil', '17dBCoxeABj4ZvDKr7PFrzL6RiOMcjGX8', 'Platea para tanque de combustible .xlsm', 'cotizacion_interna', XLSM),
+  d('messina-adicional-playon-dilucion', '1VfYsn3fWgp7F-G_OwqaqqYqIsdkxJvoJ', 'Adicional.xlsm', 'cotizacion_interna', XLSM),
+  d('messina-adicional-playon-dilucion', '1iFqSI9beFR_9-zAr0J5XofaJ_uZSgRME', 'Adicional - Excavaciones y ampliaciond de platea.pdf', 'cotizacion', PDF),
+  d('messina-adicional-playon-dilucion', '168y1ULRYcx1052wkwMmiYpc2EEgJQVAh', 'Costo - ADICIONAL Playon para dilucion de acidos.pdf', 'cotizacion_interna', PDF),
   d('instalacion-electrica', '1uXVe7ffIgYS5srgTwFtUGlRjYV9pR7Eu', 'Cotizacion Interna - Instalacion Electrica.xlsm', 'cotizacion_interna', XLSM),
   d('pisos-industriales', '1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF', 'Cotizacion interna - Pisos Industriales.xlsm', 'cotizacion_interna', XLSM),
   d('pisos-industriales', '1zrfIORKMItqqyHp2GjIVp8ZsYIkJ9DIW', 'PRESUPUESTO - PISOS TOTALES 9:6:26.pdf', 'cotizacion', PDF),

@@ -12,8 +12,8 @@ test('el conjunto entero es cargable: sin problemas', () => {
   assert.deepEqual(problemasDelConjunto(), [])
 })
 
-test('las 10 obras activas tienen exactamente un presupuesto aprobado', () => {
-  assert.equal(OBRAS_ACTIVAS.length, 10)
+test('las 12 obras activas tienen exactamente un presupuesto aprobado', () => {
+  assert.equal(OBRAS_ACTIVAS.length, 12)
   for (const obra of OBRAS_ACTIVAS) {
     assert.equal(PRESUPUESTOS.filter((x) => x.obra === obra && x.estado === 'aprobado').length, 1, obra)
   }
@@ -24,6 +24,7 @@ test('costo directo por obra: los números de la tabla verificada contra las .xl
     quattropani: 83703081.56, 'le-comedor': 81963999.15, 'messina-bsa': null,
     'messina-playon-azufre': 49916328.35, 'messina-playon-dilucion-acido': 8926448.57,
     'messina-pisos-120-rampa': 4649300.16, 'messina-adicional-tercer-muro': 5183571.40,
+    'messina-platea-tanque-gasoil': 548209.99, 'messina-adicional-playon-dilucion': 2227391.30,
     'instalacion-electrica': 24573563.58, 'pisos-industriales': 32406752.00, 'entrepiso-y-escalera': 3829741.63,
   }
   for (const [obra, costo] of Object.entries(esperado)) {
