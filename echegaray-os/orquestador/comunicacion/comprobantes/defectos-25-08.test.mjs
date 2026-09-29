@@ -451,7 +451,7 @@ test('el chat anuncia el proveedor que la BASE creó, no el que el plan pensaba 
     altas: plan,
     altasAplicadas: { creados: [{ cuit: '30999999995', nombre: 'Metalúrgica del Oeste', id: 'p1' }], yaEstaban: [], alias: [], rechazos: [] },
   })
-  assert.match(conEfecto, /Proveedor NUEVO dado de alta: \*\*Metalúrgica del Oeste\*\* \(CUIT 30999999995\)/)
+  assert.match(conEfecto, /proveedor nuevo creado: \*\*Metalúrgica del Oeste\*\* \(CUIT 30999999995\)/)
 })
 
 test('lo que nadie pudo resolver se nombra igual: un pendiente que no se dice no se mira', () => {

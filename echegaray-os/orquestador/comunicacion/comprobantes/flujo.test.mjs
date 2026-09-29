@@ -179,15 +179,16 @@ test('lo que YA está cargado no se muda: mudar un cargado lo pondría de nuevo 
 // cuenta corriente del proveedor), el nombre leído se transcribe al concepto, y el mensaje nombra la
 // FILA y la columna que quedó en blanco. Cargar y declarar, nunca cargar en silencio.
 
-test('PROVEEDOR DESCONOCIDO con CUIT y número: entra igual, con la celda vacía y declarado', async () => {
+test('PROVEEDOR DESCONOCIDO con CUIT válido y número: entra y el nombre VIAJA al cargador para darlo de alta (29/09)', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' })] })
   const { escribir, llamadas } = conEscritor()
   const r = await procesarPost({ ...d, escribir }, post())
   assert.equal(llamadas.length, 1, 'se escribe: el CUIT y el número lo identifican solos')
   const fajo = aFajoJson(llamadas[0].items)
-  assert.equal(fajo[0].proveedor, undefined, 'la celda E queda VACÍA, nunca en rojo')
-  assert.match(fajo[0].concepto, /proveedor s\/lista: "FERRETERIA EL TORNILLO SRL" CUIT 30712345671/,
-    'el nombre del papel no se pierde: se transcribe al concepto')
+  assert.equal(fajo[0].proveedor, 'FERRETERIA EL TORNILLO SRL',
+    'sin el nombre el cargador ve «sin nombre» y jamás dispara el alta por CUIT (el defecto del 29/09)')
+  assert.equal(fajo[0].cuit, '30712345671')
+  assert.doesNotMatch(fajo[0].concepto ?? '', /proveedor s\/lista/, 'si se da de alta no hace falta la transcripción')
   assert.doesNotMatch(r.texto, /no está en el desplegable de Compras/)
 })
 
@@ -198,7 +199,8 @@ test('PROVEEDOR DESCONOCIDO y SIN CUIT: eso sí frena, porque sin clave fuerte n
   const { escribir, llamadas } = conEscritor()
   const r = await procesarPost({ ...d, escribir }, post())
   assert.equal(llamadas.length, 0)
-  assert.match(r.texto, /no está en el desplegable de Compras/)
+  assert.match(r.texto, /no está cargado como proveedor/)
+  assert.match(r.texto, /Respondé con el \*\*CUIT\*\*/, 'se pide el dato en el hilo')
   assert.match(r.texto, /FERRETERIA EL TORNILLO SRL/, 'se nombra al proveedor, no un "hubo un problema"')
 })
 

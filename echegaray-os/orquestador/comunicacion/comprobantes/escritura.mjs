@@ -33,6 +33,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { congelado } from '../../lib/congelador-sheets.mjs'
 import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { cuitAlcanzaParaAlta } from '../../lib/comprobantes/faltantes.mjs'
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
@@ -107,13 +108,19 @@ export function aFajoJson(items = []) {
     // leído se transcribe al concepto, que es texto libre, para que completar la celda sea elegir del
     // desplegable y no ir a buscar la foto. Ver `faltantes.mjs` → `EXIGIR_PROVEEDOR`.
     const conceptoBase = conceptoConAnotacion(c)
-    const concepto = it.proveedorNuevo
+    // ═══ 29/09/2026: CON CUIT VÁLIDO EL PROVEEDOR NUEVO VIAJA Y EL CARGADOR LO CREA ═══
+    // Mandar `proveedor: undefined` hacía que el cargador viera «sin nombre» y nunca ejecutara el alta
+    // por CUIT (`resolverNoMatcheado`): el gasto entraba sin proveedor y el proveedor no existía. El
+    // alta la hace el circuito existente (`alta-proveedor.mjs`); acá sólo se le da el nombre leído.
+    // Sin CUIT válido no hay alta posible y rige lo de siempre (celda vacía, nombre al concepto).
+    const daDeAlta = it.proveedorNuevo && cuitAlcanzaParaAlta(c) && Boolean(String(c.proveedor ?? '').trim())
+    const concepto = it.proveedorNuevo && !daDeAlta
       ? conceptoConProveedorLeido(conceptoBase, { proveedor: c.proveedor, cuit: c.cuit })
       : conceptoBase
     return {
       categoria: c.categoria ?? undefined,
       fecha: c.fecha,
-      proveedor: it.proveedorNuevo ? undefined : c.proveedor,
+      proveedor: it.proveedorNuevo && !daDeAlta ? undefined : c.proveedor,
       cuit: c.cuit ?? undefined,
       cae: c.cae ?? undefined,
       tipo: c.tipo,
@@ -707,7 +714,7 @@ function avisosDeAlta(altas, aplicadas) {
   // EL ALTA SE ANUNCIA DESDE LO QUE DEVOLVIÓ LA BASE, NO DESDE EL PLAN. `altas.altas` es lo que se
   // iba a crear; si la escritura del Sheet no entró, o si otro proceso ganó la carrera, no se creó
   // nada — y decir que sí sería felicitar el intento.
-  for (const a of aplicadas?.creados ?? []) l.push(`Proveedor NUEVO dado de alta: **${a.nombre}** (CUIT ${a.cuit}). Si no es él, avisame.`)
+  for (const a of aplicadas?.creados ?? []) l.push(`proveedor nuevo creado: **${a.nombre}** (CUIT ${a.cuit}). Si no es él, avisame.`)
   for (const c of altas?.conflictos ?? []) l.push(`No pude resolver "${c.nombreLeido}" (${c.motivo}) — está en /administracion/proveedores.`)
   for (const n of altas?.ambiguos ?? []) l.push(`"${n}" apareció con dos CUIT distintos en la misma tanda: no lo vinculé a ninguno.`)
   for (const r of aplicadas?.rechazos ?? []) l.push(`No pude registrar "${r.nombre ?? r.nombre_origen}": ${r.motivo}.`)

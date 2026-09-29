@@ -111,19 +111,25 @@ test('un comprobante sin obra SE CARGA IGUAL: la obra se ofrece, no se exige (03
 // barrera de duplicados. Ver `EXIGIR_PROVEEDOR` en `faltantes.mjs`.
 
 test('un PROVEEDOR DESCONOCIDO con CUIT y número NO frena: entra con la celda vacía', () => {
-  const nuevo = { ...item(), proveedorNuevo: true }
+  const nuevo = { ...item({ comprobante: { cuit: '30712345671' } }), proveedorNuevo: true }
   assert.equal(estaCompleto(nuevo), true)
   assert.deepEqual(preguntasDe(nuevo), [])
   assert.ok(imputacionVacia(nuevo).includes('proveedor'),
     'no se carga en silencio: la columna E figura entre las que quedaron por completar')
 })
 
+test('un PROVEEDOR DESCONOCIDO con CUIT de dígito verificador INVÁLIDO frena y pide el CUIT (29/09)', () => {
+  const nuevo = { ...item({ comprobante: { cuit: '30712345678' } }), proveedorNuevo: true }
+  assert.equal(estaCompleto(nuevo), false)
+  assert.match(preguntasDe(nuevo).join(' '), /no es válido/)
+})
+
 test('un PROVEEDOR DESCONOCIDO SIN CUIT sí frena, y se pregunta por su nombre', () => {
   const nuevo = { ...item({ comprobante: { cuit: null } }), proveedorNuevo: true }
   assert.equal(estaCompleto(nuevo), false)
   const p = preguntasDe(nuevo).join(' ')
-  assert.match(p, /no está en el desplegable de Compras/)
-  assert.match(p, /Corregir/, 'sin nombrar Corregir, la pregunta no se puede contestar')
+  assert.match(p, /no está cargado como proveedor/)
+  assert.match(p, /CUIT/, 'se pide el dato que falta, sin inventarlo')
   assert.match(p, /Combustibles Barcelo/, 'se dice QUÉ proveedor, no un "hay un problema"')
 })
 

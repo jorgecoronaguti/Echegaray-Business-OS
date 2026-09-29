@@ -40,6 +40,7 @@
 import { aFechaAR, aNumero, normalizar, tipoComprobante } from '../carga-comprobantes.mjs'
 import { identidadDelComprobante, fueraDeEscala, pesos, FACTOR_FUERA_DE_ESCALA } from './aritmetica.mjs'
 import { dudasDeLectura } from './plausibilidad.mjs'
+import { cuitDigitoVerificadorOk } from '../proveedor-identidad.mjs'
 
 /** Por qué un comprobante no está listo. El código es el contrato; los textos son presentación. */
 export const MOTIVO = Object.freeze({
@@ -143,6 +144,18 @@ export const EXIGIR_PROVEEDOR = String(process.env.ORQ_COMPROBANTES_EXIGIR_PROVE
  */
 export function identidadFuerte(c = {}) {
   return String(c?.cuit ?? '').replace(/\D/g, '').length === 11 && Boolean(String(c?.numero ?? '').trim())
+}
+
+/**
+ * ¿El CUIT alcanza para DAR DE ALTA al proveedor? (29/09/2026)
+ *
+ * Once dígitos con dígito verificador válido: es la misma vara que usa `resolverNoMatcheado`
+ * (alta-proveedor.mjs), y tiene que ser la misma, porque acá se decide si el chat le pasa el nombre al
+ * cargador para que dispare el alta. Un CUIT que el cargador rechazaría no puede figurar acá como
+ * «alcanza»: el proveedor quedaría sin alta y sin que nadie lo pregunte.
+ */
+export function cuitAlcanzaParaAlta(c = {}) {
+  return cuitDigitoVerificadorOk(c?.cuit)
 }
 
 export const POLITICA = Object.freeze({
@@ -258,18 +271,17 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // UN PROVEEDOR QUE NO ESTÁ EN EL DESPLEGABLE YA NO FRENA LA FILA cuando el CUIT y el número la
   // identifican solos: entra con la celda E vacía, con el nombre leído transcripto en el concepto, y
   // el mensaje dice la fila y qué le falta. Ver `EXIGIR_PROVEEDOR` arriba.
-  if (p.exigirProveedorConocido && item.proveedorNuevo && (EXIGIR_PROVEEDOR || !identidadFuerte(c))) {
+  // 29/09/2026 — «si no hay un proveedor, que lo cree». Con CUIT válido el cargador lo DA DE ALTA
+  // (`aFajoJson` le pasa el nombre; antes no, y el alta nunca se disparaba). Sólo frena lo que no se
+  // puede crear sin inventar: el CUIT ausente, ilegible o con dígito verificador inválido. Ahí se pide
+  // el dato, y el texto dice cómo contestarlo.
+  if (p.exigirProveedorConocido && item.proveedorNuevo && (EXIGIR_PROVEEDOR || !cuitAlcanzaParaAlta(c))) {
     const quien = c.proveedor ?? '(ilegible)'
-    // ═══ UNA PREGUNTA QUE NO SE PUEDE CONTESTAR NO ES UNA PREGUNTA (04/08) ═══
-    //
-    // Decía «¿lo agrego?» y NO HAY forma de contestar que sí: el desplegable de la columna es
-    // estricto y sólo lo extiende una persona en el Sheet. El dueño leía una oferta, no tenía con
-    // qué aceptarla, y el comprobante quedaba trabado sin que nada dijera cómo destrabarlo. Ahora la
-    // frase nombra las DOS salidas reales, que además son las dos que existen de verdad.
-    falta(MOTIVO.PROVEEDOR_NUEVO, `proveedor fuera del desplegable: "${quien}"`,
-      `**${quien}** no está en el desplegable de Compras, así que no puedo elegirlo. Tocá **Corregir** `
-      + `y escribí el nombre tal como figura en la lista, o agregalo al desplegable de la columna y `
-      + `volvé a mandar la foto.`)
+    const cuitLeido = String(c.cuit ?? '').replace(/\D/g, '')
+    const porque = !cuitLeido ? 'no pude leer su CUIT' : `el CUIT que leí (${cuitLeido}) no es válido`
+    falta(MOTIVO.PROVEEDOR_NUEVO, `proveedor nuevo sin CUIT válido: "${quien}"`,
+      `**${quien}** no está cargado como proveedor y ${porque}, así que no lo doy de alta. `
+      + `Respondé con el **CUIT** (11 dígitos) y lo creo, o escribí el nombre tal como figura en el desplegable.`)
   }
   // UN PROBABLE DUPLICADO ES UNA PREGUNTA, NO UNA DECISIÓN. Ni cargar ni descartar solo: mismo
   // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
