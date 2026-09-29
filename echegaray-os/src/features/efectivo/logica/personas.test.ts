@@ -58,6 +58,20 @@ test('la suma de «en su poder» de las filas es la cifra «En manos de la gente
   assert.equal(suma, 740)
 })
 
+test('el «en mano» de una persona cuenta sólo entregas ABIERTAS: una cerrada no suma aunque conserve un en_su_poder', () => {
+  // Una cerrada con 0 no distingue nada (suma 0 con o sin filtro), por eso la cerrada lleva un remanente:
+  // el estado manda, no el número. Sin este caso, contar todas las vivas pasaba los tests.
+  const es = [
+    entrega({ id: 'e1', en_su_poder: 400 }),
+    entrega({ id: 'e2', codigo: 'ER-0002', estado: 'cerrada', entregado: 900, rendido: 200, devuelto: 0, en_su_poder: 700 }),
+    entrega({ id: 'e3', codigo: 'ER-0003', rendido: 1000, en_su_poder: 0 }),
+  ]
+  const [p] = agruparPorPersona(es, [], [], '2026-09-29', 'todas')
+  assert.equal(p.enMano, 400)
+  assert.equal(p.abiertas, 2)
+  assert.equal(p.enMano, resumir(es, [], [], '2026-09-29').enManos)
+})
+
 test('una persona sólo con anuladas aparece en «anuladas» y no en «todas»', () => {
   const es = [entrega({ estado: 'anulada' })]
   assert.equal(agruparPorPersona(es, [], [], '2026-09-29', 'todas').length, 0)
