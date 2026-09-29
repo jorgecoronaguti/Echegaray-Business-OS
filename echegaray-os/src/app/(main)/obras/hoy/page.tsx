@@ -25,6 +25,7 @@ import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 import { nombreDePersona } from '@/shared/personas/nombre'
 import { celdaAvanceCartera } from '@/features/obras/services/carteraCanon'
 import { tareasEnCurso, type TareaEnCurso } from '@/features/jefe/services/tareasEnCurso'
+import { RotuloObra } from '@/features/obras/components/RotuloObra'
 import { CifraGrande } from '@/features/obras/components/TarjetaResumen'
 
 // HOY · LA PORTADA DE ESCRITORIO DEL JEFE DE OBRA (dueño, 25/09/2026).
@@ -126,17 +127,13 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
                   return (
                     <Tr key={o.id} seleccionada={elegida} data-testid="fila-mi-obra" data-obra={o.id}>
                       <Td fuerte>
-                        <Link
-                          href={`/obras/hoy?obra=${encodeURIComponent(o.id)}`}
-                          prefetch={false}
-                          scroll={false}
-                          className="flex min-h-[32px] items-center gap-2 hover:underline"
-                          data-testid="elegir-obra"
-                        >
-                          {o.codigo && <span className="font-mono text-[11.5px] text-faint">{o.codigo}</span>}
-                          <span className={elegida ? 'font-medium text-ink' : 'text-ink'}>{o.nombre}</span>
-                          {asignadas.includes(o.id) && <span className="text-[11px] text-muted">· asignada</span>}
-                        </Link>
+                        {/* EL RÓTULO ÚNICO de Obras (dueño, 29/09/2026): «OB-XXXX · NOMBRE» y el estado debajo. Antes el
+                            código y el nombre iban en columnas distintas y no había estado. */}
+                        <RotuloObra
+                          o={{ ...o, estado: o.estado, forecast_fin: null }}
+                          href={`/obras/hoy?obra=${encodeURIComponent(o.id)}`} scroll={false} testid="elegir-obra" tactil
+                          nota={asignadas.includes(o.id) ? <span className="text-muted"> · asignada</span> : null}
+                        />
                       </Td>
                       <Td>{etiquetaEtapa(o)}</Td>
                       {/* El avance con la regla y el formato de la cartera: «47%», o «sin avance cargado». */}
@@ -163,8 +160,7 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
             <section className="flex min-w-0 flex-col gap-5" data-testid="dia-de-la-obra">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] tracking-[0.04em] text-faint">{obra.codigo ?? 'Obra'}</div>
-                  <div className="truncate text-[17px] font-semibold text-ink">{obra.nombre}</div>
+                  <RotuloObra o={{ ...obra, forecast_fin: null }} etapa={etiquetaDeEtapa(obra)} testid="obra-elegida" />
                 </div>
                 <div className="flex flex-wrap items-center gap-2" data-testid="acciones-del-dia">
                   <BotonEnlace href={hrefCargaDeAsistencia({ obra: obra.id })} variante="primaria">Cargar asistencia</BotonEnlace>
@@ -352,9 +348,12 @@ function MiEfectivo({ lectura, conVinculo }: { lectura: Awaited<ReturnType<typeo
   )
 }
 
+function etiquetaDeEtapa(o: ObraDelJefe): string | null {
+  return o.etapa && (ETAPAS as readonly string[]).includes(o.etapa) ? ETAPA_LABEL[o.etapa as Etapa] : null
+}
+
 function etiquetaEtapa(o: ObraDelJefe): React.ReactNode {
-  const etapa = o.etapa && (ETAPAS as readonly string[]).includes(o.etapa) ? ETAPA_LABEL[o.etapa as Etapa] : null
-  return etapa ?? <span className="text-faint">sin etapa</span>
+  return etiquetaDeEtapa(o) ?? <span className="text-faint">sin etapa</span>
 }
 
 function ddmm(iso: string): string {

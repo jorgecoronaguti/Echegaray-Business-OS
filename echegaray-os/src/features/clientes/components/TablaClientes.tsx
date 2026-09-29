@@ -73,7 +73,9 @@ import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 const COLS
   = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_140px_210px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,2fr)_150px_210px]'
-  + ' max-[767px]:grid-cols-[minmax(0,2fr)_150px]'
+  // En el teléfono la columna del importe CRECE hasta su contenido (`max-content`): 150 px fijos cortaban
+  // «$ 102.500.000 ·» y un importe cortado es un importe falso. Lo que cede es el nombre, que envuelve.
+  + ' max-[767px]:grid-cols-[minmax(0,2fr)_minmax(150px,max-content)]'
 
 const AYUDA_CONTRATADO = 'El total del contrato, NETO: mano de obra + materiales cuando el papel '
   + 'desglosa; si no, el precio que publica la pestaña OBRAS. Los dólares se valúan al tipo de '
@@ -110,7 +112,7 @@ function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }:
 }) {
   const completa = faltan === 0 && valor !== null
   return (
-    <span className={`flex items-center justify-end font-mono tabular-nums ${clase}`} data-testid={testid}
+    <span className={`flex items-center justify-end whitespace-nowrap font-mono tabular-nums ${clase}`} data-testid={testid}
       data-estado={!completa ? 'incompleta' : valor === 0 ? 'no-incluye' : 'suma'}
       title={completa || !faltan ? titulo : `${titulo} No se publica la suma: ${faltan} trabajo(s) ${queFalta}.`}
       style={{ fontSize: '12px', color: completa ? K.tinta : K.tenue, textAlign: 'right' }}>

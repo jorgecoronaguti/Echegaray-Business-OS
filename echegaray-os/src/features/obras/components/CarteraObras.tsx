@@ -26,17 +26,17 @@ import { C } from './canon/tokens'
 import { Hover } from './canon/Piezas'
 import { useAnchoVentana } from './useAnchoVentana'
 import { esAngosto } from '../services/anchoPantalla'
-import { rotuloDeObra } from '@/shared/utils/obra'
+import { RotuloObra } from './RotuloObra'
 import { ETAPA_LABEL, type Etapa } from '../types'
 import {
-  bajadaCartera, celdaAvanceCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
-  estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoDePlazo,
+  bajadaCartera, celdaAvanceCartera, coincideTexto, colorDeBarra, colorDePlazo, entraEnFiltro, esPrevio,
+  FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, textoDePlazo,
   type FiltroCartera,
 } from '../services/carteraCanon'
 import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 import {
-  BARRA_PRIMARIA_TELEFONO, ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO, ESTILO_BAJADA, ESTILO_CODO, ESTILO_CUENTA_GRUPO,
-  ESTILO_NOMBRE_FILA, ESTILO_ROTULOS, ESTILO_TITULO, SANGRIA_HIJA, estiloBuscador, estiloCabeceraGrupo, estiloChip,
+  BARRA_PRIMARIA_TELEFONO, ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO, ESTILO_BAJADA, ESTILO_CUENTA_GRUPO,
+  ESTILO_ROTULOS, ESTILO_TITULO, estiloBuscador, estiloCabeceraGrupo, estiloChip,
   estiloCuentaChip, estiloEntradaBuscador, estiloFiltros, estiloPrimaria,
 } from '@/shared/components/cartera/estiloCartera'
 
@@ -392,19 +392,10 @@ function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 
   )
 }
 
-/** LA CELDA OBRA del 01: nombre (500) + estado en color. Se exporta porque la columna fija del Gantt
- *  es ESTA MISMA celda (dueño, 24/09/2026: «el Gantt tiene que respetar el diseño de la Tabla»). */
+/** LA CELDA OBRA del 01: el rótulo único (`RotuloObra`) con el estado en color debajo. Se exporta porque la
+ *  columna fija del Gantt es ESTA MISMA celda (dueño, 24/09/2026: «el Gantt tiene que respetar el diseño de la Tabla»). */
 export function CeldaObra({ o, nivel = 0, href = `/obras/${o.obra_id}` }: { o: FilaCartera; nivel?: 0 | 1; href?: string }) {
-  const e = estadoDeCartera(o)
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? `${SANGRIA_HIJA}px` : 0 }}>
-      <Link href={href} prefetch={false} onClick={(ev) => ev.stopPropagation()} title={rotuloDeObra(o)}
-        style={{ ...ESTILO_NOMBRE_FILA, textDecoration: 'none' }}>
-        {nivel ? <span style={ESTILO_CODO}>└</span> : null}{rotuloDeObra(o)}
-      </Link>
-      <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}{nivel ? <span style={{ color: C.tenue }}> · adicional</span> : null}</div>
-    </div>
-  )
+  return <RotuloObra o={o} nivel={nivel} href={href} />
 }
 
 function Plazo({ o, telefono = false }: { o: FilaCartera; telefono?: boolean }) {
@@ -450,21 +441,12 @@ function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => 
   )
 }
 
-/** EL NOMBRE DE M01: obra (500) + «Etapa · atraso». Se exporta: el M02 lo dibuja igual en su columna fija. */
+/** EL NOMBRE DE M01: el rótulo único, sin enlace (la fila entera se pulsa), con la etapa detrás del estado.
+ *  Se exporta: el M02 lo dibuja igual en su columna fija, pero sin etapa (`unaLinea`): son 130 px. */
 export function NombreTelefono({ o, nivel = 0, unaLinea = false }: {
   o: FilaCartera
   nivel?: 0 | 1
-  /** En los 118px del M02 la sublínea no puede partirse en dos: la fila crecería y la barra se correría. */
   unaLinea?: boolean
 }) {
-  // El cliente ya es el encabezado del grupo: la sublínea dice la etapa (y «adicional» si lo es).
-  const sub = sublineaTelefono(o, nivel ? 'adicional' : null, etapaDe(o))
-  return (
-    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rotuloDeObra(o)}</div>
-      <div style={{ fontSize: '12px', color: C.tintaSuave, ...(unaLinea ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>
-        {sub.texto}{sub.atraso && <> · <span style={{ color: C.neg }}>atraso</span></>}
-      </div>
-    </div>
-  )
+  return <RotuloObra o={o} nivel={nivel} sangria={0} etapa={unaLinea ? null : etapaDe(o)} />
 }

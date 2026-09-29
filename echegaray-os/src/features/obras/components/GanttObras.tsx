@@ -98,7 +98,7 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
 
   if (telefono) {
     // LA COLUMNA FIJA ES LA DEL M01 (dueño, 24/09/2026): cliente con `CabeceraCliente`, obra con
-    // `NombreTelefono` (14px/500 + «Etapa · atraso») en filas de 62px. Cada renglón lleva nombre y
+    // el rótulo único (`NombreTelefono`: nombre que envuelve + estado debajo) en filas de al menos 62px. Cada renglón lleva nombre y
     // barra en la misma grilla: el alto de los dos lados no puede despegarse.
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
@@ -120,7 +120,7 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
               <div key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={r.nivel} onClick={() => router.push(hrefDe(o.obra_id))}
                 role="link" tabIndex={0} onKeyDown={(ev) => { if (ev.key === 'Enter') router.push(hrefDe(o.obra_id)) }}
                 style={{
-                  display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px', height: `${ALTO_FILA_TELEFONO}px`, alignItems: 'center',
+                  display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px', minHeight: `${ALTO_FILA_TELEFONO}px`, padding: '6px 0', boxSizing: 'border-box', alignItems: 'center',
                   borderBottom: ultima ? undefined : `1px solid ${C.borde}`, fontSize: '13px', color: C.tinta, cursor: 'pointer',
                 }}>
                 {/* Mismo rótulo y misma sublínea que la Tabla (dueño, 29/09/2026: «OB-XXXX · NOMBRE» y el estado
@@ -133,13 +133,13 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
                   : b.fueraDeVentana
                     ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{FUERA_DE_VENTANA}</div>
                     : (
-                      <div style={{ position: 'relative', height: '100%' }}>
+                      <div style={{ position: 'relative', alignSelf: 'stretch' }}>
                         <div data-testid="barra-obra" data-tono={b.tono} style={{
-                          position: 'absolute', left: `${b.plan.left}%`, width: `${b.plan.width}%`, top: `${(ALTO_FILA_TELEFONO - 14) / 2}px`, height: '14px',
+                          position: 'absolute', left: `${b.plan.left}%`, width: `${b.plan.width}%`, top: '50%', transform: 'translateY(-50%)', height: '14px',
                           borderRadius: '3px', background: LLENO_TELEFONO[b.tono],
                         }} />
                         {b.rotuloAtraso && (
-                          <div style={{ position: 'absolute', left: `calc(${Math.min(88, b.plan.left + b.plan.width)}% + 6px)`, top: `${(ALTO_FILA_TELEFONO - 16) / 2}px`, fontSize: '11px', color: LLENO[b.tono], whiteSpace: 'nowrap' }}>
+                          <div style={{ position: 'absolute', left: `calc(${Math.min(88, b.plan.left + b.plan.width)}% + 6px)`, top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: LLENO[b.tono], whiteSpace: 'nowrap' }}>
                             {b.rotuloAtraso}
                           </div>
                         )}
