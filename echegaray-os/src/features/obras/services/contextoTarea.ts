@@ -51,14 +51,15 @@ export interface CuadrillaDeLaTarea {
   integrantes: string[]
 }
 
-/** Las iniciales de un nombre para el avatar: dos letras, la del nombre y la del apellido.
- *  Un nombre de una sola palabra da UNA letra, no una inventada. */
+/** Las iniciales de un nombre para el avatar: dos letras: las de las dos primeras palabras.
+ *  El nombre para mostrar es «Apellido Nombre» (29/09/2026): la primera y la última daban «NP» para
+ *  «Nievas Juan Pablo». Un nombre de una sola palabra da UNA letra, no una inventada. */
 export function iniciales(nombre: string): string {
   const partes = nombre.trim().split(/\s+/).filter(Boolean)
   if (partes.length === 0) return '?'
   const letras = partes.length === 1
     ? [partes[0][0]]
-    : [partes[0][0], partes[partes.length - 1][0]]
+    : [partes[0][0], partes[1][0]]
   return letras.join('').toUpperCase()
 }
 

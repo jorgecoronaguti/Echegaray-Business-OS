@@ -31,6 +31,7 @@ export interface CompaneroDeCuadrilla {
   cuadrilla_id: string
   cuadrilla: string
   nombre_completo: string
+  nombre_para_mostrar?: string | null
   rol: string | null
   es_responsable: boolean
   soy_yo: boolean

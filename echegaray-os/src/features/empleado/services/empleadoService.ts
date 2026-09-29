@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import { faltaLaMigracion } from '@/features/mi-cuenta/services/miCuentaService'
+import { compararPorApellido } from '@/shared/personas/nombre'
 import type { DocumentoDelEmpleado } from './documentos'
 import type {
   CompaneroDeCuadrilla, DiaDeAsistencia, MiCorreccion, MiImpedimento, MiLegajoCompleto, MiObra,
@@ -48,8 +49,10 @@ export async function getMiCuadrilla(supabase: SupabaseClient): Promise<ServiceR
     .from('mi_cuadrilla')
     .select('*')
     .order('es_responsable', { ascending: false })
-    .order('nombre_completo')
-  return resolver(data as CompaneroDeCuadrilla[] | null, error, 'tu cuadrilla', [])
+  // El desempate por apellido va en memoria: el `order` SQL del legajo no sigue al nombre que se dibuja.
+  const lista = ((data ?? []) as CompaneroDeCuadrilla[]).sort((a, b) =>
+    Number(b.es_responsable) - Number(a.es_responsable) || compararPorApellido(a, b))
+  return resolver(data ? lista : null, error, 'tu cuadrilla', [])
 }
 
 export async function getMisTareas(supabase: SupabaseClient): Promise<ServiceResult<MiTarea[]>> {

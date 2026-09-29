@@ -14,17 +14,18 @@ import { mov } from '../../features/herramientas/logica/fixture.test-util.ts'
 
 // CADA LISTA QUE ORDENA PERSONAS, UN TEST (dueño, 28/09/2026: «se ha roto el orden por apellido del
 // personal en toda la app»). El bug no estaba en `compararPorApellido`: estaba en cada lista que
-// ordenaba por el nombre PARA MOSTRAR («Emiliano Maldonado», nombre de pila primero). Por eso se
+// ordenaba por el nombre PARA MOSTRAR (entonces «Emiliano Maldonado», nombre de pila primero; desde el
+// 29/09 es «Maldonado Emiliano», apellido primero, y ya no hay dos órdenes que distinguir). Por eso se
 // prueba lista por lista. Cuando se puede, con la función real; cuando la lista vive en un servicio
 // que habla con Supabase o en una acción de servidor, leyendo la fuente: no es elegante, pero se pone
 // roja si alguien vuelve a escribir `a.nombre.localeCompare(...)`.
 //
-// El fixture distingue los dos órdenes: por legajo es Aballay, Corona, Maldonado; por lo que se
-// muestra sería Diego, Emiliano, Jorge (Aballay, Maldonado, Corona).
+// El orden esperado es Aballay, Corona, Maldonado. Ojo: con el nombre curado apellido-primero, el
+// texto mostrado y el legajo coinciden; lo que atrapa el test es la lista que ordena por pila o al revés.
 
 const LEGAJO = { m: 'MALDONADO BATISTA EMILIANO MIGUEL', a: 'ABALLAY DIEGO', c: 'CORONA GUTIERREZ JORGE' } as const
-const MOSTRAR = { m: 'Emiliano Maldonado', a: 'Diego Aballay', c: 'Jorge Corona' } as const
-const POR_APELLIDO = ['Diego Aballay', 'Jorge Corona', 'Emiliano Maldonado']
+const MOSTRAR = { m: 'Maldonado Emiliano', a: 'Aballay Diego', c: 'Corona Jorge' } as const
+const POR_APELLIDO = ['Aballay Diego', 'Corona Jorge', 'Maldonado Emiliano']
 const clave = (id: keyof typeof LEGAJO) => LEGAJO[id].toLocaleLowerCase('es-AR')
 
 const fuente = (ruta: string) => readFileSync(new URL(ruta, import.meta.url), 'utf8')
@@ -180,3 +181,19 @@ test('Herramientas › datos: el parque lleva la clave de orden de los usuarios'
   // Y cruza al cliente: `Marco` re-arma el parque del lado del navegador con `datosPlanos`.
   assert.match(fuente('../../features/herramientas/components/Marco.tsx'), /ordenUsuarios: p\.ordenUsuarios/)
 })
+
+// 29/09/2026: estas listas pedían `order('nombre_completo')` a la base y mostraban el nombre curado. El
+// orden SQL del legajo no sigue a lo que se dibuja (Butierrez está cargado al revés), así que cada una
+// reordena en memoria con `compararPorApellido`. Se lee la fuente porque viven detrás de Supabase.
+for (const ruta of [
+  '../../features/herramientas/services/datos.ts',
+  '../../features/efectivo/services/datos.ts',
+  '../../features/administracion/services/personasService.ts',
+  '../../features/administracion/services/cuadrillasService.ts',
+  '../../features/usuarios/services/usuariosService.ts',
+  '../../features/empleado/services/empleadoService.ts',
+]) {
+  test(`orden en memoria por apellido: ${ruta.split('/').slice(-2).join('/')}`, () => {
+    assert.match(fuente(ruta), /compararPorApellido/)
+  })
+}

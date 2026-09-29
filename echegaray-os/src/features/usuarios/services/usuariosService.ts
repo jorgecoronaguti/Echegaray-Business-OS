@@ -18,7 +18,7 @@ import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoUsuario, ObraDeUsuario, ObraElegible, UsuarioGestion } from '../types'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
-import { claveDeOrden, nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { claveDeOrden, compararPorApellido, nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 /**
  * EL BLOQUEO, LEÍDO DEL USUARIO DE AUTH.
@@ -58,7 +58,7 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
     const { data: personas } = await admin.from('personas').select('id, nombre_completo, nombre_para_mostrar')
     const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, nombreDePersona(x as { nombre_completo?: string | null; nombre_para_mostrar?: string | null })]))
-    // Se muestra el nombre de pila primero, pero la lista se ORDENA por el legajo (apellido primero).
+    // Se muestra el nombre para mostrar (apellido primero desde el 29/09/2026) y la lista se ordena por lo mismo.
     const ordenPersona = new Map((personas ?? []).map((x) => [x.id as string, claveDeOrden(x as { nombre_completo?: string | null })]))
     if (pErr) return { data: null, error: pErr.message }
 
@@ -157,12 +157,13 @@ export async function listarPersonasVinculables(
   admin: SupabaseClient,
 ): Promise<{ id: string; nombre: string; tomadaPor: string | null }[]> {
   const [{ data: personas }, { data: perfiles }] = await Promise.all([
-    admin.from('personas').select('id, nombre_completo, en_la_empresa').order('nombre_completo'),
+    admin.from('personas').select('id, nombre_completo, nombre_para_mostrar, en_la_empresa').order('nombre_completo'),
     admin.from('perfiles').select('id, persona_id, nombre').not('persona_id', 'is', null),
   ])
   const tomada = new Map((perfiles ?? []).map((p) => [p.persona_id as string, (p.nombre as string) ?? 'otra cuenta']))
   return (personas ?? [])
     .filter((p) => p.en_la_empresa !== false)
+    .sort((a, b) => compararPorApellido(a as { nombre_completo?: string | null; nombre_para_mostrar?: string | null }, b as { nombre_completo?: string | null; nombre_para_mostrar?: string | null }))
     .map((p) => ({
       id: p.id as string,
       nombre: nombreDePersona(p as { nombre_completo?: string | null; nombre_para_mostrar?: string | null }),

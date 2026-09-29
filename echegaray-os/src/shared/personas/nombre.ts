@@ -6,17 +6,30 @@
 // «MALDONADO BATISTA EMILIANO MIGUEL» (asistencia, cuadrillas: el legajo crudo), «M. Maldonado» (parte
 // diario) y «E. Maldonado» (el rastro de una corrección). Y hay DOS Emilianos en el plantel.
 //
-// ═══ LA REGLA ═══
+// ═══ LA REGLA (vigente desde el 29/09/2026) ═══
 //
-//   · La FUENTE es `personas.nombre_completo`, el legajo: es lo que dicen el recibo, el alta y ARCA,
-//     y es único en el plantel.
+// DUEÑO, 29/09/2026: «quiero que reorganices todo el orden de los nombres en todos los lugares
+// posibles donde pueden aparecer siendo primero apellido y después nombre [...] tienen que consumir
+// de la misma tabla de supabase y ordenarse como digo». Reemplaza el «Emiliano Maldonado» que aprobó
+// el 24/09: TODA persona se muestra «APELLIDO Nombre» y TODA lista de personas ordena por apellido.
+//
+//   · La FUENTE del legajo es `personas.nombre_completo`: es lo que dicen el recibo, el alta y ARCA,
+//     y es único en el plantel. Ya empieza por apellido («Maldonado Batista Emiliano Miguel»).
 //   · Un USUARIO (un acceso, `perfiles`) que es una persona se llama como su persona: el vínculo es
 //     `perfiles.persona_id`, resuelto en la base por `nombres_de_usuarios()` (migración
 //     20260924T2100). Sin persona, su `perfiles.nombre`. Persona ≠ Usuario: no se fusionan, se
 //     resuelve el nombre por el vínculo.
-//   · Lo que se MUESTRA es `personas.nombre_para_mostrar` («Emiliano Maldonado»; dueño 24/09: «sí»),
-//     un dato curado que se corrige en la ficha (migraciones 20260924T2200/2210). Sin él, el legajo en
-//     oración. El legajo completo (`nombreLegal`) queda para la ficha, los recibos y los papeles legales.
+//   · Lo que se MUESTRA es `personas.nombre_para_mostrar`, el corto y curado, AHORA apellido primero
+//     («Maldonado Emiliano», «Gonzalez Emiliano»: los dos Emilianos no se confunden). Es un dato
+//     único en Supabase que leen la app, las vistas, las RPC y el bot; se corrige en la ficha
+//     (migración 20260929T1000 lo dio vuelta). Sin él, el legajo en oración, que ya es apellido primero.
+//     El legajo completo (`nombreLegal`) queda para la ficha, los recibos y los papeles legales.
+//   · El ORDEN es `compararPorApellido`: como lo que se muestra ya empieza por apellido, se ordena por
+//     lo mismo que se dibuja (`claveDeOrden`). Ojo con la lección del 28/09: cambiar cómo se muestra
+//     rompió el orden porque se mostraba nombre-primero; si alguna vez se vuelve a mostrar de otra
+//     forma, `claveDeOrden` es lo primero que hay que revisar.
+//   · Excepción declarada: el SALUDO («Hola, Jorge», `nombreDePila`) usa la primera palabra de la
+//     cuenta, que la persona escribió en su orden natural; no es una lista ni un nombre de persona.
 //
 // Ninguna pantalla formatea un nombre de persona por su cuenta: lo fija
 // `src/shared/personas/nombre-en-pantallas.test.ts`.
@@ -31,8 +44,8 @@ type Entrada = string | PersonaConNombre | null | undefined
 
 const limpiar = (s: string | null | undefined) => String(s ?? '').trim().replace(/\s+/g, ' ')
 
-/** El nombre para mostrar de una persona. Con la fila: su `nombre_para_mostrar` («Emiliano Maldonado»,
- *  curado en la ficha); sin él, el legajo en oración. Con un texto: ese texto en oración. Vacío →
+/** El nombre para mostrar de una persona. Con la fila: su `nombre_para_mostrar` («Maldonado Emiliano»,
+ *  apellido primero, curado en la ficha); sin él, el legajo en oración. Con un texto: ese texto en oración. Vacío →
  *  `SIN_NOMBRE` (se dice, no se inventa). */
 export function nombreDePersona(p: Entrada): string {
   return nombreDePersonaONull(p) ?? SIN_NOMBRE
@@ -64,22 +77,20 @@ export function nombreLegal(nombreCompleto: string | null | undefined): string |
 const sinTildes = (s: string) => s.normalize('NFD').replace(/(?<![nN])\u0303|[\u0300-\u0302\u0304-\u036f]/g, '').normalize('NFC')
 
 /**
- * LA CLAVE DE ORDEN DE UNA PERSONA — SIEMPRE EL LEGAJO, NUNCA EL NOMBRE PARA MOSTRAR.
+ * LA CLAVE DE ORDEN DE UNA PERSONA — APELLIDO PRIMERO, LO MISMO QUE SE DIBUJA.
  *
- * Bug real (28/09/2026, dueño: «se ha roto el orden por apellido del personal en toda la app»): el
- * commit del 24/09 hizo que `nombreDePersona` devolviera «Emiliano Maldonado» (nombre de pila
- * primero, para MOSTRAR) y varias pantallas ordenaban con ese mismo texto — así el plantel quedaba
- * alfabético por NOMBRE DE PILA, no por apellido.
+ * Historia: el 24/09 se empezó a mostrar «Emiliano Maldonado» (nombre de pila primero) y varias
+ * pantallas ordenaban con ese texto, o sea por NOMBRE DE PILA (bug del dueño, 28/09/2026: «se ha
+ * roto el orden por apellido del personal en toda la app»); se arregló ordenando por el legajo. El
+ * 29/09 el dueño pidió mostrar apellido primero, así que hoy `nombre_para_mostrar` y el legajo
+ * empiezan igual y la clave sale de lo que se muestra: una lista ordena por lo que dibuja.
  *
- * `personas.nombre_completo` (el legajo: «Maldonado Batista Emiliano Miguel») empieza siempre por
- * apellido y es la única fuente para ORDENAR. Lo que se MUESTRA no cambia — sigue siendo
- * `nombreDePersona`. Sin legajo (una cuenta sin persona, o sólo llegó un texto ya resuelto), el
- * único dato que hay es el nombre para mostrar: se usa ÉSE para no dejar la fila sin orden.
+ * Por qué no se sigue prefiriendo el legajo: hay un legajo cargado al revés («FACUNDO BUTIERREZ») que
+ * lo mandaba a la F, y el nombre curado (apellido primero) es el dato que el dueño ve y corrige. Sin
+ * nombre para mostrar (o sólo un texto ya resuelto) manda el legajo: también empieza por apellido.
  */
 export function claveDeOrden(p: Entrada): string {
-  const base = p != null && typeof p === 'object'
-    ? (nombreLegal(p.nombre_completo) ?? nombreDePersonaONull(p))
-    : nombreLegal(p)
+  const base = p != null && typeof p === 'object' ? nombreDePersonaONull(p) : nombreLegal(p)
   return sinTildes(String(base ?? '').toLocaleLowerCase('es-AR'))
 }
 
@@ -99,11 +110,11 @@ export interface FilaNombreDeUsuario { id: string; nombre: string | null }
 export interface FilaOrdenDeUsuario { usuario_id: string; clave_orden: string | null }
 
 /**
- * id de usuario → CLAVE DE ORDEN (el legajo, apellido primero), para las listas de usuarios.
+ * id de usuario → CLAVE DE ORDEN (apellido primero), para las listas de usuarios.
  *
  * La clave la arma `orden_de_usuarios()` (security definer) y no la app, porque la RLS de `personas`
  * oculta los legajos a Campo y a los jefes: leído con su sesión, no había legajo y la lista caía al
- * nombre para mostrar, o sea al nombre de pila (auditoría 28/09/2026). Se vuelve a pasar por
+ * nombre de la cuenta (auditoría 28/09/2026; la cuenta trae el nombre de pila primero). Se vuelve a pasar por
  * `claveDeOrden` para que la normalización sea la de la app aunque la base deje escapar una tilde.
  */
 export function clavesDeOrden(filas: readonly FilaOrdenDeUsuario[] | null | undefined): Map<string, string> {

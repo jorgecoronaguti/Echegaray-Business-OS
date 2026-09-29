@@ -10,7 +10,7 @@ import type { Cuadrilla, Integrante, ServiceResult, SinCuadrilla } from '../type
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { sinDireccion } from './vocabularioPersona.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /**
  * FILTRAR POR TEXTO — en memoria, sobre lo que la consulta ya trajo.
@@ -174,7 +174,7 @@ export async function getSinCuadrilla(
   if (error) return { data: null, error: error.message }
   // A DIRECCIÓN NO SE LA PONE EN UNA CUADRILLA: el pool «sin cuadrilla» es de quien puede entrar a
   // una, y dejarla ahí sería ofrecer un movimiento que nadie va a hacer.
-  return { data: sinDireccion((data ?? []) as unknown as (SinCuadrilla & { puesto?: string | null })[]), error: null }
+  return { data: sinDireccion((data ?? []) as unknown as (SinCuadrilla & { puesto?: string | null })[]).sort(compararPorApellido), error: null }
 }
 
 /** La cuadrilla vigente de cada persona, para el selector de la ficha. */

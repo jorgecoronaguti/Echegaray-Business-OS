@@ -108,7 +108,7 @@ async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]
   const { data } = await supabase
     .from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar, especialidad, categoria').in('id', ids)
   for (const p of (data ?? []) as Fila[]) {
-    // `nombre_completo` ACÁ ES EL NOMBRE PARA MOSTRAR («Emiliano Maldonado»), no el legajo: lo pisa
+    // `nombre_completo` ACÁ ES EL NOMBRE PARA MOSTRAR («Maldonado Emiliano»), no el legajo: lo pisa
     // `nombreDePersonaONull`. Para ORDENAR por apellido hace falta el legajo crudo aparte
     // (`claveDeOrden`), porque ordenar por el texto de arriba ordena por nombre de pila.
     m.set(p.id, { nombre_completo: nombreDePersonaONull(p), especialidad: p.especialidad, categoria: p.categoria, nombreOrden: claveDeOrden(p) })

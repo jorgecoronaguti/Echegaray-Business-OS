@@ -41,7 +41,7 @@ export interface PersonaDeLiquidacion {
   id: string
   nombre: string
   /** LA CLAVE DE ORDEN, NO DE EXHIBICIÓN: el apellido primero (`claveDeOrden`, `nombre.ts`). `nombre`
-   *  sigue siendo lo que se muestra («Emiliano Maldonado»); ordenar por ESE texto ordena por pila. */
+   *  sigue siendo lo que se muestra («Maldonado Emiliano»); ordenar por ESE texto ordena por pila. */
   nombreOrden: string
   /** Sin CUIL no hay recibo ni giro que emparejar: la fila lo dice, no lo adivina. */
   cuil: string | null

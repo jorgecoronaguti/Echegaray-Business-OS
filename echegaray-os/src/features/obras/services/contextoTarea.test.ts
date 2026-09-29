@@ -5,9 +5,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cuadrillaDeLaTarea, iniciales } from './contextoTarea.ts'
 
-test('las iniciales toman nombre y APELLIDO, no las dos primeras palabras', () => {
-  assert.equal(iniciales('Emiliano González'), 'EG')
-  assert.equal(iniciales('Juan Carlos Pérez Molina'), 'JM')
+test('las iniciales son las de las dos primeras palabras: el nombre viene «Apellido Nombre» (29/09)', () => {
+  assert.equal(iniciales('González Emiliano'), 'GE')
+  assert.equal(iniciales('Nievas Juan Pablo'), 'NJ')
   assert.equal(iniciales('Reta'), 'R')
   assert.equal(iniciales('  '), '?')
 })

@@ -31,7 +31,7 @@ export interface PersonaDeGrilla {
   id: string
   nombre: string
   /** LA CLAVE DE ORDEN (apellido primero, `claveDeOrden` en `nombre.ts`), no lo que se muestra:
-   *  `nombre` es «Emiliano Maldonado» (nombre de pila primero) desde el 24/09/2026 y ordenar por
+   *  `nombre` es «Maldonado Emiliano» (apellido primero desde el 29/09/2026; del 24 al 29 fue nombre de pila primero) y ordenar por
    *  ESE texto ordena por pila, no por apellido (bug del dueño, 28/09/2026). */
   nombreOrden: string
   /** `null` es «sin retribución cargada», que NO es cero (R1): la fila queda pendiente. */

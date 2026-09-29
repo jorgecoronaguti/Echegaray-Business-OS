@@ -19,7 +19,7 @@ import {
   type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type ObraOpcion, type PersonaOpcion, type Rendicion,
 } from '../types'
 import { nombresDeUsuarios as nombresDeUsuariosTodos } from '../../../shared/personas/nombresDeUsuarios.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
@@ -123,8 +123,9 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
           adelanto_persona: r.adelanto_persona_id ? (nombres.get(r.adelanto_persona_id) ?? null) : null,
         })),
         devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
-        personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
+        personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null; puesto: string | null }[])
           .filter((p) => p.nombre_completo)
+          .sort(compararPorApellido)
           .map((p) => ({ id: p.id, nombre: nombreDePersona(p), puesto: p.puesto, obraActual: obraHoy.get(p.id) ?? null })),
         obras,
         clienteDeObra,

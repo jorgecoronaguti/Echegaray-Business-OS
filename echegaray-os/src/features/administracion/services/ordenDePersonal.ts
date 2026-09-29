@@ -31,7 +31,7 @@ import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
  * `nombreDe` sigue siendo el texto de exhibición (lo que ya devolvía antes), pero ORDENAR no lee ese
  * texto: lee `claveDe`, que por defecto es el mismo `nombreDe` — para quien pase el nombre LEGAL
  * (apellido primero) esto no cambia nada. El bug real (28/09/2026, dueño: «se rompió el orden por
- * apellido en toda la app») era pasar acá el nombre PARA MOSTRAR («Emiliano Maldonado», de
+ * apellido en toda la app») era pasar acá el nombre PARA MOSTRAR («Maldonado Emiliano», de
  * `nombreDePersona`): un texto en oración empieza por el nombre de pila, y ordenar por ese texto
  * ordena por pila, no por apellido. Un llamador con el legajo a mano debe pasar
  * `claveDe: (item) => claveDeOrden(item)` (`shared/personas/nombre.ts`).

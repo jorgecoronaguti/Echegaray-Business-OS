@@ -279,8 +279,8 @@ export function pagoDeNomina(d: {
 
   const nombres = new Map(d.personas.map((p) => [p.id, nombreDePersona({ nombre_completo: texto(p.nombre_completo), nombre_para_mostrar: p.nombre_para_mostrar == null ? null : texto(p.nombre_para_mostrar) })]))
   const nombreDe = (id: string): string => nombres.get(id) ?? 'sin nombre en el directorio'
-  // El empate de importe se desata por APELLIDO (el legajo), no por el nombre de pila que se muestra.
-  const ordenes = new Map(d.personas.map((p) => [p.id, claveDeOrden({ nombre_completo: texto(p.nombre_completo) })]))
+  // El empate de importe se desata por APELLIDO: el nombre para mostrar empieza por él (29/09) y cae al legajo.
+  const ordenes = new Map(d.personas.map((p) => [p.id, claveDeOrden({ nombre_completo: texto(p.nombre_completo), nombre_para_mostrar: p.nombre_para_mostrar == null ? null : texto(p.nombre_para_mostrar) })]))
   const porApellido = (x: { personaId: string; nombre: string }, y: { personaId: string; nombre: string }) =>
     (ordenes.get(x.personaId) ?? x.nombre).localeCompare(ordenes.get(y.personaId) ?? y.nombre, 'es')
   const porPersona = new Map<string, PersonaPagada[]>()

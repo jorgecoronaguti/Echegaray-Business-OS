@@ -38,7 +38,7 @@ export function claveUsuario(m: Pick<Movimiento, 'usuario_id' | 'usuario_texto'>
 /**
  * Las personas del filtro del libro: quien movió algo, UNA vez cada una, por apellido.
  *
- * Se muestra `autorDe` («Emiliano Maldonado») pero se ordena por el legajo (`ordenUsuarios`, apellido
+ * Se muestra `autorDe` («Maldonado Emiliano») pero se ordena por el legajo (`ordenUsuarios`, apellido
  * primero). Un movimiento sin usuario sólo trae el texto del listado viejo: se ordena por ese texto.
  */
 export function personasDelLibro(p: Parque): { v: string; t: string }[] {

@@ -19,7 +19,7 @@ import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type Recuent
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
 import { nombresDeUsuariosPlano, ordenDeUsuariosPlano } from '../../../shared/personas/nombresDeUsuarios.ts'
-import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
 import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_PROVEEDOR_LUGAR, COLUMNAS_UBICACION,
   type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type ProveedorLugar, type Ubicacion,
@@ -77,8 +77,9 @@ export async function leerOperadores(): Promise<{ id: string; nombre: string }[]
     const supabase = await createClient()
     const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar')
       .eq('en_la_empresa', true).order('nombre_completo').limit(500)   // las de prueba las esconde la RLS de personas
-    return ((data ?? []) as { id: string; nombre_completo: string | null }[])
-      .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p) }))
+    // Por apellido, en memoria: el `order` de arriba es del legajo y un legajo cargado al revés queda mal.
+    return ((data ?? []) as { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null }[])
+      .filter((p) => p.nombre_completo).sort(compararPorApellido).map((p) => ({ id: p.id, nombre: nombreDePersona(p) }))
   } catch {
     return []
   }

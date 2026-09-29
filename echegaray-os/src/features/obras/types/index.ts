@@ -454,8 +454,8 @@ export interface Asignacion {
   hasta: string | null
   notas: string | null
   persona_nombre: string | null
-  /** LA CLAVE DE ORDEN (apellido primero), no `persona_nombre` (que se muestra «Emiliano Maldonado»,
-   *  nombre de pila primero, desde el 24/09/2026). Ver `nombre.ts:claveDeOrden`. */
+  /** LA CLAVE DE ORDEN (apellido primero), no `persona_nombre` (hoy ambos empiezan por
+   *  apellido, «Maldonado Emiliano»; se mantiene aparte por la lección del 28/09). Ver `nombre.ts:claveDeOrden`. */
   persona_nombre_orden: string | null
   persona_especialidad: string | null
   /** La categoría de convenio, para la columna «Rol / categoría». Sale de `persona_plantel`: no se

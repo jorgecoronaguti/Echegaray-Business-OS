@@ -55,7 +55,7 @@ export function vigenteEnFecha(a: { desde: string | null; hasta: string | null }
  */
 export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obraId, fecha }: {
   plantel: {
-    id: string; nombre_completo: string | null
+    id: string; nombre_completo: string | null; nombre_para_mostrar?: string | null
     /** Ya resuelta (`PersonaDeLaCarga.nombreOrden`): evita recalcularla mal cuando quien llama sólo
      *  tiene el nombre PARA MOSTRAR a mano y no el legajo crudo. */
     nombreOrden?: string
@@ -80,8 +80,8 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
     salida.push({
       id: p.id,
       nombre,
-      // POR APELLIDO (legajo), NO por el nombre para mostrar (28/09/2026, dueño: «se rompió el orden
-      // por apellido en toda la app»): `claveDeOrden` lee `nombre_completo` cuando lo hay.
+      // POR APELLIDO: desde el 29/09/2026 el nombre para mostrar ya empieza por apellido y `claveDeOrden`
+      // ordena por lo que se dibuja (cae al legajo si no hay curado).
       nombreOrden: p.nombreOrden ?? claveDeOrden(p),
       // CON VARIAS VIGENTES SE NOMBRAN TODAS. Mostrar una sola escondería que traerlo acá va a
       // cerrarle dos asignaciones, que es justo lo que hay que poder ver antes de tocar.

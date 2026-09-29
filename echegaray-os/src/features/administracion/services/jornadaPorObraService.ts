@@ -492,7 +492,7 @@ export async function getCandidatosParaTraer(
   supabase: SupabaseClient, obraId: string, fecha: string,
 ): Promise<{ data: CandidatoParaTraer[]; error: string | null }> {
   const [plantel, asignaciones, obras] = await Promise.all([
-    supabase.from('persona_plantel').select('id, nombre_completo').order('nombre_completo'),
+    supabase.from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar').order('nombre_completo'),
     supabase.from('obra_asignacion').select('persona_id, obra_id, desde, hasta'),
     supabase.from('obra_canonica').select('id, nombre'),
   ])
@@ -507,7 +507,7 @@ export async function getCandidatosParaTraer(
   )
   return {
     data: candidatosParaTraer({
-      plantel: (plantel.data ?? []) as { id: string; nombre_completo: string | null }[],
+      plantel: (plantel.data ?? []) as { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null }[],
       asignaciones: (asignaciones.data ?? []) as AsignacionParaTraer[],
       nombresDeObra,
       obraId,

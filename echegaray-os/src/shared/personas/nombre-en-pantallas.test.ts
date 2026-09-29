@@ -12,9 +12,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { diccionarioDeUsuarios, nombreDePersona, nombreDePersonaONull, nombreDePila, nombreDeUsuario, nombreLegal, SIN_NOMBRE } from './nombre.ts'
 
-test('con la fila, manda el nombre para mostrar; sin él, el legajo (dueño 24/09: «Emiliano Maldonado»)', () => {
-  const emi = { nombre_completo: 'MALDONADO BATISTA EMILIANO MIGUEL', nombre_para_mostrar: 'Emiliano Maldonado' }
-  assert.equal(nombreDePersona(emi), 'Emiliano Maldonado')
+test('con la fila, manda el nombre para mostrar; sin él, el legajo (dueño 29/09: «Maldonado Emiliano»)', () => {
+  const emi = { nombre_completo: 'MALDONADO BATISTA EMILIANO MIGUEL', nombre_para_mostrar: 'Maldonado Emiliano' }
+  assert.equal(nombreDePersona(emi), 'Maldonado Emiliano')
   assert.equal(nombreDePersona({ ...emi, nombre_para_mostrar: '  ' }), 'Maldonado Batista Emiliano Miguel')
   assert.equal(nombreDePersona({ ...emi, nombre_para_mostrar: null }), 'Maldonado Batista Emiliano Miguel')
   assert.equal(nombreLegal(emi.nombre_completo), 'Maldonado Batista Emiliano Miguel', 'el legal sigue a mano para recibos y fichas')
