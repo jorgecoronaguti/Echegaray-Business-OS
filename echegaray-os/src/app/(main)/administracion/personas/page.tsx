@@ -73,7 +73,7 @@ import {
 } from '@/features/administracion/services/pulsoDelPlantelService'
 import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import { leerPresenciasDeLaQuincena } from '@/features/administracion/services/lecturasCompartidasDeQuincena'
-import { quincenaDe } from '@/features/administracion/services/quincena'
+import { correrQuincena, quincenaDe, rotuloQuincena } from '@/features/administracion/services/quincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { hrefDeAsistencia, modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
@@ -182,6 +182,16 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
  * `veLaPlata` decide si Liquidación se dibuja. No es el permiso —ése es `ve_economia()` en la
  * base—: es no ofrecer una puerta que va a rebotar.
  */
+/** LAS QUINCENAS QUE EL ESTUDIO PUEDE PEDIR: la de hoy y las cinco anteriores. Se calculan desde HOY y no desde la
+ *  quincena que se mira, para que «Más» sea idéntico en todas las solapas (dueño, 14/09/2026). */
+function quincenasParaExportar(hoy: string) {
+  const actual = quincenaDe(hoy)
+  return {
+    actual: actual.desde,
+    quincenas: [0, -1, -2, -3, -4, -5].map((n) => correrQuincena(actual, n)).map((q) => ({ desde: q.desde, texto: rotuloQuincena(q) })),
+  }
+}
+
 function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
   const vistas = [
     { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
@@ -352,6 +362,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               activa={solapa.clave}
               hrefDe={(clave) => hrefSolapa(sp, { solapa: clave })}
               escala={escala}
+              exportar={quincenasParaExportar(hoy)}
             />
             <div style={{ paddingTop: 10 }}>
               {/* `solapaDe` ya resolvió las claves viejas (`pagos`, `horas`, `convenios`, `recibos`) a

@@ -9,7 +9,6 @@ import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDe
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
-import { ExportarParaElEstudio } from '../cuadro/ExportarParaElEstudio'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -101,10 +100,6 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       href: hrefDe({ quincena: q.desde }),
     }
   })
-  // Las últimas seis quincenas (la de la pantalla incluida si es de las recientes): el estudio pide la que
-  // acaba de cerrar, casi nunca una de hace medio año. La de la pantalla va siempre, aunque sea más vieja.
-  const quincenasParaExportar = [0, -1, -2, -3, -4, -5].map((n) => correrQuincena(quincena, n))
-    .map((q) => ({ desde: q.desde, texto: rotuloQuincena(q) }))
   const grupos = RECORTES
     .filter((r) => r.clave === 'todos' || filas.some((f) => f.grupo === r.clave))
     .map((r) => ({
@@ -131,7 +126,6 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
           limpiar: parametros.buscar ? hrefDe({ buscar: undefined }) : null,
         }}
         cerrar={hrefDe({ solapa: 'cierre', buscar: undefined })}
-        exportar={<ExportarParaElEstudio actual={quincena.desde} quincenas={quincenasParaExportar} />}
       />
       <GrillaEspejoQuincena
         dias={dias}

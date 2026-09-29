@@ -13,13 +13,17 @@ import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { SOLAPAS, SOLAPA_POR_DEFECTO, type ClaveDeSolapa } from './index'
 import { EscalaVigente } from './EscalaVigente'
+import { ExportarParaElEstudio } from '../cuadro/ExportarParaElEstudio'
 import type { EscalaVigente as Escala } from '../../../services/escalaUocra'
 
-export function BarraSolapas({ activa, hrefDe, escala }: {
+export function BarraSolapas({ activa, hrefDe, escala, exportar }: {
   activa: ClaveDeSolapa
   hrefDe: (solapa: ClaveDeSolapa) => string
   /** LA ESCALA UOCRA QUE RIGE HOY, al lado de «Más» (dueño, 16/09/2026). `undefined` = esta pantalla no la leyó. */
   escala?: Escala | null
+  /** Las quincenas que el estudio puede pedir (la actual y las anteriores). Las calcula quien dibuja la barra, no
+   *  cada solapa: el ítem tiene que estar en «Más» desde CUALQUIER solapa (regla del dueño, 14/09/2026). */
+  exportar?: { actual: string; quincenas: { desde: string; texto: string }[] }
 }) {
   const principal = SOLAPAS.find((s) => s.clave === SOLAPA_POR_DEFECTO)!
   const resto = SOLAPAS.filter((s) => s.clave !== SOLAPA_POR_DEFECTO && s.Componente)
@@ -59,7 +63,7 @@ export function BarraSolapas({ activa, hrefDe, escala }: {
         <div style={{
           position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, minWidth: 190,
           background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 8,
-          boxShadow: '0 6px 20px rgba(0,0,0,.08)', padding: 6, display: 'flex', flexDirection: 'column',
+          boxShadow: '0 6px 20px rgba(0,0,0,.08)', padding: 6, maxWidth: 'calc(100vw - 32px)', display: 'flex', flexDirection: 'column',
         }}>
           {/* EL MENÚ NO CAMBIA SEGÚN DÓNDE ESTÁS (dueño, 14/09/2026: «es confuso el movimiento de
               secciones… deja quieto lo q contiene»). Antes la sección abierta se sacaba de la lista y
@@ -68,6 +72,7 @@ export function BarraSolapas({ activa, hrefDe, escala }: {
             const esLaAbierta = s.clave === activa
             return (
               <Link key={s.clave} href={hrefDe(s.clave)} prefetch={false} data-testid={`solapa-${s.clave}`}
+                className={ITEM_TACTIL}
                 aria-current={esLaAbierta ? 'page' : undefined}
                 style={{
                   padding: '7px 10px', borderRadius: 5, color: V.tinta, textDecoration: 'none', fontSize: '12.5px',
@@ -77,11 +82,21 @@ export function BarraSolapas({ activa, hrefDe, escala }: {
               </Link>
             )
           })}
+          {/* DEBAJO DE UN SEPARADOR Y SIEMPRE AL FINAL: no es una solapa sino una acción sobre la quincena. */}
+          {exportar && (
+            <>
+              <div role="separator" style={{ height: 1, background: V.linea, margin: '6px 4px' }} />
+              <ExportarParaElEstudio actual={exportar.actual} quincenas={exportar.quincenas} />
+            </>
+          )}
         </div>
       </details>
     </div>
   )
 }
+
+/** En el teléfono un ítem mide al menos 44 px (11 × 4): el dedo no acierta a uno de 30. */
+const ITEM_TACTIL = 'max-md:min-h-11 max-md:flex max-md:items-center'
 
 const inactivo: React.CSSProperties = { paddingBottom: 3, fontWeight: 400, color: V.apagado, textDecoration: 'none' }
 const activo: React.CSSProperties = {
