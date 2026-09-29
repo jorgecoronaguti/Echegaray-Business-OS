@@ -120,13 +120,24 @@ export function leerFechaAdelanto(texto, hoy) {
 }
 
 /**
+ * Una frase en todas sus rotaciones de palabras. El nombre para mostrar pasó a «Apellido Nombre» (29/09) pero
+ * quien escribe en el chat dice «Sebastián Quiroga»: para desempatar homónimos hay que reconocer ambos órdenes,
+ * y una rotación cubre los dos aunque el nombre tenga dos palabras («Nievas Juan Pablo» → «juan pablo nievas»).
+ */
+function rotaciones(frase) {
+  const ws = frase.split(' ').filter(Boolean)
+  return ws.map((_, i) => [...ws.slice(i), ...ws.slice(0, i)].join(' '))
+}
+
+/**
  * EL PADRÓN COMO SE NOMBRA A LA GENTE: el legajo, el nombre para mostrar y cómo lo escribe la planilla JORNALES
  * («Emi Maldonado»). Cada persona trae sus palabras y sus frases (nombre para mostrar y apodos enteros).
  * @param {Array<{id:string, nombre_completo:string, nombre_para_mostrar?:string|null, apodos?:string[]|null}>} filas
  */
 export function armarPadron(filas = []) {
   return filas.map((p) => {
-    const frases = [p.nombre_para_mostrar, ...(p.apodos ?? [])].filter(Boolean).map((x) => plano(x).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim())
+    const frases = [p.nombre_para_mostrar, ...(p.apodos ?? [])].filter(Boolean)
+      .flatMap((x) => rotaciones(plano(x).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()))
     const ws = new Set([p.nombre_completo, p.nombre_para_mostrar, ...(p.apodos ?? [])].filter(Boolean).flatMap(palabrasDeNombre))
     return { id: p.id, nombre: p.nombre_para_mostrar || p.nombre_completo, legajo: p.nombre_completo, palabras: ws, frases }
   })

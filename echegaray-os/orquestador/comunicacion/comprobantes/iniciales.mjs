@@ -144,11 +144,12 @@ export function interpretarRespuesta(texto, { propuestos = [], personas = [] } =
   const nombradas = personas.filter((p) => {
     const ini = plano(p.iniciales)
     const palabras = plano(p.nombre).split(/\s+/).filter(Boolean)
-    const pila = palabras[0] ?? ''
-    if (t.includes(palabras.join(' '))) return true
+    // El nombre viene como «Apellido Nombre» (29/09) pero se lo nombra «Nombre Apellido»: la frase entera se
+    // prueba en todas sus rotaciones y la abreviatura («emi») sirve contra cualquier palabra, sin suponer cuál es el nombre de pila.
+    const frases = palabras.map((_, i) => [...palabras.slice(i), ...palabras.slice(0, i)].join(' '))
+    if (frases.some((f) => f && t.includes(f))) return true
     return tokens.some((k) => (k === ini && (!COMUNES.has(k) || t === k))
-      || (k.length >= 3 && pila.startsWith(k))
-      || (k.length >= 4 && palabras.slice(1).includes(k)))
+      || (k.length >= 3 && palabras.some((w) => w.startsWith(k))))
   })
   const neg = /^(no|nop|nada|ninguno|ninguna)\b/.test(t) || /(compra comun|no es a rendir|caja chica|de nadie)/.test(t)
   const pos = /^(si+|sip|s|dale|ok|okey|oka|okis|correcto|exacto|confirmo|afirmativo|claro|eso|asi es)\b/.test(t)

@@ -53,6 +53,28 @@ test('las frases del dueño: importe, persona y fecha exactos', () => {
   }
 })
 
+// Desde el 29/09 personas.nombre_para_mostrar es «Apellido Nombre». Sin apodos: el fixture de arriba los trae en
+// ambos órdenes y taparía el defecto (desempatar homónimos sólo con la frase del nombre para mostrar).
+const PADRON_NUEVO = armarPadron([
+  { id: 'qalex', nombre_completo: 'QUIROGA ALEXANDER SEBASTIAN', nombre_para_mostrar: 'Quiroga Alexander', apodos: [] },
+  { id: 'qseba', nombre_completo: 'QUIROGA SEBASTIAN ADOLFO', nombre_para_mostrar: 'Quiroga Sebastian', apodos: [] },
+  { id: 'nievas', nombre_completo: 'NIEVAS VILLEGAS JUAN PABLO', nombre_para_mostrar: 'Nievas Juan Pablo', apodos: [] },
+  { id: 'gjuan', nombre_completo: 'GONZALEZ TOBARES JUAN GUILLERMO', nombre_para_mostrar: 'Gonzalez Juan', apodos: [] },
+  { id: 'gjose', nombre_completo: 'GONZALEZ JUAN JOSE', nombre_para_mostrar: 'Gonzalez Juan Jose', apodos: [] },
+])
+
+test('nombre para mostrar «Apellido Nombre»: «Sebastián Quiroga» y «Quiroga Sebastián» desempatan igual', () => {
+  for (const texto of ['adelanto a Sebastián Quiroga 15000', 'adelanto a Quiroga Sebastián 15000']) {
+    const r = interpretarAdelanto(texto, { padron: PADRON_NUEVO, proveedores: [], hoy: '2026-09-25' })
+    assert.equal(r.estado, 'listo', texto)
+    assert.equal(r.persona.id, 'qseba', texto)
+  }
+  const e = elegirEmpleado('adelanto a Alexander Quiroga', PADRON_NUEVO)
+  assert.equal(e.persona?.id, 'qalex')
+  // Dos palabras de nombre: el orden natural del chat contra el formato nuevo.
+  assert.equal(elegirEmpleado('adelanto a Juan Pablo Nievas', PADRON_NUEVO).persona?.id, 'nievas')
+})
+
 test('la cuenta se escribe como la escribe el dueño: «8500*8» entra tal cual a la celda', () => {
   const r = leer('adelanto 8500*8 a pastran')
   assert.equal(r.estado, 'listo')

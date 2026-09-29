@@ -112,6 +112,15 @@ test('la respuesta ESCRITA en el español del dueño', () => {
   assert.equal(r('si', [{ persona_id: 'pEM' }, { persona_id: 'pJP' }]).tipo, 'ambigua', '«si» con dos propuestas no elige')
 })
 
+test('la respuesta escrita con el nombre para mostrar «Apellido Nombre» (29/09): «emi» y «juan pablo» siguen nombrando', () => {
+  const invertidas = PERSONAS.map((p) => ({ ...p, nombre: p.nombre.split(' ').length === 3 ? 'Nievas Juan Pablo' : p.nombre.split(' ').reverse().join(' ') }))
+  const r = (t) => interpretarRespuesta(t, { propuestos: [{ persona_id: 'pEM' }], personas: invertidas })
+  for (const [t, quien] of [['si es de emi', 'pEM'], ['emiliano', 'pEM'], ['de juan pablo', 'pJP'], ['no, es de juan', 'pJP'], ['juan pablo nievas', 'pJP']]) {
+    assert.deepEqual([t, r(t).tipo, r(t).persona?.persona_id], [t, 'si', quien])
+  }
+  assert.equal(r('de emi o de jp').tipo, 'ambigua')
+})
+
 function portRespuesta({ fila = {}, estadoFinal = { estado: 'si', vinculado_en: 'ya' } } = {}) {
   const q = []
   const base = { id: 'i1', estado: 'pregunta', enviado_por: 'uDueno', proveedor: 'Hormiserv', ...fila }

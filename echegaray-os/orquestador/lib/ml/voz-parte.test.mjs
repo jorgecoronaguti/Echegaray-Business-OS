@@ -106,3 +106,17 @@ test('«Quiroz sí vino, ocho horas en encofrado»: la cláusula sin sujeto es d
   assert.equal(q.tarea_id, 't-encofrado')
   assert.equal(p.novedades.length, 0)
 })
+
+// Desde el 29/09 nombre_para_mostrar es «Apellido Nombre». voz-parte compara por PALABRAS (conjunto), no por
+// frase, así que el orden no debe cambiar nada: este control lo clava para que nadie lo vuelva a comparar como frase.
+const CONTEXTO_APELLIDO_PRIMERO = {
+  ...CONTEXTO,
+  personas: CONTEXTO.personas.map((p) => ({ ...p, nombre_para_mostrar: p.nombre_para_mostrar.split(' ').reverse().join(' ') })),
+}
+for (const caso of CASOS) {
+  test(`fixture con «Apellido Nombre»: ${caso.nombre}`, () => {
+    const p = proponerParte(caso.texto, CONTEXTO_APELLIDO_PRIMERO)
+    const malos = compararCaso(caso, p).filter((c) => !c.ok)
+    assert.deepEqual(malos, [])
+  })
+}
