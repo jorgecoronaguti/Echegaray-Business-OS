@@ -39,7 +39,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { MIGRACION_REL, declaradasDe, triggersDe } from './ficha-cache-grafo.mjs'
 
 const MIGRACION = join(import.meta.dirname, '..', '..', MIGRACION_REL)
@@ -158,4 +158,58 @@ test('el cron confirma por fila y la lectura no sirve lo marcado', () => {
   assert.match(cron, /ficha_cliente_cache_consumir\(\);\s*commit;/)
   assert.match(sinComentarios, /cron\.alter_job\([^;]*command := 'call public\.refrescar_ficha_cliente_cache\(\)'/)
   assert.match(cuerpos().get('ficha_cliente_cache_leer'), /not public\.ficha_cliente_cache_marcada\(p_rpc, p_clave\)/)
+})
+
+test('el cron cede acotado: nunca con una marca «*» pendiente y como máximo 2 corridas seguidas', () => {
+  const cron = cuerpos().get('refrescar_ficha_cliente_cache')
+  const cede = /if\s*\(select count\(\*\) from pg_catalog\.pg_stat_activity[\s\S]*?\bthen([\s\S]*?)end if;/.exec(cron)
+  assert.ok(cede, 'el cron ya no mira la carga antes de correr')
+  const condicion = cede[0].slice(0, cede[0].indexOf('then'))
+  // Sin estas dos, bajo carga un «*» apaga el caché de todas las fichas y el cálculo en vivo (~3 s
+  // cada una) suma más carga: el cron no volvería a correr nunca.
+  assert.match(condicion, /not exists[\s\S]*ficha_cliente_cache_pendiente[\s\S]*'\*'/, 'cede con una marca «*» pendiente')
+  assert.match(condicion, /seguidas[\s\S]*<\s*2/, 'cede sin tope de corridas seguidas')
+  assert.match(cede[1], /set seguidas = seguidas \+ 1/, 'al ceder no cuenta la corrida cedida')
+  assert.match(cede[1], /pg_advisory_unlock/, 'al ceder se queda con el candado de sesión')
+  const despues = cron.slice(cron.indexOf(cede[0]) + cede[0].length)
+  assert.match(despues, /^\s*update public\.ficha_cliente_cache_cedida set seguidas = 0;/, 'al correr no vuelve a 0 el contador')
+})
+
+const ROLLBACK_REL = join('supabase', 'rollback', basename(MIGRACION).replace(/\.sql$/, '.down.sql'))
+const vuelta = () => readFileSync(join(import.meta.dirname, '..', '..', ROLLBACK_REL), 'utf8').replace(/--[^\n]*/g, '')
+
+test('la vuelta atrás vive fuera de migrations/ y deshace todo lo que la migración crea', () => {
+  const v = vuelta().toLowerCase()
+  for (const { tabla } of triggers()) {
+    assert.match(v, new RegExp(`drop trigger if exists trg_ficha_inv on public\\.${tabla};`), `queda el trigger en ${tabla}`)
+  }
+  assert.match(v, /drop trigger if exists trg_ficha_inv_al_commit on public\.ficha_cliente_cache_tocada;/)
+  for (const [, tabla] of texto.matchAll(/create table if not exists public\.(\w+)/g)) {
+    assert.match(v, new RegExp(`drop table if exists public\\.${tabla};`), `queda la tabla ${tabla}`)
+  }
+  const recreadas = new Set(['ficha_cliente_cache_leer', 'invalidar_ficha_cliente_cache'])
+  for (const [, clase, nombre] of sinComentarios.matchAll(/create or replace (function|procedure) public\.(\w+)/g)) {
+    if (recreadas.has(nombre)) continue
+    assert.match(v, new RegExp(`drop ${clase} if exists public\\.${nombre}\\(`), `queda ${clase} ${nombre}`)
+  }
+})
+
+test('la vuelta atrás deja el cron y las tres funciones como estaban en la viva', () => {
+  const v = vuelta()
+  assert.match(v, /cron\.alter_job\([\s\S]*command := 'select public\.refrescar_ficha_cliente_cache\(\)'/)
+  // El drop del procedure va antes del create de la función del mismo nombre: al revés, el create
+  // falla porque ya existe una rutina public.refrescar_ficha_cliente_cache.
+  assert.ok(v.indexOf('drop procedure if exists public.refrescar_ficha_cliente_cache()') <
+    v.indexOf('CREATE OR REPLACE FUNCTION public.refrescar_ficha_cliente_cache('))
+  for (const f of ['ficha_cliente_cache_leer', 'invalidar_ficha_cliente_cache']) {
+    assert.match(v, new RegExp(`CREATE OR REPLACE FUNCTION public\\.${f}\\(`))
+    assert.match(v, new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to authenticated;`))
+  }
+  assert.match(v, /revoke all on function public\.refrescar_ficha_cliente_cache\(text\) from public, anon, authenticated;/)
+})
+
+test('el ensayo pregunta si es producción antes de abrir ninguna conexión', () => {
+  const s = readFileSync(join(import.meta.dirname, '..', 'scripts', 'ensayar-ficha-cache.mjs'), 'utf8')
+  const guarda = s.indexOf('motivoParaNegarse(url')
+  assert.ok(guarda > 0 && guarda < s.indexOf('new pg.Client'))
 })

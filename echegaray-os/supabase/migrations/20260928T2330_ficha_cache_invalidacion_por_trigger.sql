@@ -96,6 +96,11 @@
 --      `ficha_cliente_cache_pendiente` vaciándose (sólo quedan marcas de los últimos 2 min).
 --   5. Reactivar el cron (`active := true`) y las sincronizaciones.
 --
+-- VUELTA ATRÁS: `supabase/rollback/20260928T2330_ficha_cache_invalidacion_por_trigger.down.sql`, con
+-- el mismo orden (cron pausado, sincronizaciones quietas). Vive fuera de `migrations/` para que
+-- ningún aplicador lo levante solo. Antes de aplicar ESTA migración en producción, ensayarla en una
+-- rama de Supabase con `node orquestador/scripts/ensayar-ficha-cache.mjs <url de la rama>`.
+--
 -- ═══ AHORRO ESTIMADO (ESTIMACIÓN sobre los `ms` medidos, no una medición del efecto) ═══
 --
 -- Hoy ~2.280 s/día. Sin cambios reales, el lote completo (~12 s) corre una vez por hora: ~290 s/día
@@ -575,6 +580,25 @@ $function$;
 revoke all on function public.ficha_cliente_cache_consumir(),
   public.ficha_cliente_cache_calcular(uuid, text, text, text) from public, anon, authenticated;
 
+-- ── CUÁNTO PUEDE CEDER EL CRON: la carga no puede dejar el caché apagado ────────────────────────────
+-- Con más de 3 backends activos el cron cedía sin consumir. Una marca «*» apaga la lectura de TODAS
+-- las fichas, que pasan al cálculo en vivo (~3 s cada una): más backends activos, el cron vuelve a
+-- ceder, la marca sigue ahí. Se realimenta. Por eso:
+--   · con una marca «*» / «cliente:*» / «obra:*» pendiente, el cron NO cede;
+--   · fuera de eso cede como máximo 2 corridas seguidas: la tercera corre con la carga que haya.
+-- MÁXIMO CON EL CACHÉ APAGADO (CÁLCULO sobre el período del cron, 2 min, y el corte de 12 s):
+--   · todas las fichas en vivo por una «*»: ≤ 2 min — la próxima corrida la consume sin ceder;
+--   · una ficha sin fila después de consumir: ≤ 2 min + ⌈S / 12 s⌉ × 6 min, con S = suma de lo que
+--     tarda recalcular todo. S medido el 28/09 = 10,6 s (30 fichas, 321 ms de media; 25 desgloses,
+--     37 ms): entra en la misma corrida que consume, así que hoy el techo es ~2 min 12 s.
+create table if not exists public.ficha_cliente_cache_cedida (
+  una      boolean primary key default true check (una),
+  seguidas integer not null default 0
+);
+insert into public.ficha_cliente_cache_cedida (una) values (true) on conflict do nothing;
+alter table public.ficha_cliente_cache_cedida enable row level security;
+revoke all on public.ficha_cliente_cache_cedida from public, anon, authenticated;
+
 -- Un procedure no puede llevar `set search_path` y hacer COMMIT: todo va calificado con `public.`.
 -- El candado es de SESIÓN (el de transacción se soltaría en el primer COMMIT); pg_cron abre una
 -- conexión por corrida, así que un error a mitad de camino también lo suelta.
@@ -592,10 +616,15 @@ begin
   end if;
   if (select count(*) from pg_catalog.pg_stat_activity a
        where a.state = 'active' and a.backend_type = 'client backend' and a.pid <> pg_backend_pid()) > 3
+     and not exists (select 1 from public.ficha_cliente_cache_pendiente p
+                      where p.clave in ('*', 'cliente:*', 'obra:*'))
+     and (select c.seguidas from public.ficha_cliente_cache_cedida c) < 2
   then
+    update public.ficha_cliente_cache_cedida set seguidas = seguidas + 1;
     perform pg_advisory_unlock(hashtext('public.refrescar_ficha_cliente_cache'));
     return;
   end if;
+  update public.ficha_cliente_cache_cedida set seguidas = 0;
   select p.id into v_uid
     from public.perfiles p
    where p.rol = 'direccion' and p.es_prueba = false
@@ -636,7 +665,8 @@ revoke all on procedure public.refrescar_ficha_cliente_cache() from public, anon
 
 comment on procedure public.refrescar_ficha_cliente_cache() is
   'Cron (20260928T2330): consume las marcas de ficha_cliente_cache_pendiente y recalcula lo que falta '
-  'o venció, con COMMIT por fila; corta a los 12 s y cede con más de 3 backends activos.';
+  'o venció, con COMMIT por fila; corta a los 12 s. Con más de 3 backends activos cede, salvo con una '
+  'marca «*» pendiente y nunca más de 2 corridas seguidas (ficha_cliente_cache_cedida).';
 
 -- Una función se llama con SELECT; un procedure con COMMIT adentro sólo corre con CALL, sola en la
 -- sentencia (pg_cron manda el comando tal cual). Queda pausado: lo reactiva el paso 5.
