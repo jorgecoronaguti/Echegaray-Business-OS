@@ -27,14 +27,12 @@ test('cada celda sale de su campo del legajo', () => {
   assert.equal(d.antiguedad, '8 meses*')
   assert.equal(d.periodo, '09/2026')
   assert.equal(d.legajo, '66')
-  assert.match(d.lugarYFechaDePago, /CAPITAL\*, —$/, 'sin fecha real: raya, y el lugar marcado como inferido')
+  assert.match(d.lugarYFechaDePago, /CAPITAL\*$/, 'sin fecha real: sólo el lugar marcado como inferido, sin raya')
 })
 
-test('lo que ninguna tabla guarda queda null, nunca inventado', () => {
+test('lo que ninguna tabla guarda no existe en el contrato: la celda se retiró del papel', () => {
   const d = datosDelLegajoParaRecibo(ALANIZ, Q2_09, '2026-01-12')
-  assert.equal(d.fechaReconocida, null)
-  assert.equal(d.banco, null)
-  assert.equal(d.seccion, null)
+  for (const k of ['fechaReconocida', 'banco', 'seccion']) assert.equal(k in d, false, k)
 })
 
 test('sin legajo cargado los campos son null, no vacío', () => {
@@ -85,7 +83,7 @@ test('de la fila de la base al papel: la fecha del recibo sale sin marca; la inf
   const supuesta = con({ fecha: '2026-10-02', origen: 'jornal' })
   assert.match(supuesta.lugarYFechaDePago, /, 02\/10\/2026\*$/)
   assert.equal(supuesta.notasInferidas.filter((n) => n.startsWith('FECHA DE PAGO')).length, 1)
-  assert.match(con(null).lugarYFechaDePago, /, —$/)
+  assert.doesNotMatch(con(null).lugarYFechaDePago, /—|, $/)
 })
 
 test('todo dato marcado con «*» tiene su nota, y ningún dato ausente se marca', () => {

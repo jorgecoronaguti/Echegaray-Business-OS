@@ -12,7 +12,9 @@
 // SIN FUENTE HOY (medido el 29/09/2026 en `personas`, `persona_legajo`, `recibo_sueldo_linea`,
 // `recibo_sueldo_concepto`, `nomina_recibo_neto`, `recibo_empleado`, `haberes_acreditados_banco`,
 // `jornal_quincena`): fecha reconocida, fecha de pago de aportes, nombre del banco, sección. El encabezado del
-// PDF del estudio (donde están) no se importó a ninguna columna.
+// PDF del estudio (donde están) no se importó a ninguna columna. Por eso esas cuatro celdas se RETIRARON del
+// papel (dueño, 29/09: «no cuadros vacíos»): volverán cuando el encabezado se importe. Y toda celda que salga
+// sin valor (obra social sin cargar, ingreso sin fecha) no se dibuja: ver `Datos`.
 //
 // LA FECHA DE PAGO SÍ TIENE FUENTE (`nomina_recibo_neto.fecha_pago`, y `jornal_quincena.fecha_pago` como segunda):
 // la medición del 29/09 la dio por ausente por mirar el legajo y no las tablas de nómina; la auditoría lo corrigió.
@@ -28,22 +30,18 @@ import { EMPLEADOR, periodoDePago } from './reciboFormatoContador.ts'
 export interface DatosDelLegajoParaRecibo {
   legajo: string | null
   cuil: string | null
-  fechaReconocida: string | null
   antiguedad: string | null
   calificacion: string | null
   periodo: string
-  banco: string | null
-  seccion: string | null
   modalidad: string | null
   obraSocial: string | null
-  /** «domicilio*, dd/mm/aaaa»; sin fecha real, «domicilio*, —». */
+  /** «domicilio*, dd/mm/aaaa»; sin fecha real, sólo «domicilio*»: nunca una raya. */
   lugarYFechaDePago: string
   /** Una línea por dato marcado con «*», para el pie del papel. */
   notasInferidas: string[]
 }
 
 const MARCA = '*'
-const RAYA = '—'
 const fechaDdMmAaaa = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
 /** Un campo del legajo por su rótulo; los mismos que muestra `DetalleLaboralDeLaPersona`. `null` = sin cargar. */
@@ -82,7 +80,7 @@ export function datosDelLegajoParaRecibo(
   }
   const pago = detalle?.fechaDePago ?? null
   // Del recibo del estudio es un hecho; la de la quincena puede ser un supuesto y se marca.
-  const fecha = pago == null ? RAYA : pago.origen === 'recibo' ? fechaDdMmAaaa(pago.fecha) : `${fechaDdMmAaaa(pago.fecha)}${MARCA}`
+  const fecha = pago == null ? null : pago.origen === 'recibo' ? fechaDdMmAaaa(pago.fecha) : `${fechaDdMmAaaa(pago.fecha)}${MARCA}`
   if (pago?.origen === 'jornal') notas.push('FECHA DE PAGO: fecha de caja de la quincena, puede ser un supuesto; no es la del recibo del estudio.')
   const antiguedad = inferido(antiguedadAl(quincena.hasta, null, ingresoIso),
     'ANTIGÜEDAD: calculada desde la fecha de ingreso; no es la antigüedad reconocida.')
@@ -93,15 +91,12 @@ export function datosDelLegajoParaRecibo(
   return {
     legajo: campoDelLegajo(detalle, 'Legajo'),
     cuil: campoDelLegajo(detalle, 'CUIL'),
-    fechaReconocida: null,
     antiguedad,
     calificacion,
     periodo: `${p.mes}/${p.anio}`,
-    banco: null,
-    seccion: null,
     modalidad: modalidadLegible(campoDelLegajo(detalle, 'Modalidad')),
     obraSocial: campoDelLegajo(detalle, 'Obra social'),
-    lugarYFechaDePago: `${EMPLEADOR.domicilio}${MARCA}, ${fecha}`,
+    lugarYFechaDePago: fecha == null ? `${EMPLEADOR.domicilio}${MARCA}` : `${EMPLEADOR.domicilio}${MARCA}, ${fecha}`,
     notasInferidas: notas,
   }
 }

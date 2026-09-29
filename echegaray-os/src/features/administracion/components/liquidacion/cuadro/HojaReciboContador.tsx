@@ -5,8 +5,8 @@
 // El orden y los rótulos son los del recibo oficial Q2-08/2026 (ver `reciboFormatoContador.ts`): empleador,
 // cuatro renglones de datos del empleado, contribuciones del empleador, CONCEPTO / UNIDAD / BASE / MONTO por
 // sección, composición salarial, neto, neto en letras, observaciones y firmas. Un dato que la app no tiene
-// (fecha reconocida, pago de aportes, banco, sección) va con «—»: el papel del estudio los trae, y
-// escribir uno inventado sería peor que el hueco. De dónde sale cada uno: `datosDelReciboContador.ts`.
+// (fecha reconocida, pago de aportes, banco, sección) NO se dibuja: el papel del estudio los trae, y
+// escribir uno inventado, o dejar la celda vacía, es peor. De dónde sale cada uno: `datosDelReciboContador.ts`.
 //
 // ESTILOS EN LÍNEA, SIN CLASES: `imprimirHoja` copia el `outerHTML` a una ventana en blanco, donde ninguna
 // hoja de estilos de la app existe. Tampoco hay un solo cálculo acá: se dibuja lo que armó el servicio.
@@ -20,10 +20,10 @@
 // «SUELDO NETO ESTIMADO» y las OBSERVACIONES; `data-origen` y el título de la impresión no cambian.
 
 import type { ReactNode, RefObject } from 'react'
-import { EMPLEADOR, periodoDePago, type ReciboContador, type RenglonContador } from '../../../services/reciboFormatoContador'
+import { EMPLEADOR, type ReciboContador, type RenglonContador } from '../../../services/reciboFormatoContador'
 import { importeEnLetras } from '../../../services/importeEnLetras'
 import { V } from '@/shared/components/v2/patron'
-import { fechaCorta } from './HojaDelRecibo'
+import { bloquesDeDatos, type CeldaDelRecibo } from '../../../services/celdasDelReciboContador'
 
 const TINTA = '#1F1F1E'
 const GRAFITO = V.grafito
@@ -48,12 +48,9 @@ export interface EmpleadoDelRecibo {
   cuil: string | null
   /** ISO. */
   ingreso: string | null
-  fechaReconocida?: string | null
   antiguedad?: string | null
   calificacion?: string | null
   periodo?: string | null
-  banco?: string | null
-  seccion?: string | null
   modalidad?: string | null
   obraSocial?: string | null
   lugarYFechaDePago?: string | null
@@ -66,23 +63,13 @@ export function HojaReciboContador({ hoja, recibo, empleado, quincena }: {
   empleado: EmpleadoDelRecibo
   quincena: { desde: string; hasta: string }
 }) {
-  const p = periodoDePago(quincena.desde)
   const estimado = recibo.origen === 'estimado'
   return (
     <div ref={hoja} data-recibo-imprimible data-testid="recibo-contador-hoja" data-origen={recibo.origen}
       style={{ border: `1px solid ${LINEA}`, borderRadius: 6, padding: 20, background: '#FFFFFF', color: TINTA, fontSize: '12px', lineHeight: 1.4, display: 'flex', flexDirection: 'column', gap: 14, boxSizing: 'border-box', maxWidth: '100%' }}>
       <Encabezado />
 
-      <Datos celdas={[
-        ['Q', String(p.q)], ['MES', p.mes], ['AÑO', p.anio], ['APELLIDO Y NOMBRE', empleado.nombre, true], ['N° LEGAJO', empleado.legajo],
-        ['REM. ASIGNADA', recibo.valorHora == null ? null : plata(recibo.valorHora)], ['SUELDO BRUTO', plata(recibo.sueldoBruto)], ['C.U.I.L.', empleado.cuil],
-      ]} />
-      <Datos celdas={[
-        ['FECHA INGRESO', empleado.ingreso ? fechaCorta(empleado.ingreso) : null], ['FECHA RECONOCIDA', empleado.fechaReconocida ? fechaCorta(empleado.fechaReconocida) : null], ['ANTIGÜEDAD', empleado.antiguedad ?? null],
-        ['CALIFICACIÓN PROFESIONAL', empleado.calificacion ?? null, true], ['F. PAGO APORTES', null], ['PERIODO', empleado.periodo ?? null], ['BANCO', empleado.banco ?? null],
-      ]} />
-      <Datos celdas={[['CATEGORÍA LABORAL', recibo.categoria, true], ['SECCIÓN', empleado.seccion ?? null, true], ['MODALIDAD DE CONTRATACIÓN', empleado.modalidad ?? null, true]]} />
-      <Datos celdas={[['OBRA SOCIAL', empleado.obraSocial ?? null, true], ['LUGAR Y FECHA DE PAGO', empleado.lugarYFechaDePago ?? null, true], ['PERIODO DE PAGO', p.texto, true]]} />
+      {bloquesDeDatos(recibo, empleado, quincena).map((celdas) => <Datos key={celdas[0][0]} celdas={celdas} />)}
 
       {(empleado.notasInferidas?.length ?? 0) > 0 && (
         <div data-testid="recibo-contador-notas" style={{ ...SIN_CORTE, fontSize: '9.5px', color: GRIS, lineHeight: 1.35 }}>
@@ -142,16 +129,18 @@ function Encabezado() {
 }
 
 /**
+ * Una celda sin dato NO se dibuja (dueño, 29/09/2026: «no podés dejar cuadros vacíos»): ni «—» ni hueco. Que falte
+ * el dato se ve en el legajo, que es donde se arregla; en el papel una raya no informa nada.
  * Celdas que envuelven en filas según el ancho (auto-fit) en vez de apretarse en una sola. El rótulo puede
  * bajar de línea entre palabras; el valor NO se parte (CUIL, fecha, importe) salvo los de texto (`texto`).
  */
-function Datos({ celdas }: { celdas: [string, string | null, boolean?][] }) {
+function Datos({ celdas }: { celdas: CeldaDelRecibo[] }) {
   return (
     <div style={{ ...SIN_CORTE, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', borderTop: `1px solid ${LINEA}`, borderLeft: `1px solid ${LINEA}` }}>
       {celdas.map(([rotulo, valor, texto]) => (
         <div key={rotulo} style={{ padding: '5px 8px', minWidth: 0, borderRight: `1px solid ${LINEA}`, borderBottom: `1px solid ${LINEA}` }}>
           <div style={{ fontSize: '9px', color: GRIS, letterSpacing: '.04em', lineHeight: 1.25 }}>{rotulo}</div>
-          <div style={{ fontWeight: 600, ...(texto ? { overflowWrap: 'anywhere' } : NUM) }}>{valor ?? RAYA}</div>
+          <div style={{ fontWeight: 600, ...(texto ? { overflowWrap: 'anywhere' } : NUM) }}>{valor}</div>
         </div>
       ))}
     </div>
