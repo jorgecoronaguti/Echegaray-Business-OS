@@ -159,3 +159,22 @@ test('un fajo con algo REAL que preguntar sí se avisa, y una sola vez', async (
   assert.equal(r.avisados, 1)
   assert.deepEqual(sellados, [{ id: 'otro', avisoPostId: 'post-9' }])
 })
+
+test('un fajo de la web (root_post_id = UUID del lote) NO se avisa por Mattermost', async () => {
+  const web = { ...FAJO_MUDO, id: 'fbf063fe-0000-0000-0000-000000000000', plataforma: 'web', root_post_id: '27d1dd50-8676-4906-926b-1838b1099a6c' }
+  const mm = { ...FAJO_MUDO, plataforma: 'mattermost' }
+  const repo = repoFalso({ filas: [web, mm] })
+  const publicados = []
+  const r = await barrerFajosMudos({ port, repo, publicar: async (p) => { publicados.push(p); return { id: 'post_nuevo' } } })
+  assert.equal(publicados.length, 1, 'sólo el de Mattermost')
+  assert.equal(publicados[0].rootPostId, 'p_ycpth5kc')
+  assert.equal(r.encontrados, 1)
+  assert.deepEqual(repo.guardados.map((g) => g.id), [mm.id], 'el web no se sella como avisado: nadie lo leyó')
+})
+
+test('fajosSinAviso pide sólo plataforma mattermost en SQL', async () => {
+  const { fajosSinAviso } = await import('./repositorio.mjs')
+  let sql = ''
+  await fajosSinAviso({ query: async (q) => { sql = q; return { rows: [] } } })
+  assert.match(sql, /plataforma\s*=\s*'mattermost'/)
+})

@@ -41,11 +41,17 @@ export async function fajoAbierto(port, { plataforma = 'mattermost', userId, cha
  * La condición de tiempo va en SQL a propósito: el reloj que decide es el mismo con el que se
  * escribió `ultimo_at`. Quién es "mudo" de verdad lo decide `fajosMudos` (núcleo puro); esto sólo
  * acota el barrido para no traerse la tabla entera.
+ *
+ * SÓLO fajos de Mattermost (29/09): el aviso se publica en un hilo, y un fajo de la web (`plataforma
+ * = 'web'`) guarda como `root_post_id` el UUID del lote, no un post. Mattermost contestaba 403 cada
+ * cinco minutos, y esos fajos —que siguen abiertos hasta que alguien los complete— ocupaban el
+ * `limit` del barrido delante de los mudos reales. Un fajo web no tiene hilo donde avisar.
  */
 export async function fajosSinAviso(port, { minutos = 15, limite = 20 } = {}) {
   const { rows } = await port.query(
     `select * from comunicacion.comprobante_fajos
       where estado = $1 and aviso_post_id is null
+        and plataforma = 'mattermost'
         and ultimo_at < now() - ($2 || ' minutes')::interval
       order by ultimo_at asc limit $3`,
     [ESTADO.ABIERTO, String(Math.max(1, Number(minutos) || 15)), limite])

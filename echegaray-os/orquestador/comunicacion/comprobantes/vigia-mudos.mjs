@@ -75,6 +75,9 @@ export async function barrerFajosMudos(d = {}) {
     log?.warn?.('comprobantes: no pude revisar los fajos mudos', { detalle: String(e?.message ?? e).slice(0, 200) })
     return salida
   }
+  // Defensa en profundidad: el SQL ya filtra, pero un repositorio distinto no tiene que avisar por un
+  // hilo que no existe. Sin `plataforma` se asume Mattermost (los fajos de siempre).
+  filas = filas.filter((f) => !f?.plataforma || f.plataforma === 'mattermost')
   const mudos = fajosMudos(filas, { minutos })
   salida.encontrados = mudos.length
   if (!mudos.length) return salida
