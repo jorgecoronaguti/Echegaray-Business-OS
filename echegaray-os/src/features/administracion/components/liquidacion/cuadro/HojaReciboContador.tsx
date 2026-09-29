@@ -150,15 +150,18 @@ const FILA = { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', column
 const CONCEPTO = { flex: '1 1 200px', minWidth: 0 } as const
 const CIFRAS = { display: 'flex', gap: 8, marginLeft: 'auto', flex: '0 0 auto' } as const
 const ANCHOS = [48, 104, 108] as const
-const cifra = (i: 0 | 1 | 2) => ({ ...NUM, width: ANCHOS[i], textAlign: 'right' } as const)
+// minWidth, no width: un monto más largo que la columna la ensancha en vez de pisar la de al lado.
+const cifra = (i: 0 | 1 | 2) => ({ ...NUM, minWidth: ANCHOS[i], textAlign: 'right' } as const)
+// Una celda vacía no tiene línea de base y corre la fila: lleva un espacio duro.
+const VACIO = '\u00a0'
 
 function Fila({ r }: { r: RenglonContador }) {
   return (
     <div data-testid={`recibo-contador-${r.codigo}`} style={{ ...SIN_CORTE, ...FILA, padding: '3px 0', borderBottom: `1px solid ${FILETE}` }}>
       <span style={CONCEPTO}><span style={{ fontFamily: MONO, marginRight: 6, color: GRIS }}>{r.codigo}</span>{r.descripcion}</span>
       <span style={CIFRAS}>
-        <span style={cifra(0)}>{cantidad(r.unidad)}</span>
-        <span style={cifra(1)}>{r.base == null ? '' : plata(r.base)}</span>
+        <span style={cifra(0)}>{cantidad(r.unidad) || VACIO}</span>
+        <span style={cifra(1)}>{r.base == null ? VACIO : plata(r.base)}</span>
         <span style={{ ...cifra(2), fontWeight: 600 }}>{plata(r.monto)}</span>
       </span>
     </div>
@@ -167,8 +170,8 @@ function Fila({ r }: { r: RenglonContador }) {
 
 function Rotulos() {
   return (
-    <div style={{ ...FILA, fontSize: '9.5px', color: '#FFFFFF', background: GRAFITO, padding: '3px 6px', letterSpacing: '.04em', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-      <span style={CONCEPTO}>CONCEPTO</span>
+    <div style={{ ...FILA, flexWrap: 'nowrap', fontSize: '9.5px', color: '#FFFFFF', background: GRAFITO, padding: '3px 6px', letterSpacing: '.04em', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+      <span style={{ ...CONCEPTO, flex: '1 1 0' }}>CONCEPTO</span>
       <span style={CIFRAS}><span style={cifra(0)}>UNIDAD</span><span style={cifra(1)}>BASE</span><span style={cifra(2)}>MONTO</span></span>
     </div>
   )
