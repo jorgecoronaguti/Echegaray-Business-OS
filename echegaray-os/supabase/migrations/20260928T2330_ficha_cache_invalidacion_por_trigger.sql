@@ -641,6 +641,7 @@ begin
             from public.clientes k
            cross join unnest(array['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos',
                                    'actividad']) as s(solapa)
+           where k.slug is not null  -- slug es nullable: sin él no hay clave y el insert abortaría el lote
           union all
           select 'hh_de_obra', o.id, ''
             from public.obra_canonica o
