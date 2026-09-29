@@ -26,3 +26,20 @@ test('--desde deja afuera las vueltas anteriores y una línea rota no tumba la s
   const r = sumarTranscript([vuelta('v', 'm', u, '2026-09-26T10:00:00Z'), '{roto', vuelta('n', 'm', u, '2026-09-26T21:00:00Z')].join('\n'), { desde: '2026-09-26T20:00:00.000Z' })
   assert.equal(r.vueltas, 1)
 })
+
+test('mismo id con salida creciente y líneas en cero: gana el máximo de cada campo (no la primera línea)', () => {
+  const r = sumarTranscript([
+    vuelta('x', 'm', { input_tokens: 2, cache_read_input_tokens: 1000, cache_creation_input_tokens: 50, output_tokens: 10 }),
+    vuelta('x', 'm', { input_tokens: 2, cache_read_input_tokens: 1000, cache_creation_input_tokens: 50, output_tokens: 400 }),
+    vuelta('x', 'm', { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 }),
+  ].join('\n'))
+  assert.equal(r.vueltas, 1); assert.equal(r.salida, 400); assert.equal(r.entrada, 1052)
+  assert.equal(r.nueva, 2); assert.equal(r.cacheLectura, 1000); assert.equal(r.cacheEscritura, 50)
+})
+
+test('una respuesta ya contada en otro transcript (vistos compartido) no se suma dos veces', () => {
+  const vistos = new Set()
+  const t = vuelta('dup', 'm', { input_tokens: 5, output_tokens: 1 })
+  assert.equal(sumarTranscript(t, { vistos }).vueltas, 1)
+  assert.equal(sumarTranscript(t, { vistos }).vueltas, 0)
+})

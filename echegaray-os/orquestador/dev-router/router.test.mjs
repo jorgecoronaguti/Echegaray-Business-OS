@@ -19,9 +19,39 @@ test('D3 por señal: migración, RLS, Sheet, finanzas, producción, seguridad', 
   ]) assert.equal(clasificar(t).riesgo, RIESGO.D3, `debía ser D3: ${t.titulo}`)
 })
 
-test('D3 GANA aunque el archivo sea un .tsx inocente — falla hacia arriba', () => {
-  const c = clasificar({ titulo: 'mostrar el cash flow', archivos: ['src/components/A.tsx'] })
+test('D3 GANA aunque el archivo sea un .tsx inocente cuando el efecto es un cálculo', () => {
+  const c = clasificar({ titulo: 'corregir el cálculo del cash flow', archivos: ['src/components/A.tsx'] })
   assert.equal(c.riesgo, RIESGO.D3)
+})
+
+test('mencionar token, caja o timer NO sube a D3: manda el efecto (29/09)', () => {
+  for (const t of [
+    { titulo: 'mostrar el cash flow', archivos: ['src/components/A.tsx'] },
+    { titulo: 'medir tokens por sesión sin duplicar respuestas', archivos: ['orquestador/scripts/medir-tokens.mjs'] },
+    { titulo: 'el hook dice cuánto tardó el timer de la validación', archivos: ['.claude/hooks/x.mjs'] },
+    { titulo: 'rótulo de la tarjeta de caja', archivos: ['src/features/caja/components/Tarjeta.tsx'] },
+    { titulo: 'poner activa la marca en el listado', archivos: ['src/a.tsx'] },
+  ]) assert.notEqual(clasificar(t).riesgo, RIESGO.D3, `no debía ser D3: ${t.titulo}`)
+})
+
+test('D3 por la RUTA aunque el título no diga nada', () => {
+  for (const archivos of [
+    ['orquestador/lib/sheets/escribir.mjs'],
+    ['orquestador/lib/caja/saldo.mjs'],
+    ['deploy/os-pipeline.timer'],
+    ['src/middleware.ts'],
+    ['orquestador/datos/x.csv'],
+  ]) assert.equal(clasificar({ titulo: 'ajuste', archivos }).riesgo, RIESGO.D3, `debía ser D3: ${archivos}`)
+})
+
+test('D3 por TEXTO con verbo de efecto: escritura productiva, permisos, credenciales', () => {
+  for (const titulo of [
+    'escribir la columna Q del Sheet',
+    'cargar los pagos del extracto',
+    'dar permisos de escritura al jefe',
+    'rotar la clave del bot',
+    'agregar un timer que reescribe el flujo',
+  ]) assert.equal(clasificar({ titulo, archivos: ['src/a.ts'] }).riesgo, RIESGO.D3, `debía ser D3: ${titulo}`)
 })
 
 test('D0 cuando la tarea se expresa como transformación pura', () => {

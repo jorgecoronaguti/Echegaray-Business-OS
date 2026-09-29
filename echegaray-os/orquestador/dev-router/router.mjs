@@ -41,25 +41,58 @@ export const ESTADO = Object.freeze({
   RECHAZADA: 'rechazada',
 })
 
-/** Señales que fuerzan D3 sin importar lo que diga la tarea. Falla hacia arriba, no hacia abajo. */
-const SENALES_D3 = [
-  [/supabase\/migrations|drop table|drop column|truncate|delete from/i, 'migración o DDL destructivo'],
-  [/\brls\b|row level security|security_invoker|\bgrant\b|\bpolicy\b/i, 'RLS o permisos'],
-  [/sheets?|spreadsheet|drive|_RAW\b/i, 'toca el Sheet real de Google'],
-  [/caja|cash.?flow|liquidacion.*pago|nomina|nómina|cobranza|cheque|banco|arca|afip/i, 'efecto financiero o fiscal'],
-  [/deploy|producción|produccion|vercel|systemd|timer/i, 'producción'],
-  [/auth|token|secreto|credencial|password/i, 'seguridad'],
+/**
+ * Señales que fuerzan D3. Falla hacia arriba, pero por el EFECTO del cambio, no por una palabra:
+ * hasta el 29/09 «token», «caja» o «timer» en el título subían a D3 una tarea que sólo medía
+ * tokens o mostraba un número. Tres familias:
+ *  - SIEMPRE (texto o ruta): DDL/migraciones, RLS y permisos.
+ *  - POR RUTA: el archivo mismo escribe el Sheet, calcula plata, instala un timer o despliega.
+ *  - POR TEXTO sólo con verbo de efecto: escribir/cargar/borrar sobre el Sheet o la plata,
+ *    corregir un cálculo financiero, instalar un timer, desplegar, rotar una credencial.
+ */
+const SENALES_SIEMPRE = [
+  [/supabase\/migrations|drop table|drop column|truncate|delete from|alter table/i, 'migración o DDL destructivo'],
+  [/\brls\b|row level security|security_invoker|\bgrant\b|\bpolicy\b|\bpermisos?\b/i, 'RLS o permisos'],
 ]
+// Con \b adelante: sin él «iva» dispara en «activa» y «arca» en «marca».
+const DINERO = '\\b(?:caja|cash.?flow|n[oó]mina|liquidaci[oó]n|sueldo|cobranza|cheque|banco|arca|afip|iva|tesorer[ií]a|pagos?)\\b'
+const SENALES_RUTA = [
+  [/(^|\/)(sheets?|drive)[-_/]|spreadsheet|_RAW\b|escribir-?sheet|flujo-de-fondos/i, 'el archivo escribe el Sheet real'],
+  [/\.(timer|service)$|systemd|vercel\.json|(^|\/)deploy|desplegar/i, 'unidad o despliegue de producción'],
+  [/(^|\/)(auth|middleware)\b|secret|credencial/i, 'autenticación o credenciales'],
+]
+const RUTA_DINERO = /caja|cash.?flow|nomina|liquidacion|sueldo|cobranza|cheque|banco|afip|tesoreria|\barca\b|\biva\b/i
+const SENALES_TEXTO = [
+  [/(escrib|carg|actualiz|borr|modific|replic|sincroniz|import|pis)\w*\b.{0,40}(sheets?|spreadsheet|drive|_RAW\b)/i, 'escribe en el Sheet real'],
+  [new RegExp(`(escrib|carg|actualiz|borr|modific|imput|concili|emit)\\w*\\b.{0,40}(${DINERO})`, 'i'), 'escritura con efecto financiero o fiscal'],
+  [new RegExp(`(c[aá]lculo|calcul|f[oó]rmula|saldo|proyecci[oó]n|devengad|percibid).{0,40}(${DINERO})|(${DINERO}).{0,40}(c[aá]lculo|calcul|f[oó]rmula)`, 'i'), 'cálculo financiero'],
+  [/\b(deploy|desplegar|despliegue|systemd|vercel)\b|(nuevo|crear|agregar|instalar|activar|reiniciar)\w*\b.{0,20}\btimer|\btimer\b.{0,20}(nuevo|en producci[oó]n)/i, 'producción'],
+  [/secreto|credencial|password|contraseña|api.?key|service.?role|(access|refresh)[ _-]?token|(rotar|revocar|filtr)\w*\b.{0,20}(token|clave)/i, 'seguridad'],
+]
+
+/** Primera señal D3 que dispara, o null. Exportada para poder probar cada familia por separado. */
+export function senalD3(tarea) {
+  const archivos = tarea.archivos || []
+  const texto = `${tarea.titulo || ''} ${tarea.objetivo || ''}`
+  const todo = `${texto} ${archivos.join(' ')}`
+  for (const [re, porQue] of SENALES_SIEMPRE) if (re.test(todo)) return porQue
+  for (const a of archivos) {
+    for (const [re, porQue] of SENALES_RUTA) if (re.test(a)) return porQue
+    // Un archivo de cálculo (no una pantalla, un test ni un tipo) cuyo nombre es plata.
+    const d = dominioDe(a)
+    if (RUTA_DINERO.test(a) && (d === 'codigo-nucleo' || d === 'codigo-utilidades')) return 'módulo de cálculo financiero'
+  }
+  for (const [re, porQue] of SENALES_TEXTO) if (re.test(texto)) return porQue
+  return null
+}
 
 /**
  * Clasifica una tarea en categoría y riesgo. Determinística y testeable: es la pieza que decide
  * si Claude entra o no, y una decisión así no puede depender de un modelo.
  */
 export function clasificar(tarea) {
-  const texto = `${tarea.titulo || ''} ${tarea.objetivo || ''} ${(tarea.archivos || []).join(' ')}`
-  for (const [re, porQue] of SENALES_D3) {
-    if (re.test(texto)) return { riesgo: RIESGO.D3, porQue: `señal de alto riesgo: ${porQue}`, categoria: tarea.categoria || 'desconocida' }
-  }
+  const senal = senalD3(tarea)
+  if (senal) return { riesgo: RIESGO.D3, porQue: `señal de alto riesgo: ${senal}`, categoria: tarea.categoria || 'desconocida' }
   if (tarea.transformar) return { riesgo: RIESGO.D0, porQue: 'la tarea se expresa como una transformación pura', categoria: tarea.categoria || 'cambio-mecanico' }
 
   const dominios = [...new Set((tarea.archivos || []).map(dominioDe))]

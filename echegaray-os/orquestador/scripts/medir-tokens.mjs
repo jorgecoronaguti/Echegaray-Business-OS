@@ -13,32 +13,51 @@
 //   node orquestador/scripts/medir-tokens.mjs                 # la sesión más reciente del proyecto
 //   node orquestador/scripts/medir-tokens.mjs <id-de-sesión>  # una sesión puntual (prefijo alcanza)
 //   node orquestador/scripts/medir-tokens.mjs --desde 2026-09-26T20:00  # sólo vueltas desde esa hora
+//   … --breve  (una línea, para traspasos y hooks)  ·  … --json  (para comparar antes/después)
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 const PROYECTOS = join(homedir(), '.claude/projects')
 
-/** Suma el usage de un transcript .jsonl. Pura sobre el texto, para poder probarla. */
-export function sumarTranscript(texto, { desde = null } = {}) {
-  const r = { vueltas: 0, entrada: 0, salida: 0, maxCtx: 0, porModelo: {} }
-  const vistos = new Set()
+/**
+ * Suma el usage de un transcript .jsonl. Pura sobre el texto, para poder probarla.
+ *
+ * Deduplicación por id de respuesta (29/09): Claude Code escribe una respuesta con varios bloques en
+ * varias líneas con el MISMO message.id, y el usage de esas líneas NO es igual: la entrada se repite y
+ * `output_tokens` va creciendo (hay líneas en 0). Quedarse con la primera subcontaba la salida ~2,6×
+ * (medido sobre las 15 sesiones del 26–29/09: 9,2 M contra 24,2 M). Se toma el máximo de cada campo
+ * por id. `vistos` (opcional, compartido entre archivos) evita contar dos veces una respuesta copiada
+ * en otro transcript (agente retomado).
+ *
+ * Separa lo que el modelo leyó en: `nueva` (input sin caché), `cacheLectura`, `cacheEscritura`; su
+ * suma es el contexto de la vuelta (`entrada`). La salida va aparte.
+ */
+export function sumarTranscript(texto, { desde = null, vistos = null } = {}) {
+  const porId = new Map()
   for (const l of texto.split('\n')) {
     if (!l.trim()) continue
     let x
     try { x = JSON.parse(l) } catch { continue }
     if (x.type !== 'assistant' || !x.message?.usage) continue
     if (desde && x.timestamp && x.timestamp < desde) continue
-    // Una respuesta con varios bloques se escribe en varias líneas con el mismo id y el mismo usage.
     const id = x.message.id ?? x.uuid
-    if (vistos.has(id)) continue
-    vistos.add(id)
     const u = x.message.usage
-    const ctx = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
-    const m = String(x.message.model ?? '?').replace(/^claude-/, '')
+    const f = [u.input_tokens ?? 0, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0, u.output_tokens ?? 0]
+    const prev = porId.get(id)
+    if (prev) prev.f = prev.f.map((v, i) => Math.max(v, f[i]))
+    else porId.set(id, { f, m: String(x.message.model ?? '?').replace(/^claude-/, '') })
+  }
+  const r = { vueltas: 0, nueva: 0, cacheLectura: 0, cacheEscritura: 0, entrada: 0, salida: 0, maxCtx: 0, porModelo: {} }
+  for (const [id, { f, m }] of porId) {
+    if (vistos) { if (vistos.has(id)) continue; vistos.add(id) }
+    const [nueva, lee, escribe, sal] = f
+    const ctx = nueva + lee + escribe
+    if (ctx === 0 && sal === 0) continue // línea sintética sin consumo
     r.vueltas += 1
+    r.nueva += nueva; r.cacheLectura += lee; r.cacheEscritura += escribe
     r.entrada += ctx
-    r.salida += u.output_tokens ?? 0
+    r.salida += sal
     r.maxCtx = Math.max(r.maxCtx, ctx)
     r.porModelo[m] = (r.porModelo[m] ?? 0) + ctx
   }
@@ -70,40 +89,58 @@ function ubicar(prefijo) {
   return null
 }
 
+/** Mide una sesión entera (principal + subagentes) desde disco. Exportada para el hook de traspaso. */
+export function medirSesion(s, { desde = null } = {}) {
+  const vistos = new Set()
+  const principal = sumarTranscript(readFileSync(join(s.dir, `${s.id}.jsonl`), 'utf8'), { desde, vistos })
+  const dirSub = join(s.dir, s.id, 'subagents')
+  const agentes = existsSync(dirSub)
+    ? readdirSync(dirSub).filter((f) => f.endsWith('.jsonl')).sort().map((f) => {
+        const txt = readFileSync(join(dirSub, f), 'utf8')
+        const primera = txt.slice(0, 20000).split('\n').map((l) => { try { return JSON.parse(l) } catch { return null } }).find((x) => x?.type === 'user')
+        const c = primera?.message?.content
+        const desc = (typeof c === 'string' ? c : (c ?? []).map((b) => b.text ?? '').join(' ')).replace(/\s+/g, ' ').slice(0, 60)
+        return { f, desc, ...sumarTranscript(txt, { desde, vistos }) }
+      }).filter((a) => a.vueltas > 0)
+    : []
+  const CAMPOS = ['vueltas', 'nueva', 'cacheLectura', 'cacheEscritura', 'entrada', 'salida']
+  const sub = agentes.reduce((t, a) => {
+    for (const k of CAMPOS) t[k] += a[k]
+    for (const [m, n] of Object.entries(a.porModelo)) t.porModelo[m] = (t.porModelo[m] ?? 0) + n
+    return t
+  }, { ...Object.fromEntries(CAMPOS.map((k) => [k, 0])), porModelo: {} })
+  const total = Object.fromEntries(CAMPOS.map((k) => [k, principal[k] + sub[k]]))
+  return { id: s.id, principal, sub, agentes, total, ctxMedioPrincipal: Math.round(principal.entrada / Math.max(1, principal.vueltas)) }
+}
+
+const desglose = (r) => `nueva ${M(r.nueva)} · caché leída ${M(r.cacheLectura)} · caché escrita ${M(r.cacheEscritura)} · salida ${M(r.salida)}`
+
 function main() {
   const args = process.argv.slice(2)
   const desde = args.includes('--desde') ? new Date(args[args.indexOf('--desde') + 1]).toISOString() : null
   const pedido = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--desde')
   const s = pedido ? ubicar(pedido) : sesionMasReciente()
   if (!s) { console.error(`medir-tokens: no encuentro la sesión ${pedido ?? ''}`); process.exit(2) }
+  const r = medirSesion(s, { desde })
+  const { principal, sub, agentes, total } = r
 
-  const principal = sumarTranscript(readFileSync(join(s.dir, `${s.id}.jsonl`), 'utf8'), { desde })
-  const dirSub = join(s.dir, s.id, 'subagents')
-  const agentes = existsSync(dirSub)
-    ? readdirSync(dirSub).filter((f) => f.endsWith('.jsonl')).map((f) => {
-        const txt = readFileSync(join(dirSub, f), 'utf8')
-        const primera = txt.slice(0, 20000).split('\n').map((l) => { try { return JSON.parse(l) } catch { return null } }).find((x) => x?.type === 'user')
-        const c = primera?.message?.content
-        const desc = (typeof c === 'string' ? c : (c ?? []).map((b) => b.text ?? '').join(' ')).replace(/\s+/g, ' ').slice(0, 60)
-        return { f, desc, ...sumarTranscript(txt, { desde }) }
-      }).filter((a) => a.vueltas > 0)
-    : []
-  const sub = agentes.reduce((t, a) => {
-    t.entrada += a.entrada; t.salida += a.salida
-    for (const [m, n] of Object.entries(a.porModelo)) t.porModelo[m] = (t.porModelo[m] ?? 0) + n
-    return t
-  }, { entrada: 0, salida: 0, porModelo: {} })
-
-  const total = principal.entrada + sub.entrada
+  if (args.includes('--json')) {
+    console.log(JSON.stringify({ ...r, agentes: agentes.map(({ f, desc, vueltas, entrada, salida, maxCtx }) => ({ f, desc, vueltas, entrada, salida, maxCtx })) }))
+    return
+  }
+  if (args.includes('--breve')) {
+    console.log(`${s.id.slice(0, 8)} · principal ctx medio ${K(r.ctxMedioPrincipal)} máx ${K(principal.maxCtx)} (${principal.vueltas} vueltas) · subagentes ${M(sub.entrada)} en ${agentes.length} · salida ${M(total.salida)}`)
+    return
+  }
   console.log(`SESIÓN ${s.id.slice(0, 8)}${desde ? ` desde ${desde}` : ''}`)
-  console.log(`total entrada ${M(total)} · salida ${M(principal.salida + sub.salida)}`)
-  console.log(`principal ${M(principal.entrada)} en ${principal.vueltas} vueltas · contexto medio ${K(principal.entrada / Math.max(1, principal.vueltas))} · máx ${K(principal.maxCtx)}`)
-  console.log(`subagentes ${M(sub.entrada)} en ${agentes.length} agentes (${total ? Math.round((100 * sub.entrada) / total) : 0} %)`)
+  console.log(`total leído ${M(total.entrada)} (${desglose(total)})`)
+  console.log(`principal ${M(principal.entrada)} en ${principal.vueltas} vueltas · contexto medio ${K(r.ctxMedioPrincipal)} · máx ${K(principal.maxCtx)} · ${desglose(principal)}`)
+  console.log(`subagentes ${M(sub.entrada)} en ${agentes.length} agentes (${total.entrada ? Math.round((100 * sub.entrada) / total.entrada) : 0} %) · ${desglose(sub)}`)
   const modelos = {}
   for (const [m, n] of [...Object.entries(principal.porModelo), ...Object.entries(sub.porModelo)]) modelos[m] = (modelos[m] ?? 0) + n
   console.log(`por modelo: ${Object.entries(modelos).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${M(n)}`).join(' · ')}`)
   for (const a of agentes.sort((x, y) => y.entrada - x.entrada).slice(0, 8)) {
-    console.log(`  ${M(a.entrada).padStart(8)} · ${String(a.vueltas).padStart(4)} vueltas · máx ${K(a.maxCtx).padStart(6)} · ${Object.keys(a.porModelo).join('/')} · ${a.desc}`)
+    console.log(`  ${M(a.entrada).padStart(8)} · ${String(a.vueltas).padStart(4)} vueltas · máx ${K(a.maxCtx).padStart(6)} · sal ${K(a.salida).padStart(5)} · ${Object.keys(a.porModelo).join('/')} · ${a.desc}`)
   }
 }
 
