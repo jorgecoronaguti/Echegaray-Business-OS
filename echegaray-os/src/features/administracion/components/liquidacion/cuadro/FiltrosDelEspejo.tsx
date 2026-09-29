@@ -8,6 +8,7 @@
 // hacer reload de toda la página»). Cambiar de quincena o de recorte es la navegación que más se
 // repite en esta pantalla. El buscador sigue siendo un formulario GET: funciona sin JavaScript.
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 
@@ -22,13 +23,15 @@ const ESTILO_BUSCADOR = {
   border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
 } as const
 
-export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
+export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar, exportar }: {
   periodos: { texto: string; activo: boolean; href: string }[]
   grupos: { texto: string; activo: boolean; href: string }[]
   /** Buscar por nombre. Formulario GET: sin JavaScript, y la URL queda compartible. */
   busqueda?: { valor: string; ocultos: Record<string, string>; limpiar: string | null }
   /** A dónde lleva «Cerrar quincena». El cierre vive en su pantalla: sella y no se deshace sin firma. */
   cerrar?: string
+  /** Acción secundaria (p. ej. «Exportar para el estudio»): sólo la pasa quien puede liquidar. */
+  exportar?: ReactNode
 }) {
   return (
     <div data-testid="espejo-filtros" style={{
@@ -55,6 +58,7 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
           )}
         </form>
       )}
+      {exportar}
       {cerrar && (
         <Link href={cerrar} prefetch={false} data-testid="espejo-ir-a-cerrar" style={{
           // GRAFITO, NO AMARILLO: el amarillo de marca da 1,6:1 contra blanco y con texto oscuro se
