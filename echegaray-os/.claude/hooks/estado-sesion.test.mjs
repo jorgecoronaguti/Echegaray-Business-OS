@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { armarInicio, recortar, baseDeTrabajo, armarBreve, traspasoVencido, armarTraspasoAuto, ultimoPedido } from './estado-sesion.mjs'
+import { armarInicio, recortar, baseDeTrabajo, armarBreve, traspasoVencido, momentoDelTraspaso, armarTraspasoAuto, ultimoPedido } from './estado-sesion.mjs'
 
 const RUTA = fileURLToPath(new URL('./estado-sesion.mjs', import.meta.url))
 
@@ -141,4 +141,14 @@ test('último pedido: texto de la persona, sin etiquetas ni resultados de herram
     JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'salida' }] } }),
   ].join('\n'))
   assert.equal(ultimoPedido(f), 'arreglá el recibo')
+})
+
+test('la antigüedad del traspaso sale de su fecha escrita, no del mtime de un checkout nuevo', () => {
+  const ahora = Date.parse('2026-09-29T19:36:00-03:00')
+  const txt = '# TRASPASO — 26/09/2026 noche (sesión 2eaa7060)\n\ncuerpo largo'
+  const m = momentoDelTraspaso(txt, ahora - 60_000)            // worktree recién creado
+  assert.ok(ahora - m > 48 * 3600_000)
+  assert.match(traspasoVencido(txt, m, ahora), /vencido: 2 día/)
+  assert.equal(momentoDelTraspaso('fecha: 2026-09-29\nx', ahora), ahora)          // de hoy: manda el mtime
+  assert.equal(momentoDelTraspaso('sin fecha', 123), 123)
 })
