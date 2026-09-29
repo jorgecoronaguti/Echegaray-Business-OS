@@ -59,7 +59,11 @@ export async function pedirMaterialAction(_prev: EstadoForm, form: FormData): Pr
 
 const estadoSchema = z.object({
   id_pedido: z.string().trim().min(1),
-  estado: z.string().trim().toUpperCase().refine(esPasoPedido, 'El estado es pedido, visto, comprado o entregado'),
+  // ENTREGADO no se elige: lo pone «Llegó» (recibir_pedido_material) junto con el stock. La base lo
+  // exige igual (trigger); acá se corta antes para dar el motivo en vez de un error de Postgres.
+  estado: z.string().trim().toUpperCase()
+    .refine(esPasoPedido, 'El estado es pedido, visto o comprado')
+    .refine((v) => v !== 'ENTREGADO', 'Entregado se marca con «Llegó», que también suma el stock'),
 })
 
 /** Cambia el estado de UN ítem. Lo llama el selector de la fila, en escritorio. */

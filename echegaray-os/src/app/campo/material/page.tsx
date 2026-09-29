@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { ListaMaterialTelefono } from '@/features/materiales/components/ListaMaterialTelefono'
-import { puedeOperarMaterial } from '@/features/materiales/logica/stock'
+import { puedeAnularMaterial, puedeOperarMaterial } from '@/features/materiales/logica/stock'
 import { agruparPedidos, hrefPedirTelefono } from '@/features/materiales/logica/pedidos'
 import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosService'
 import { leerDatosCampo } from '../datos'
@@ -91,7 +91,7 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
       {grupos.length === 0 ? (
         <Vacio>Nada pedido todavía{obra ? ` para ${obra.nombre}` : ''}.</Vacio>
       ) : (
-        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} puedeBorrar={puedeBorrar} puedeOperar={puedeOperar && lectura.conStock} />
+        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} puedeBorrar={puedeBorrar} puedeOperar={puedeOperar && lectura.conStock} puedeAnular={puedeAnularMaterial(perfil.data?.rol) && lectura.conStock} />
       )}
       {pie}
     </MarcoCampo>

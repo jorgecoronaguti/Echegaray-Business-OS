@@ -8,7 +8,7 @@ import { MaterialEscritorio } from '@/features/materiales/components/MaterialEsc
 import { FiltroObra } from '@/features/materiales/components/FiltroObra'
 import { StockEscritorio } from '@/features/materiales/components/StockEscritorio'
 import { ListaRemitos } from '@/features/materiales/components/ListaRemitos'
-import { SOLAPAS_MATERIAL, puedeOperarMaterial, solapaDeUrl } from '@/features/materiales/logica/stock'
+import { SOLAPAS_MATERIAL, puedeAnularMaterial, puedeOperarMaterial, solapaDeUrl } from '@/features/materiales/logica/stock'
 import { MIGRACION_STOCK, leerStock } from '@/features/materiales/services/stockService'
 import { filtrarPedidos, filtroEstadoDeUrl, type Filtro } from '@/features/materiales/logica/pedidos'
 import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosService'
@@ -84,7 +84,7 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
         )}
         {solapa === 'remitos' && stock.estado === 'ok' && <ListaRemitos remitos={stock.remitos} cara="escritorio" />}
         {solapa === 'pedidos' && lectura.estado === 'ok' && <MaterialEscritorio pedidos={pedidos} total={total} filtro={filtro} obras={obras} abrirAlEntrar={uno(sp.pedir) === '1'}
-          puedeOperar={puedeOperar && lectura.conStock} destinos={stock.estado === 'ok' ? stock.destinos : []} />}
+          puedeOperar={puedeOperar && lectura.conStock} puedeAnular={puedeAnularMaterial(perfil.data?.rol) && lectura.conStock} destinos={stock.estado === 'ok' ? stock.destinos : []} />}
       </div>
     </div>
   )

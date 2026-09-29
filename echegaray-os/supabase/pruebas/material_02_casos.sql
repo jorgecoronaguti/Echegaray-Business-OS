@@ -95,7 +95,7 @@ end $$;
 do $$ declare v_dif numeric;
 begin
   select coalesce((select sum(cantidad) from material_existencia), 0) -
-         coalesce((select sum(case when tipo = 'entrada' then cantidad when tipo = 'consumo' then -cantidad
+         coalesce((select sum(case when tipo = 'entrada' then cantidad when tipo in ('consumo', 'anulacion') then -cantidad
                                    when tipo = 'ajuste' and destino_id is not null then cantidad
                                    when tipo = 'ajuste' then -cantidad else 0 end) from material_movimiento), 0)
     into v_dif;
@@ -135,11 +135,91 @@ begin
   exception when sqlstate '42501' then null; end;
   begin perform public.recibir_pedido_material('P2', 1); raise exception 'FALLÓ 8: el campo dio «Llegó»';
   exception when sqlstate '42501' then null; end;
+  -- Las dos funciones que MUEVEN stock también tienen que cerrarle la puerta al campo. Las operaciones
+  -- son válidas (hay 1 de cemento en el Taller): si `_material_operador()` sólo mirara auth.uid(), pasarían.
+  begin perform public.mover_material(jsonb_build_array(jsonb_build_object('material', v_mat, 'cantidad', 1)),
+                                      (select taller from t), (select otra from t));
+    raise exception 'FALLÓ 8: el campo trasladó material';
+  exception when sqlstate '42501' then null; end;
+  begin perform public.ajustar_material(v_mat, (select taller from t), 5, 'recuento');
+    raise exception 'FALLÓ 8: el campo recontó (y cambió el saldo)';
+  exception when sqlstate '42501' then null; end;
   select count(*) into v_ajena from material_existencia where ubicacion_id in ((select otra from t), (select taller from t));
   if v_ajena <> 0 then raise exception 'FALLÓ 8: el campo ve stock del Taller o de otra obra (%)', v_ajena; end if;
   -- Los dos remitos salen de SU obra: los ve. Uno entre Taller y otra obra no lo vería (no hay ninguno para probarlo).
   if (select count(*) from remito) <> 2 then raise exception 'FALLÓ 8: el campo debería ver los 2 remitos de su obra'; end if;
   raise notice 'OK 8b · el campo no opera y no ve lo ajeno';
+end $$;
+
+-- 9 · ENTREGADO sólo lo pone «Llegó»: ni por el selector, ni por insert, ni saliendo a mano con material recibido
+select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
+do $$ begin
+  begin update pedidos_materiales set estado = 'ENTREGADO' where id_pedido = 'P2';
+    raise exception 'FALLÓ 9: un pedido pasó a ENTREGADO sin stock';
+  exception when sqlstate '42501' then null; end;
+  begin update pedidos_materiales set estado = 'entregada' where id_pedido = 'P2';
+    raise exception 'FALLÓ 9: el guardia no lee «entregada»';
+  exception when sqlstate '42501' then null; end;
+  begin insert into pedidos_materiales (id_pedido, obra_canonica_id, material, cantidad, estado) values ('P9', 'ob-activa', 'X', 1, 'ENTREGADO');
+    raise exception 'FALLÓ 9: nació un pedido ya ENTREGADO';
+  exception when sqlstate '42501' then null; end;
+  begin update pedidos_materiales set estado = 'PEDIDO' where id_pedido = 'P1';
+    raise exception 'FALLÓ 9: P1 (10 recibidos) salió de ENTREGADO a mano';
+  exception when sqlstate '42501' then null; end;
+  update pedidos_materiales set estado = 'COMPRADO' where id_pedido = 'P2';   -- los demás pasos siguen libres
+  if (select estado from pedidos_materiales where id_pedido = 'P2') <> 'COMPRADO' then raise exception 'FALLÓ 9: no cambió a COMPRADO'; end if;
+  raise notice 'OK 9 · ENTREGADO sólo por «Llegó»; VISTO/COMPRADO siguen andando';
+end $$;
+
+-- 10 · Anular una llegada baja el pedido Y el stock; sólo Administración; con motivo; sin stock inventado
+do $$ declare v_arena uuid; v_hay numeric; v_rec numeric; v_e text; v_n int;
+begin
+  perform public.recibir_pedido_material('P2', 3);   -- el jefe da «Llegó»: 3 de 5 en la obra
+  select id into v_arena from material where nombre = 'Arena';
+  begin perform public.anular_recepcion_material('P2', 1, 'me equivoqué');
+    raise exception 'FALLÓ 10: el jefe de obra anuló una llegada';
+  exception when sqlstate '42501' then null; end;
+  select cantidad_recibida into v_rec from pedidos_materiales where id_pedido = 'P2';
+  if v_rec <> 3 then raise exception 'FALLÓ 10: el rechazo tocó el pedido (%)', v_rec; end if;
+end $$;
+select set_config('test.uid', '11111111-1111-1111-1111-111111111111', false);
+do $$ declare v_arena uuid; v_hay numeric; v_rec numeric; v_e text; v_n int; v_dif numeric;
+begin
+  select id into v_arena from material where nombre = 'Arena';
+  begin perform public.anular_recepcion_material('P2', 1);
+    raise exception 'FALLÓ 10: anuló sin decir por qué';
+  exception when sqlstate 'P0001' then null; end;
+  begin perform public.anular_recepcion_material('P2', 4, 'de más');
+    raise exception 'FALLÓ 10: anuló más de lo que llegó';
+  exception when sqlstate 'P0001' then null; end;
+  -- Lo que ya se gastó no se anula: P1 llegó a la obra y esa cemento ya se usó/trasladó.
+  begin perform public.anular_recepcion_material('P1', null, 'error');
+    raise exception 'FALLÓ 10: anuló material que ya no está en la obra';
+  exception when sqlstate 'P0001' then null; end;
+  select cantidad_recibida into v_rec from pedidos_materiales where id_pedido = 'P1';
+  if v_rec <> 10 then raise exception 'FALLÓ 10: el rechazo dejó P1 en %', v_rec; end if;
+  if public.anular_recepcion_material('P2', 2, 'llegaron 1, no 3') <> 1 then raise exception 'FALLÓ 10: acumulado tras anular 2'; end if;
+  select cantidad into v_hay from material_existencia where material_id = v_arena and ubicacion_id = (select obra from t);
+  if v_hay <> 1 then raise exception 'FALLÓ 10: stock de arena % tras anular 2 de 3', v_hay; end if;
+  -- se completa el pedido y se anula TODO: vuelve a COMPRADO, sin fecha de llegada y sin stock
+  perform public.recibir_pedido_material('P2');
+  select estado into v_e from pedidos_materiales where id_pedido = 'P2';
+  if v_e <> 'ENTREGADO' then raise exception 'FALLÓ 10: no cerró al completar (%)', v_e; end if;
+  perform public.anular_recepcion_material('P2', null, 'no era para esta obra');
+  select estado, cantidad_recibida into v_e, v_rec from pedidos_materiales where id_pedido = 'P2';
+  select count(*) into v_n from material_existencia where material_id = v_arena;
+  if v_e <> 'COMPRADO' or v_rec <> 0 or v_n <> 0 then raise exception 'FALLÓ 10: estado %, recibido %, filas de stock %', v_e, v_rec, v_n; end if;
+  if (select recibido_en from pedidos_materiales where id_pedido = 'P2') is not null then raise exception 'FALLÓ 10: quedó fecha de llegada'; end if;
+  -- vuelve a poder recibirse (la puerta no quedó cerrada)
+  perform public.recibir_pedido_material('P2', 5);
+  -- el libro sigue cerrando con las anulaciones adentro
+  select coalesce((select sum(cantidad) from material_existencia), 0) -
+         coalesce((select sum(case when tipo = 'entrada' then cantidad when tipo in ('consumo', 'anulacion') then -cantidad
+                                   when tipo = 'ajuste' and destino_id is not null then cantidad
+                                   when tipo = 'ajuste' then -cantidad else 0 end) from material_movimiento), 0)
+    into v_dif;
+  if v_dif <> 0 then raise exception 'FALLÓ 10: con anulaciones el saldo difiere del libro en %', v_dif; end if;
+  raise notice 'OK 10 · anular baja pedido y stock juntos, sólo Administración, con motivo, y el libro cierra';
 end $$;
 reset role;
 do $$ begin raise notice 'MATERIAL: todos los casos pasaron'; end $$;

@@ -88,7 +88,7 @@ create index remito_item_remito_idx on public.remito_item (remito_id);
 create table public.material_movimiento (
   id           uuid primary key default gen_random_uuid(),
   material_id  uuid not null references public.material(id),
-  tipo         text not null check (tipo in ('entrada', 'consumo', 'traslado', 'ajuste')),
+  tipo         text not null check (tipo in ('entrada', 'consumo', 'traslado', 'ajuste', 'anulacion')),
   origen_id    uuid references public.ubicacion(id),
   destino_id   uuid references public.ubicacion(id),
   cantidad     numeric(14,3) not null check (cantidad > 0),
@@ -103,7 +103,9 @@ create table public.material_movimiento (
     (tipo = 'entrada'  and origen_id is null     and destino_id is not null) or
     (tipo = 'consumo'  and origen_id is not null and destino_id is null) or
     (tipo = 'traslado' and origen_id is not null and destino_id is not null and origen_id <> destino_id) or
-    (tipo = 'ajuste'   and (origen_id is null) <> (destino_id is null) and motivo is not null)
+    (tipo = 'ajuste'   and (origen_id is null) <> (destino_id is null) and motivo is not null) or
+    -- Anular una llegada: saca del lugar donde entró, con el pedido a la vista (ver anular_recepcion_material).
+    (tipo = 'anulacion' and origen_id is not null and destino_id is null and pedido_id is not null)
   )
 );
 create index material_movimiento_material_idx on public.material_movimiento (material_id, creado_en desc);
@@ -133,6 +135,7 @@ comment on column public.pedidos_materiales.cantidad_recibida is
 
 create function public._pedido_material_recepcion_guarda() returns trigger
 language plpgsql as $$
+declare v_entra boolean; v_sale boolean;
 begin
   if current_setting('material.desde_rpc', true) is distinct from 'on' then
     if tg_op = 'INSERT' and (new.cantidad_recibida <> 0 or new.recibido_en is not null
@@ -145,6 +148,23 @@ begin
       or new.recibido_por is distinct from old.recibido_por
       or new.material_id is distinct from old.material_id) then
       raise exception 'lo recibido de un pedido se registra con «Llegó», no se escribe directo' using errcode = '42501';
+    end if;
+    -- ENTREGADO = llegó material y sumó stock. Si una persona lo pusiera por el selector, el pedido quedaría
+    -- entregado sin stock y `recibir_pedido_material` ya no lo aceptaría («ya figura entregado»): el material
+    -- no podría entrar nunca. Se mira por raíz («entregado», «ENTREGADA») porque el Sheet conjuga.
+    -- Sólo cuando hay una persona logueada: el sync del Sheet del AppSheet escribe con la llave de servicio
+    -- (sin auth.uid()) y no puede romperse por lo que el campo marcó allá.
+    if auth.uid() is not null then
+      v_entra := upper(btrim(coalesce(new.estado, ''))) like 'ENTREGAD%'
+                 and (tg_op = 'INSERT' or upper(btrim(coalesce(old.estado, ''))) not like 'ENTREGAD%');
+      v_sale  := tg_op = 'UPDATE' and upper(btrim(coalesce(old.estado, ''))) like 'ENTREGAD%'
+                 and upper(btrim(coalesce(new.estado, ''))) not like 'ENTREGAD%' and old.cantidad_recibida > 0;
+      if v_entra then
+        raise exception 'un pedido pasa a ENTREGADO con «Llegó», que también suma el stock: no se elige a mano' using errcode = '42501';
+      end if;
+      if v_sale then
+        raise exception 'un pedido con material recibido no sale de ENTREGADO a mano: se anula la llegada' using errcode = '42501';
+      end if;
     end if;
   end if;
   return new;
@@ -389,13 +409,70 @@ begin
   return round(p_contado, 3);
 end $$;
 
+-- ── Anular una llegada ──────────────────────────────────────────────────────────────────────────
+-- «Llegó» equivocado (cantidad de más, pedido que no era). `ajustar_material` corrige el SALDO pero el
+-- pedido seguiría diciendo que llegó: por eso esto baja las dos cosas en la misma transacción. Saca el
+-- stock del lugar donde entró (lo más reciente primero) y deja un asiento 'anulacion' por lugar. Si ese
+-- material ya se usó o se trasladó y no queda lo que se quiere anular, se frena: primero se corrige el
+-- rastro con un recuento o se trae de vuelta, no se inventa stock negativo. Motivo obligatorio.
+-- Sólo Administración y Dirección: el jefe de obra da «Llegó» pero no lo deshace (dueño, 29/09).
+create function public.anular_recepcion_material(p_id_pedido text, p_cantidad numeric default null, p_nota text default null)
+returns numeric
+language plpgsql security definer set search_path = public as $$
+declare
+  v_usr uuid := auth.uid(); v_nota text := nullif(btrim(p_nota), '');
+  p pedidos_materiales%rowtype; v_quita numeric; v_resta numeric; v_x numeric; v_total numeric; r record;
+begin
+  if v_usr is null then raise exception 'hace falta un usuario logueado' using errcode = '42501'; end if;
+  if coalesce(public.current_rol() not in ('direccion', 'administracion'), true) then
+    raise exception 'anular una llegada lo hace Administración' using errcode = '42501';
+  end if;
+  if v_nota is null then raise exception 'anular una llegada exige decir por qué' using errcode = 'P0001'; end if;
+  select * into p from pedidos_materiales where id_pedido = p_id_pedido and borrado_en is null for update;
+  if not found then raise exception 'el pedido % no existe', p_id_pedido using errcode = 'P0001'; end if;
+  if p.cantidad_recibida <= 0 then raise exception 'el pedido «%» no tiene nada recibido para anular', p.material using errcode = 'P0001'; end if;
+  v_quita := round(coalesce(p_cantidad, p.cantidad_recibida), 3);
+  if v_quita <= 0 or v_quita > p.cantidad_recibida then
+    raise exception '«%»: llegaron % y no se pueden anular %', p.material, p.cantidad_recibida, v_quita using errcode = 'P0001';
+  end if;
+  v_resta := v_quita;
+  for r in
+    select coalesce(destino_id, origen_id) as lugar, material_id,
+           sum(case when tipo = 'entrada' then cantidad else -cantidad end) as neto, max(creado_en) as ult
+      from material_movimiento where pedido_id = p.id and tipo in ('entrada', 'anulacion')
+     group by 1, 2 having sum(case when tipo = 'entrada' then cantidad else -cantidad end) > 0
+     order by max(creado_en) desc, 1
+  loop
+    exit when v_resta <= 0;
+    v_x := least(r.neto, v_resta);
+    perform public._material_restar(r.material_id, r.lugar, v_x);
+    insert into material_movimiento (material_id, tipo, origen_id, cantidad, pedido_id, nota, usuario_id)
+    values (r.material_id, 'anulacion', r.lugar, v_x, p.id, v_nota, v_usr);
+    v_resta := v_resta - v_x;
+  end loop;
+  if v_resta > 0 then raise exception 'el libro no explica % de lo recibido: no se puede anular', v_resta using errcode = 'P0001'; end if;
+  v_total := p.cantidad_recibida - v_quita;
+  perform set_config('material.desde_rpc', 'on', true);
+  -- Un pedido que deja de estar completo vuelve a COMPRADO: para haber llegado estuvo comprado.
+  update pedidos_materiales
+     set cantidad_recibida = v_total,
+         recibido_en = case when v_total = 0 then null else recibido_en end,
+         recibido_por = case when v_total = 0 then null else recibido_por end,
+         estado = case when upper(btrim(coalesce(estado, ''))) like 'ENTREGAD%' then 'COMPRADO' else estado end,
+         updated_at = now()
+   where id = p.id;
+  perform set_config('material.desde_rpc', 'off', true);
+  return v_total;
+end $$;
+
 revoke all on function public._material_libro_inmutable(), public._pedido_material_recepcion_guarda(),
   public.ve_ubicacion_material(uuid), public._material_operador(), public._material_deposito(uuid, text),
   public._material_rotulo(uuid), public._material_id(text, text), public._material_sumar(uuid, uuid, numeric),
   public._material_restar(uuid, uuid, numeric), public._material_cantidad(text, text),
   public.recibir_pedido_material(text, numeric, uuid, text), public.usar_material(uuid, uuid, numeric, text),
-  public.mover_material(jsonb, uuid, uuid, text, text), public.ajustar_material(uuid, uuid, numeric, text, text)
+  public.mover_material(jsonb, uuid, uuid, text, text), public.ajustar_material(uuid, uuid, numeric, text, text),
+  public.anular_recepcion_material(text, numeric, text)
   from public, anon, authenticated;
 grant execute on function public.ve_ubicacion_material(uuid), public.recibir_pedido_material(text, numeric, uuid, text),
   public.usar_material(uuid, uuid, numeric, text), public.mover_material(jsonb, uuid, uuid, text, text),
-  public.ajustar_material(uuid, uuid, numeric, text, text) to authenticated;
+  public.ajustar_material(uuid, uuid, numeric, text, text), public.anular_recepcion_material(text, numeric, text) to authenticated;

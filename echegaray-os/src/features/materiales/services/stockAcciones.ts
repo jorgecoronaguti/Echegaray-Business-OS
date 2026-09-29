@@ -66,6 +66,31 @@ export async function llegoPedidoAction(input: { id_pedido: string; cantidad: nu
   return { error: null, ok: true }
 }
 
+const anularSchema = z.object({
+  id_pedido: z.string().trim().min(1),
+  cantidad: cantidad.nullable(),
+  nota: z.string().trim().min(3, 'Escribí el motivo de la anulación').max(400, 'El texto es demasiado largo'),
+})
+
+/**
+ * Anula una llegada mal marcada (total o una parte): baja `cantidad_recibida` Y el stock a la vez. Sin esto
+ * el recuento corregía el saldo pero el pedido seguía diciendo que llegó. La base exige el motivo y que el
+ * stock siga ahí; acá sólo se valida la forma.
+ */
+export async function anularLlegadaAction(input: { id_pedido: string; cantidad: number | null; nota: string }): Promise<EstadoStock> {
+  const p = anularSchema.safeParse(input)
+  if (!p.success) return { error: p.error.issues[0].message }
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('anular_recepcion_material', {
+      p_id_pedido: p.data.id_pedido, p_cantidad: p.data.cantidad, p_nota: p.data.nota,
+    })
+    if (error) return { error: error.message }
+  } catch (err) { return falla(err) }
+  revalidar()
+  return { error: null, ok: true }
+}
+
 const usoSchema = z.object({ material: id, lugar: id, cantidad, nota: texto(400) })
 
 /** «Usé»: resta del lugar. No deja pasar de lo que hay. */

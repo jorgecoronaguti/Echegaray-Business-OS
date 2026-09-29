@@ -14,9 +14,10 @@ import { LlegoPedido } from './LlegoPedido'
 // Las piezas son las del mockup del teléfono (`shared/components/movil`): tarjeta de radio 14,
 // divisor entre filas más claro que el borde, cifra en mono.
 
-export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false, puedeOperar = false, destinos = [] }: {
+export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false, puedeOperar = false, puedeAnular = false, destinos = [] }: {
   /** «Llegó» suma stock: dirección, administración y jefe (la base lo exige igual). */
   puedeOperar?: boolean
+  puedeAnular?: boolean
   destinos?: Destino[]
   grupos: Grupo[]
   variasObras: boolean
@@ -53,7 +54,7 @@ export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false
                 </div>
                 {puedeOperar && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 6px 4px' }}>
-                    <LlegoPedido pedido={it} destinos={destinos} variante="telefono" />
+                    <LlegoPedido pedido={it} destinos={destinos} variante="telefono" puedeAnular={puedeAnular} />
                   </div>
                 )}
               </li>

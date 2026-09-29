@@ -9,7 +9,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  destinosPosibles, existenciasDe, faltaLlegar, leerCantidad, lugaresConStock, numeroRemito, puedeOperarMaterial, redondear, solapaDeUrl, verificarSalida,
+  destinosPosibles, existenciasDe, faltaLlegar, leerCantidad, lugaresConStock, numeroRemito, puedeAnularMaterial, puedeOperarMaterial, redondear, solapaDeUrl, verificarSalida,
   type Existencia, type Lugar,
 } from './stock.ts'
 
@@ -80,6 +80,11 @@ test('destinos: Taller primero, obras con depósito, y una obra activa sin depó
 test('puedeOperarMaterial: el mismo conjunto que es_administracion(); campo y cliente no', () => {
   for (const r of ['direccion', 'administracion', 'jefe_obra']) assert.equal(puedeOperarMaterial(r), true, r)
   for (const r of ['campo', 'cliente', null, undefined, '']) assert.equal(puedeOperarMaterial(r), false, String(r))
+})
+
+test('puedeAnularMaterial: sólo dirección y administración; el jefe de obra opera pero no anula', () => {
+  for (const r of ['direccion', 'administracion']) assert.equal(puedeAnularMaterial(r), true, r)
+  for (const r of ['jefe_obra', 'campo', 'cliente', null, undefined, '']) assert.equal(puedeAnularMaterial(r), false, String(r))
 })
 
 test('solapaDeUrl: lo desconocido cae en Pedidos (la vista de hoy)', () => {

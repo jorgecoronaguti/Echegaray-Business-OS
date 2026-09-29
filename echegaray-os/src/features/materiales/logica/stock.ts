@@ -128,6 +128,14 @@ export function destinosPosibles(lugares: Lugar[], obrasActivas: string[], rotul
 export const puedeOperarMaterial = (rol: string | null | undefined): boolean =>
   rol === 'direccion' || rol === 'administracion' || rol === 'jefe_obra'
 
+/**
+ * Quién puede ANULAR una llegada. Es más estrecho que operar: `anular_recepcion_material` exige dirección o
+ * administración, porque deshacer un ingreso ya contado es una corrección de libro, no una operación diaria
+ * del jefe de obra. Mismo criterio que la base, por la misma razón que arriba.
+ */
+export const puedeAnularMaterial = (rol: string | null | undefined): boolean =>
+  rol === 'direccion' || rol === 'administracion'
+
 export type SolapaMaterial = 'pedidos' | 'stock' | 'remitos'
 export const SOLAPAS_MATERIAL: Array<{ id: SolapaMaterial; label: string }> = [
   { id: 'pedidos', label: 'Pedidos' },

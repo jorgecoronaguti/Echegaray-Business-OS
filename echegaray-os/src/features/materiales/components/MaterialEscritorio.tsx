@@ -31,10 +31,12 @@ export function MaterialEscritorio({
   obras,
   abrirAlEntrar = false,
   puedeOperar = false,
+  puedeAnular = false,
   destinos = [],
 }: {
   /** «Llegó» suma stock: sólo quien opera (misma regla que la base). */
   puedeOperar?: boolean
+  puedeAnular?: boolean
   destinos?: Destino[]
   /** `?pedir=1` (el «Pedir material» de la portada del jefe, 25/09/2026): el panel abre solo. */
   abrirAlEntrar?: boolean
@@ -130,8 +132,10 @@ export function MaterialEscritorio({
                       data-testid="estado-pedido"
                     >
                       {!PASOS_PEDIDO.some((s) => s.clave === p.lectura.clave) && <option value="">cambiar…</option>}
+                      {/* ENTREGADO no se elige: lo marca «Llegó» y suma el stock. Si el pedido ya lo está,
+                          se muestra deshabilitado para que el selector no mienta sobre su valor. */}
                       {PASOS_PEDIDO.map((s) => (
-                        <option key={s.valor} value={s.clave}>{s.label}</option>
+                        <option key={s.valor} value={s.clave} disabled={s.valor === 'ENTREGADO'}>{s.label}</option>
                       ))}
                     </select>
                   </span>
@@ -140,7 +144,7 @@ export function MaterialEscritorio({
                 {/* BORRAR (dueño, 23/09/2026): por ítem, con confirmación en la fila. */}
                 <Td num>
                   <span className="inline-flex items-center gap-1">
-                    {puedeOperar && <LlegoPedido pedido={p} destinos={destinos} />}
+                    {puedeOperar && <LlegoPedido pedido={p} destinos={destinos} puedeAnular={puedeAnular} />}
                     <BorrarPedido ids={[p.id_pedido]} que="este ítem" />
                   </span>
                 </Td>

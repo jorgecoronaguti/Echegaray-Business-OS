@@ -77,6 +77,8 @@ export async function setEstadoPedidoAction(_prev: ActionState, formData: FormDa
   const id = String(formData.get('id_pedido') || '').trim()
   const estado = String(formData.get('estado') || '').trim().toUpperCase()
   if (!id || !['PENDIENTE', 'PEDIDO', 'ENTREGADO'].includes(estado)) return { error: 'estado inválido' }
+  // Entregado = llegó material y sumó stock: sólo `recibir_pedido_material` lo pone (la base también lo exige).
+  if (estado === 'ENTREGADO') return { error: 'Entregado se marca con «Llegó» en Material, que también suma el stock.' }
 
   const c = await client()
   if (!c.supabase) return { error: c.error! }

@@ -29,7 +29,8 @@ import type { PedidoGlobal } from '../services/operacionGlobalService'
 // trajo y no está entre ésos se MUESTRA igual —no se borra— pero no se puede elegir: cambiarlo por
 // uno de los tres sería decidir por el AppSheet.
 
-const OFRECIDOS = ['PENDIENTE', 'PEDIDO', 'ENTREGADO'] as const
+// ENTREGADO ya no se ofrece: lo marca «Llegó» del módulo Material, que también mueve el stock.
+const OFRECIDOS = ['PENDIENTE', 'PEDIDO'] as const
 
 export function SelectEstadoPedido({ p }: { p: PedidoGlobal }) {
   const [estado, setEstado] = useEstadoDelServidor(p.estado ?? '')

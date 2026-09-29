@@ -5,6 +5,7 @@ drop function if exists public.recibir_pedido_material(text, numeric, uuid, text
 drop function if exists public.usar_material(uuid, uuid, numeric, text);
 drop function if exists public.mover_material(jsonb, uuid, uuid, text, text);
 drop function if exists public.ajustar_material(uuid, uuid, numeric, text, text);
+drop function if exists public.anular_recepcion_material(text, numeric, text);
 alter table public.pedidos_materiales
   drop column if exists cantidad_recibida, drop column if exists recibido_en,
   drop column if exists recibido_por, drop column if exists material_id;
