@@ -11,13 +11,21 @@ import { urlEfectivo } from '../logica/url'
 import { V, botonOscuro, cifra, eyebrow } from './estilo'
 
 export function Tarjetas({ r }: { r: Resumen }) {
-  const t = (rotulo: string, valor: React.ReactNode, bajada: React.ReactNode, color?: string, testid?: string) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }} data-testid={testid}>
-      <div style={eyebrow}>{rotulo}</div>
-      <div style={{ ...cifra, color: color ?? V.tinta }}>{valor}</div>
-      <div style={{ fontSize: '12.5px', color: V.apagado }}>{bajada}</div>
-    </div>
-  )
+  // UNA TARJETA CON NÚMERO LLEVA A LO QUE CUENTA (29/09/2026, el dueño: «si quiero saber cuál es, haciendo
+  // click en esas tarjetas me tiene que llevar»). Sin destino queda como texto.
+  const t = (rotulo: string, valor: React.ReactNode, bajada: React.ReactNode, color?: string, testid?: string, href?: string | null) => {
+    const cuerpo = (
+      <>
+        <div style={eyebrow}>{rotulo}</div>
+        <div style={{ ...cifra, color: color ?? V.tinta }}>{valor}</div>
+        <div style={{ fontSize: '12.5px', color: V.apagado }}>{bajada}{href ? ' →' : ''}</div>
+      </>
+    )
+    const caja = { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 } as const
+    return href
+      ? <Link href={href} prefetch={false} style={caja} className="rounded hover:opacity-80 max-md:min-h-11" data-testid={testid}>{cuerpo}</Link>
+      : <div style={caja} data-testid={testid}>{cuerpo}</div>
+  }
   return (
     <div
       className="grid grid-cols-2 gap-6 lg:grid-cols-4"
@@ -30,8 +38,9 @@ export function Tarjetas({ r }: { r: Resumen }) {
       {t('Días sin rendir',
         r.masVieja ? `${r.masVieja.dias} ${r.masVieja.dias === 1 ? 'día' : 'días'}` : '—',
         r.masVieja ? `la más vieja · ${r.masVieja.codigo} · ${r.masVieja.persona}` : 'nadie tiene saldo',
-        r.masVieja ? V.tinta : V.tenue, 'tarjeta-dias')}
-      {t('Por imputar', r.porImputar, 'comprobantes esperando', r.porImputar > 0 ? V.warn : V.tenue, 'tarjeta-por-imputar')}
+        r.masVieja ? V.tinta : V.tenue, 'tarjeta-dias', r.masVieja ? urlEfectivo({ entrega: r.masVieja.codigo }) : null)}
+      {t('Por imputar', r.porImputar, r.porImputar === 1 ? 'comprobante esperando' : 'comprobantes esperando', r.porImputar > 0 ? V.warn : V.tenue, 'tarjeta-por-imputar',
+        r.primeroPorImputar ? urlEfectivo({ entrega: r.primeroPorImputar.entrega, comprobante: r.primeroPorImputar.id }) : null)}
     </div>
   )
 }

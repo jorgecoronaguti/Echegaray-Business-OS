@@ -351,3 +351,10 @@ test('el adelanto de sueldo rendido (20260925T1100) es una fila «En Liquidació
   })
   assert.match(ev[0].texto, /Adelanto de sueldo a Marcelo Pastran · \$ 20\.000 · en Liquidación/)
 })
+
+test('la tarjeta «Por imputar» lleva al comprobante que espera hace más tiempo (29/09/2026)', () => {
+  const viejo = comp('observado', { id: 'c-viejo', entrega: 'ER-0021', enviado_en: '2026-09-20T10:00:00Z' })
+  const nuevo = comp('leyendo', { id: 'c-nuevo', entrega: 'ER-0024', enviado_en: '2026-09-29T10:00:00Z' })
+  assert.deepEqual(resumir([], [nuevo, comp('en_compras', { enviado_en: '2026-09-01T00:00:00Z' }), viejo], [], '2026-09-29').primeroPorImputar, { entrega: 'ER-0021', id: 'c-viejo' })
+  assert.equal(resumir([], [comp('en_compras')], [], '2026-09-29').primeroPorImputar, null)
+})

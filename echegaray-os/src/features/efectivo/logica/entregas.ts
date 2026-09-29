@@ -106,6 +106,8 @@ export interface Resumen {
   rendidoMes: number
   filasMes: number
   porImputar: number
+  /** El que espera hace más tiempo: adonde lleva la tarjeta «Por imputar». `null` si no hay ninguno. */
+  primeroPorImputar: { entrega: string; id: string } | null
   /** La abierta con saldo más vieja: sus días y su código. `null` si no hay ninguna. */
   masVieja: { dias: number; codigo: string; persona: string } | null
 }
@@ -118,6 +120,7 @@ export function resumir(
   const conSaldo = abiertas.filter((e) => e.en_su_poder > 0)
   const mes = hoy.slice(0, 7)
   const delMes = rendiciones.filter((r) => diaAR(r.imputada_en).slice(0, 7) === mes)
+  const cola = comprobantes.filter(esperando).sort((a, b) => a.enviado_en.localeCompare(b.enviado_en))
   const vieja = [...conSaldo].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.codigo.localeCompare(b.codigo))[0]
   return {
     enManos: conSaldo.reduce((s, e) => s + e.en_su_poder, 0),
@@ -125,7 +128,8 @@ export function resumir(
     abiertas: abiertas.length,
     rendidoMes: delMes.reduce((s, r) => s + Number(r.monto), 0),
     filasMes: delMes.length,
-    porImputar: comprobantes.filter(esperando).length,
+    porImputar: cola.length,
+    primeroPorImputar: cola[0] ? { entrega: cola[0].entrega, id: cola[0].id } : null,
     masVieja: vieja ? { dias: diasDeEntrega(vieja, hoy), codigo: vieja.codigo, persona: vieja.persona } : null,
   }
 }
