@@ -22,3 +22,4 @@
 # Estado de la ultima sesion: rastro local de la maquina, no configuracion del repo.
 # El traspaso semantico (estado/traspaso.md) SI se versiona: viaja entre worktrees y maquinas.
 /estado/ultima-sesion.json
+/estado/traspaso-auto.md

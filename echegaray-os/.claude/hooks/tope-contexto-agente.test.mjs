@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { contextoDelTranscript, rutaDelAgente, decidir } from './tope-contexto-agente.mjs'
+import { contextoDelTranscript, rutaDelAgente, decidir, archivoDeLectura, decidirPrincipal } from './tope-contexto-agente.mjs'
 
 const HOOK = fileURLToPath(new URL('./tope-contexto-agente.mjs', import.meta.url))
 function sesion(ctx) {
@@ -44,4 +44,34 @@ test('nunca rompe: sin transcript, id raro, sesión principal o JSON inválido �
   assert.equal(correr({ transcript_path: sesion(900_000), tool_name: 'Read' }), '')
   assert.equal(spawnSync('node', [HOOK], { input: 'no json', encoding: 'utf8' }).status, 0)
   assert.equal(decidir({ modo: 'interno', contexto: null }), null)
+})
+
+// ── Sesión principal (29/09/2026) ──
+test('lectura entera: Read sin límites y `cat` solo cuentan; acotadas y con caño no', () => {
+  assert.equal(archivoDeLectura('Read', { file_path: '/a.mjs' }), '/a.mjs')
+  assert.equal(archivoDeLectura('Read', { file_path: '/a.mjs', limit: 50 }), null)
+  assert.equal(archivoDeLectura('Read', { file_path: '/a.mjs', offset: 0 }), null)
+  assert.equal(archivoDeLectura('Bash', { command: 'cat src/x.ts' }), 'src/x.ts')
+  assert.equal(archivoDeLectura('Bash', { command: 'cat src/x.ts | head -20' }), null)
+  assert.equal(archivoDeLectura('Grep', { pattern: 'x' }), null)
+})
+
+test('archivo grande entero se niega; chico pasa; imagen/PDF no se miden', () => {
+  const grande = decidirPrincipal({ tool: 'Read', input: { file_path: '/g.mjs' }, contexto: 30_000, tamano: 90 * 1024 })
+  assert.match(grande.niega, /90 KB.*offset\/limit/)
+  assert.equal(decidirPrincipal({ tool: 'Read', input: { file_path: '/c.mjs' }, contexto: 30_000, tamano: 30 * 1024 }).niega, undefined)
+  assert.equal(decidirPrincipal({ tool: 'Read', input: { file_path: '/p.pdf' }, contexto: 30_000, tamano: 900 * 1024 }).niega, undefined)
+})
+
+test('con el contexto cargado el máximo baja a 20 KB', () => {
+  const r = decidirPrincipal({ tool: 'Read', input: { file_path: '/c.mjs' }, contexto: 120_000, tamano: 30 * 1024, aviso: 110_000 })
+  assert.match(r.niega, /120k de contexto ya cargado.*20 KB/)
+})
+
+test('aviso de crecimiento: una vez por cada 10k nuevos, nunca debajo del umbral', () => {
+  assert.equal(decidirPrincipal({ tool: 'Grep', contexto: 100_000, aviso: 110_000 }).aviso, undefined)
+  const a = decidirPrincipal({ tool: 'Grep', contexto: 113_000, aviso: 110_000 })
+  assert.equal(a.banda, 11); assert.match(a.aviso, /113k/)
+  assert.equal(decidirPrincipal({ tool: 'Grep', contexto: 118_000, banda: 11, aviso: 110_000 }).aviso, undefined)
+  assert.equal(decidirPrincipal({ tool: 'Grep', contexto: 121_000, banda: 11, aviso: 110_000 }).banda, 12)
 })

@@ -7,7 +7,7 @@
 // cuando el código cambia entrena a ignorar el rojo, que es lo único que este hook existe para evitar.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { esRojoDelAmbiente, huella } from './validar-cierre.mjs'
+import { esRojoDelAmbiente, huella, tomarCerrojo, recordarVerde, yaVerde, yaRojoIgual, VERDES_MAX } from './validar-cierre.mjs'
 
 test('la huella cambia cuando cambia el commit, aunque los archivos sueltos sean los mismos', () => {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
@@ -64,4 +64,42 @@ test('tests del cambio: el hermano .test.mjs si existe, el propio test, sin dupl
   const hay = new Set(['/o/a.test.mjs', '/o/b.test.mjs'])
   const r = testsDelCambio(['/o/a.mjs', '/o/a.test.mjs', '/o/b.test.mjs', '/o/sin-test.mjs'], (f) => hay.has(f))
   assert.deepEqual(r, ['/o/a.test.mjs', '/o/b.test.mjs'])
+})
+
+test('la huella es el CONTENIDO: un touch no la cambia, un byte sí (29/09)', async () => {
+  const { mkdtempSync, writeFileSync: w, utimesSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const f = `${mkdtempSync(`${tmpdir()}/vc-`)}/a.mjs`
+  w(f, 'export const a = 1\n')
+  const h1 = huella([f], '/')
+  utimesSync(f, new Date(), new Date(Date.now() + 5000))
+  assert.equal(huella([f], '/'), h1, 'cambiar sólo el mtime no invalida el verde')
+  w(f, 'export const a = 2\n')
+  assert.notEqual(huella([f], '/'), h1, 'cambiar el contenido sí')
+})
+
+test('los verdes se recuerdan: volver a un estado ya validado no corre de nuevo', () => {
+  let c = recordarVerde({}, 'A')
+  c = recordarVerde(c, 'B')
+  assert.ok(yaVerde(c, 'A') && yaVerde(c, 'B'))
+  assert.ok(!yaVerde(c, 'C'))
+  for (let i = 0; i < VERDES_MAX + 5; i++) c = recordarVerde(c, `x${i}`)
+  assert.equal(c.verdes.length, VERDES_MAX, 'la lista tiene tope')
+  assert.ok(!yaVerde(c, 'A'), 'lo más viejo se olvida')
+  assert.ok(yaVerde({ ok: true, huella: 'Z' }, 'Z'), 'la caché del formato viejo sigue valiendo')
+})
+
+test('cerrojo: un segundo cierre vivo no corre; uno huérfano se retoma', async () => {
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const ruta = `${mkdtempSync(`${tmpdir()}/vc-`)}/validando.pid`
+  assert.equal(tomarCerrojo(ruta, 111, () => true), true, 'el primero lo toma')
+  assert.equal(tomarCerrojo(ruta, 222, () => true), false, 'con el dueño vivo, el segundo no')
+  assert.equal(tomarCerrojo(ruta, 222, () => false), true, 'con el dueño muerto, se retoma')
+})
+
+test('«sin recursos» no dispara la antirrecursión: se vuelve a intentar', () => {
+  assert.equal(yaRojoIgual({ ok: false, huella: 'H', detalle: 'x' }, 'H'), true, 'un rojo real igual no se repite')
+  assert.equal(yaRojoIgual({ ok: false, sinRecursos: true, huella: 'H' }, 'H'), false, 'sin recursos se reintenta')
+  assert.equal(yaRojoIgual({ ok: false, huella: 'H' }, 'H2'), false, 'código nuevo se valida')
 })

@@ -16,7 +16,9 @@ RAIZ="${ECOS_RAIZ:-$HOME/.echegaray-os}"
 BIN="$RAIZ/bin"; DIR="$RAIZ/recursos"
 mkdir -p "$BIN" "$DIR/slots" "$DIR/cola" "$DIR/registro" "$DIR/log" "$HOME/bin"
 
-for f in ecos comun.mjs estado.mjs barrer.mjs hook-bash.mjs higiene-tmp.mjs; do install -m 0755 "$AQUI/$f" "$BIN/$f"; done
+for f in ecos comun.mjs estado.mjs barrer.mjs hook-bash.mjs higiene-tmp.mjs hook-tope.mjs; do install -m 0755 "$AQUI/$f" "$BIN/$f"; done
+# La lógica del tope (pura, con tests) vive en .claude/hooks/; el hook global la importa de esta copia.
+install -m 0644 "$AQUI/../../.claude/hooks/tope-contexto-agente.mjs" "$BIN/tope-lib.mjs"
 # La política instalada NO se pisa si ya existe: es el lugar donde el dueño ajusta límites.
 [ -f "$DIR/politica.env" ] || install -m 0644 "$AQUI/politica.env" "$DIR/politica.env"
 ln -sfn "$BIN/ecos" "$HOME/bin/ecos"
@@ -27,6 +29,7 @@ const fs = require('node:fs'); const [ruta, bin] = process.argv.slice(2)
 let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(ruta, 'utf8')) } catch {}
 cfg.hooks ||= {}
 const portero = { type: 'command', command: `node ${bin}/hook-bash.mjs`, timeout: 10, statusMessage: 'recursos' }
+const tope = { type: 'command', command: `node ${bin}/hook-tope.mjs`, timeout: 10 }
 const barrido = { type: 'command', command: `node ${bin}/barrer.mjs --motivo fin-de-sesion`, timeout: 30, statusMessage: 'limpiando huérfanos' }
 const poner = (evento, matcher, hook) => {
   const lista = (cfg.hooks[evento] ||= [])
@@ -35,6 +38,7 @@ const poner = (evento, matcher, hook) => {
   lista.push(matcher ? { matcher, hooks: [hook] } : { hooks: [hook] })
 }
 poner('PreToolUse', 'Bash', portero)
+poner('PreToolUse', '*', tope)
 poner('SessionEnd', null, barrido)
 poner('SubagentStop', null, barrido)
 fs.writeFileSync(ruta, JSON.stringify(cfg, null, 2) + '\n')

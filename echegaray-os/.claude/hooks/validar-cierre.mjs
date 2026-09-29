@@ -27,7 +27,8 @@
 // productivos, no llama a ninguna API externa. Es un portero, no un reparador.
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync, rmSync } from 'node:fs'
 import { join, dirname, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -101,11 +102,34 @@ function cambiados(base) {
  * cambió. Si no hay git, la huella sigue siendo la de antes: se degrada, no se rompe.
  */
 export function huella(archivos, base) {
-  let head = ''
-  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { /* sin git, sólo los archivos */ }
-  const files = archivos.map((f) => { try { const s = statSync(f); return `${f}:${s.mtimeMs}:${s.size}` } catch { return `${f}:0` } }).sort().join('|')
-  return head ? `${head}|${files}` : files
+  // 29/09: el ESTADO DEL CÓDIGO, no HEAD + mtime. `git stash create` arma (sin tocar la pila de
+  // stash) el árbol del working tree: commitear lo mismo, un `touch` o un checkout que no cambia
+  // bytes dan la misma huella y reusan el verde; un merge que cambia cualquier archivo, no. Los
+  // archivos nuevos sin seguimiento no entran en ese árbol: van por el hash de su contenido.
+  const sc = git(['stash', 'create'], base).trim()
+  const arbol = git(['rev-parse', `${sc || 'HEAD'}^{tree}`], base).trim()
+  const files = archivos.map((f) => { try { return `${f}:${createHash('sha1').update(readFileSync(f)).digest('hex').slice(0, 12)}` } catch { return `${f}:0` } }).sort().join('|')
+  return arbol ? `${arbol}|${files}` : files
 }
+
+/** ¿Hay OTRO cierre validando esta misma base ahora? Cerrojo por archivo con el pid dueño. */
+export function tomarCerrojo(ruta, pid = process.pid, vivo = pidVivo) {
+  try { writeFileSync(ruta, String(pid), { flag: 'wx' }); return true } catch { /* existe */ }
+  const otro = Number(readFileSync(ruta, 'utf8')) || 0
+  if (otro && otro !== pid && vivo(otro)) return false
+  try { writeFileSync(ruta, String(pid)); return true } catch { return true } // cerrojo huérfano: se toma
+}
+const pidVivo = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
+
+/** Verdes recordados: los últimos N estados de código que pasaron, no sólo el último. */
+export const VERDES_MAX = 20
+export function recordarVerde(previo, h, max = VERDES_MAX) {
+  const verdes = [h, ...(previo.verdes ?? (previo.ok ? [previo.huella] : [])).filter((x) => x && x !== h)].slice(0, max)
+  return { ok: true, huella: h, verdes, cuando: new Date().toISOString() }
+}
+/** Rojo ya informado sobre este mismo código. «Sin recursos» no es un veredicto: no cuenta. */
+export const yaRojoIgual = (previo, h) => !previo.ok && !previo.sinRecursos && previo.huella === h
+export const yaVerde = (previo, h) => (previo.ok && previo.huella === h) || (previo.verdes ?? []).includes(h)
 
 /**
  * SÓLO LO QUE CAMBIÓ EN ESTA SESIÓN (26/09/2026). `cambiados()` devuelve todo lo sucio del árbol, y
@@ -222,13 +246,21 @@ async function main() {
 
   const h = huella([...codigo, ...sql], BASE)
   const previo = leerHuella()
-  // Ya validado y verde con exactamente este contenido: no se repite.
-  if (previo.ok && previo.huella === h) pasar()
+  // Ya validado y verde con exactamente este código (éste o uno de los últimos verdes): no se repite.
+  if (yaVerde(previo, h)) pasar()
   // ANTIRRECURSIÓN: ya bloqueé por esta misma huella y no cambió nada. Si volviera a bloquear
   // quedaríamos girando sin que yo pueda contarte qué pasa. Se deja pasar con el aviso.
-  if (!previo.ok && previo.huella === h) {
+  // «Sin recursos» NO cuenta: no es un veredicto, es que no corrió — se reintenta (29/09).
+  if (yaRojoIgual(previo, h)) {
     pasar(`Las validaciones seguían fallando y no cambió nada desde el último intento:\n${previo.detalle ?? ''}\nLo dejo pasar para no quedar en bucle, pero el cambio NO está validado.`)
   }
+
+  // Dos cierres a la vez sobre la misma base (Stop + SubagentStop, dos agentes) corrían todo dos
+  // veces y se peleaban el cupo del portero. El segundo no repite: avisa y pasa.
+  const CERROJO = join(CACHE, 'validando.pid')
+  try { mkdirSync(CACHE, { recursive: true }) } catch { /* sin caché no hay cerrojo */ }
+  if (!tomarCerrojo(CERROJO)) pasar('Otro cierre ya está validando esta misma copia; no se corre dos veces. Su resultado queda en la caché.')
+  process.on('exit', () => { try { if (readFileSync(CERROJO, 'utf8') === String(process.pid)) rmSync(CERROJO) } catch { /* ya no está */ } })
 
   // ── Qué corresponde correr, según lo que se tocó ──
   const hayTs = codigo.some((f) => /\.tsx?$/.test(f))
@@ -261,7 +293,7 @@ async function main() {
   if (codigo.length) validar('eslint (archivos cambiados)', 'npx', ['eslint', ...codigo])
 
   if (sinRecursos.length && !fallas.length) {
-    guardarHuella({ ok: false, huella: h, detalle: `sin recursos para: ${sinRecursos.join(', ')}`, cuando: new Date().toISOString() })
+    guardarHuella({ ...previo, ok: false, sinRecursos: true, huella: h, detalle: `sin recursos para: ${sinRecursos.join(', ')}`, cuando: new Date().toISOString() })
     pasar(`⚠ Validaciones NO corridas por falta de recursos en la VM (esperaron su turno 4 minutos): ${sinRecursos.join(', ')}. `
       + 'El cambio NO está validado. Se reintenta en el próximo cierre; mirá `ecos estado` para ver qué ocupa la máquina.')
   }
@@ -273,14 +305,14 @@ async function main() {
   }
 
   if (!fallas.length) {
-    guardarHuella({ ok: true, huella: h, cuando: new Date().toISOString() })
+    guardarHuella(recordarVerde(previo, h))
     pasar()
   }
 
   const detalle = fallas.join('\n\n')
   // Un rojo del ambiente se avisa pero NO se guarda: la próxima vez se vuelve a correr en vez de
   // repetir la foto de un choque que ya pasó. Ver `esRojoDelAmbiente`.
-  if (!esRojoDelAmbiente(detalle)) guardarHuella({ ok: false, huella: h, detalle, cuando: new Date().toISOString() })
+  if (!esRojoDelAmbiente(detalle)) guardarHuella({ verdes: previo.verdes, ok: false, huella: h, detalle, cuando: new Date().toISOString() })
   bloquear(
     `No puedo dar esto por terminado: hay validaciones que fallan sobre lo que se cambió en esta sesión.\n\n${detalle}\n\n`
     + 'Arreglá esto antes de cerrar. No commitees ni pushees con las validaciones en rojo. '

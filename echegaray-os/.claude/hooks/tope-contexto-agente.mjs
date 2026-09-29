@@ -70,6 +70,61 @@ export function decidir({ modo, contexto, tope = TOPE }) {
     'final con lo que tenés, y decí qué quedó sin verificar.'
 }
 
+// ═══ SESIÓN PRINCIPAL (29/09/2026) ═══
+// El tope de arriba sólo miraba subagentes; la sesión principal crecía sin freno hasta el
+// autocompactado. Dos controles, los dos baratos (un stat y la cola del transcript):
+//   · LECTURA ENTERA de un archivo grande (Read sin offset/limit, o `cat archivo` suelto) → se niega
+//     y se dice cómo leer la parte. Con el contexto ya cargado, el máximo baja.
+//   · CRECIMIENTO: pasado el umbral de aviso, una nota por cada 10k nuevos (no en cada herramienta).
+// Lo usa el hook GLOBAL (~/.echegaray-os/bin/hook-tope.mjs), que corre en toda sesión de la máquina.
+
+export const AVISO_PRINCIPAL = Number(process.env.ECOS_AVISO_CONTEXTO) || 110_000
+export const LECTURA_MAX = Number(process.env.ECOS_LECTURA_MAX) || 60 * 1024
+export const LECTURA_MAX_CARGADO = Math.min(LECTURA_MAX, 20 * 1024)
+const NO_TEXTO = /\.(png|jpe?g|gif|webp|bmp|pdf|ipynb)$/i
+
+/** Qué archivo se lee ENTERO con esta herramienta, o null (lectura acotada o no es lectura). */
+export function archivoDeLectura(tool, input) {
+  if (tool === 'Read') {
+    if (input?.offset != null || input?.limit != null) return null
+    return typeof input?.file_path === 'string' ? input.file_path : null
+  }
+  if (tool === 'Bash') {
+    // Sólo `cat ARCHIVO` solo: con un caño (| head, | grep) la salida ya viene acotada.
+    const m = String(input?.command ?? '').match(/^\s*cat\s+(["']?)([^\s|;&<>"']+)\1\s*$/)
+    return m ? m[2] : null
+  }
+  return null
+}
+
+/**
+ * La decisión para la sesión principal (y la lectura de un subagente). PURA.
+ * `tamano` en bytes del archivo que se leería entero; `banda` la última decena de miles avisada.
+ * Devuelve { niega?, aviso?, banda? }.
+ */
+export function decidirPrincipal({ tool, input, contexto, tamano, banda = 0, aviso = AVISO_PRINCIPAL }) {
+  const r = {}
+  const archivo = archivoDeLectura(tool, input)
+  const cargado = contexto != null && contexto >= aviso
+  if (archivo && tamano != null && !NO_TEXTO.test(archivo)) {
+    const max = cargado ? LECTURA_MAX_CARGADO : LECTURA_MAX
+    if (tamano > max) {
+      r.niega = `Leer entero ${archivo} son ${Math.round(tamano / 1024)} KB (~${Math.round(tamano / 4000)}k tokens, estimado a 4 bytes/token)` +
+        `${cargado ? ` con ${Math.round(contexto / 1000)}k de contexto ya cargado` : ''}; el máximo es ${Math.round(max / 1024)} KB. ` +
+        'Leé la parte que necesitás: Read con offset/limit, `grep -n` para ubicarla, o un subagente que devuelva sólo la conclusión.'
+    }
+  }
+  if (cargado) {
+    const b = Math.floor(contexto / 10_000)
+    if (b > banda) {
+      r.banda = b
+      r.aviso = `Contexto de esta sesión: ${Math.round(contexto / 1000)}k (aviso desde ${Math.round(aviso / 1000)}k). ` +
+        'Cerrá el bloque en curso —commit, traspaso breve— y /compact; hasta entonces, lecturas acotadas y salidas con | tail.'
+    }
+  }
+  return r
+}
+
 function main() {
   let ev
   try { ev = JSON.parse(readFileSync(0, 'utf8')) } catch { return }

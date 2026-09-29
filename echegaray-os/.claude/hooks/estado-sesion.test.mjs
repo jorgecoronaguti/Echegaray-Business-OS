@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { armarInicio, recortar, baseDeTrabajo } from './estado-sesion.mjs'
+import { armarInicio, recortar, baseDeTrabajo, armarBreve, traspasoVencido, armarTraspasoAuto, ultimoPedido } from './estado-sesion.mjs'
 
 const RUTA = fileURLToPath(new URL('./estado-sesion.mjs', import.meta.url))
 
@@ -101,4 +101,44 @@ test('aun con el presupuesto agotado se muestra algo del traspaso', () => {
   })
   assert.match(txt, /traspaso de la sesión anterior/)
   assert.ok(txt.includes('lo importante'), 'no puede quedarse sin nada del traspaso')
+})
+
+// ── 29/09/2026: arranque según `source` y traspaso breve del Stop ──
+import { mkdtempSync, writeFileSync as escribir } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join as unir } from 'node:path'
+
+test('resume/compact: dos líneas, sin traspaso, bajo 300 caracteres', () => {
+  const t = armarBreve({ fuente: 'resume', rama: 'x', sucios: ['a', 'b'], head: 'abc1234' })
+  assert.match(t, /\[estado · resume\] rama x · HEAD abc1234 · 2 sin commitear/)
+  assert.ok(t.length < 300, `midió ${t.length}`)
+})
+
+test('traspaso de más de 48 h entra sólo por título y ruta; uno fresco entra entero', () => {
+  const txt = '# TRASPASO — 26/09\n\nmucho texto\n'.repeat(20)
+  const ahora = Date.parse('2026-09-29T12:00:00Z')
+  const v = traspasoVencido(txt, Date.parse('2026-09-26T22:00:00Z'), ahora)
+  assert.match(v, /^# TRASPASO — 26\/09\n\[vencido: 2 día\(s\)/)
+  assert.ok(v.length < 150)
+  assert.equal(traspasoVencido(txt, ahora - 3600_000, ahora), txt)
+})
+
+test('traspaso automático: sólo con commits nuevos o contexto alto, y bajo 900', () => {
+  const base = { sesion: 's1', rama: 'r', sucios: 0, pedido: 'hacé X', aviso: 110_000, cuando: new Date('2026-09-29T12:00:00Z') }
+  assert.equal(armarTraspasoAuto({ ...base, commits: [], contexto: 50_000 }), null)
+  const c = armarTraspasoAuto({ ...base, commits: ['abc que hice'], contexto: 50_000 })
+  assert.match(c, /commits de la sesión:\n- abc que hice/); assert.match(c, /último pedido: «hacé X»/)
+  const g = armarTraspasoAuto({ ...base, commits: Array(9).fill('x'.repeat(95)), contexto: 130_000, pedido: 'p'.repeat(240) })
+  assert.ok(g.length <= 900, `midió ${g.length}`)
+})
+
+test('último pedido: texto de la persona, sin etiquetas ni resultados de herramientas', () => {
+  const d = mkdtempSync(unir(tmpdir(), 'es-'))
+  const f = unir(d, 't.jsonl')
+  escribir(f, [
+    JSON.stringify({ type: 'user', message: { content: '<ide_selection>ruido</ide_selection> arreglá el recibo' } }),
+    JSON.stringify({ type: 'assistant', message: { content: [] } }),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'salida' }] } }),
+  ].join('\n'))
+  assert.equal(ultimoPedido(f), 'arreglá el recibo')
 })
