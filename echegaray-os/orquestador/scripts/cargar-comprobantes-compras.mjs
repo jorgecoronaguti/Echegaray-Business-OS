@@ -44,8 +44,9 @@ import { completarCuitsDelMaestro, cuitsParaCompletar } from '../lib/comprobante
 import { completarUno } from '../lib/comprobantes/imputacion-historial.mjs'
 import { completarDesdeAnotacion } from '../lib/comprobantes/anotacion-a-obra.mjs'
 import { aritmetica, colVerificacion } from '../lib/comprobantes/verificacion.mjs'
+import { ultimaFilaOcupada } from '../lib/comprobantes/ultima-fila.mjs'
 import { CONTRATO, colDelCargador, contratoContra, derivar } from '../lib/comprobantes/contrato-columnas.mjs'
-import { lectorDeEncabezados, rangoColumna, rangoFilas, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
+import { lectorDeEncabezados, rangoFilas, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
 import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
 import { destinosDeObra, obraParaLaColumna, pestanaDelComprobante, PESTANA_COMPRAS } from '../lib/comprobantes/obra-y-destino.mjs'
@@ -620,18 +621,23 @@ async function main() {
   // dónde entrara: «DUBOS UGARTE PEDRO LUIS RAUL» es DUPEC por CUIT para el chat y un proveedor
   // nuevo para la terminal. Dos respuestas para el mismo paso es lo que este archivo evita en las
   // columnas y no estaba evitando en el proveedor. Una capacidad, una fuente.
-  const [listas, porCuit, colE, indiceCompras, conocidos, nombresPorCuit] = await Promise.all([
+  // La última fila ocupada se mide con TODAS las columnas que escribe el cargador (29/09, SURI pisada
+  // por Baragaño en la 1030): mirar sólo el Proveedor daba por libre una fila con proveedor vacío.
+  const letrasOcupan = [col.fecha, col.proveedor, col.tipo, col.numero, col.detalle, col.concepto, col.neto, col.iva].filter(Boolean)
+  const nLetra = (l) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0)
+  const desdeL = letrasOcupan.reduce((a, l) => (nLetra(l) < nLetra(a) ? l : a))
+  const hastaL = letrasOcupan.reduce((a, l) => (nLetra(l) > nLetra(a) ? l : a))
+  const [listas, porCuit, bloqueCarga, indiceCompras, conocidos, nombresPorCuit] = await Promise.all([
     listasDeCompras(google, { fileId: ID }),
     proveedoresPorCuit(google, { fileId: ID }),
-    google.readSheetValues(ID, rangoColumna('Compras', col.proveedor)),
+    google.readSheetValues(ID, `Compras!${desdeL}1:${hastaL}`),
     indiceDeCompras(google, { fileId: ID }),
     maestroDeProveedores(),
     nombresDelPadronPorCuit(),
   ])
   const lista = listas.proveedores
   const perfiles = await perfilesDe(indiceCompras)
-  let ultima = 0
-  colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
+  const ultima = ultimaFilaOcupada(bloqueCarga, letrasOcupan.map((l) => nLetra(l) - nLetra(desdeL)))
 
   // EL CATÁLOGO DE OBRAS PARA LA COLUMNA «Obra». Si no se puede leer, la celda queda vacía —como
   // antes del 14/09— y se dice: no poder proponer la obra no es motivo para no cargar el gasto.
