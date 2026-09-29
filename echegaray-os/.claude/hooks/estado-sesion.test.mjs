@@ -152,3 +152,8 @@ test('la antigüedad del traspaso sale de su fecha escrita, no del mtime de un c
   assert.equal(momentoDelTraspaso('fecha: 2026-09-29\nx', ahora), ahora)          // de hoy: manda el mtime
   assert.equal(momentoDelTraspaso('sin fecha', 123), 123)
 })
+
+test('una fecha vieja citada en el cuerpo no vence un traspaso reciente', () => {
+  const ahora = Date.now()
+  assert.equal(momentoDelTraspaso('# Traspaso de hoy\n\nel 26/09/2026 pasó X', ahora - 1000), ahora - 1000)
+})
