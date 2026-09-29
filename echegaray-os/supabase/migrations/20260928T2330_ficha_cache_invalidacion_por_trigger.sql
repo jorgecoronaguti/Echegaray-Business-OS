@@ -92,14 +92,16 @@
 --   4. Leer en el destino: filas de `ficha_cliente_cache_huella` por tabla (7 tablas), los
 --      `trg_ficha_inv*` en `pg_trigger` (uno por tabla con trigger, más `trg_ficha_inv_al_commit`),
 --      el `command` del job en `cron.job` y el `count(*)` de `ficha_cliente_cache`.
+--   5. Reactivar el cron (`active := true`) y las sincronizaciones.
 --   6. Después de reactivar: `cron.job_run_details` de las dos corridas siguientes en `succeeded`, y
 --      `ficha_cliente_cache_pendiente` vaciándose (sólo quedan marcas de los últimos 2 min).
---   5. Reactivar el cron (`active := true`) y las sincronizaciones.
 --
 -- VUELTA ATRÁS: `supabase/rollback/20260928T2330_ficha_cache_invalidacion_por_trigger.down.sql`, con
 -- el mismo orden (cron pausado, sincronizaciones quietas). Vive fuera de `migrations/` para que
 -- ningún aplicador lo levante solo. Antes de aplicar ESTA migración en producción, ensayarla en una
 -- rama de Supabase con `node orquestador/scripts/ensayar-ficha-cache.mjs <url de la rama>`.
+-- Sin perfil de Dirección (es_prueba = false) el cron no consume marcas: el paso 6 lo detecta porque
+-- `ficha_cliente_cache_pendiente` no se vacía.
 --
 -- ═══ AHORRO ESTIMADO (ESTIMACIÓN sobre los `ms` medidos, no una medición del efecto) ═══
 --
