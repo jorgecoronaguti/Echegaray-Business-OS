@@ -41,7 +41,7 @@ export function textoDelAviso({ username, codigo, destino, entregaId, directo = 
 }
 
 /** El canal directo bot ↔ persona. Mattermost lo crea si no existe; devuelve su id. */
-async function canalDirectoCon(mmUserId) {
+export async function canalDirectoCon(mmUserId) {
   const base = String(delEntorno('MM_BASE_URL') ?? '').replace(/\/+$/, '')
   const token = delEntorno('MM_BOT_TOKEN')
   if (!base || !token || !mmUserId) return null
@@ -85,7 +85,7 @@ export async function usuarioMattermostPorEmail(email) {
  * `rootId` es la raíz del hilo donde se registró la entrega. Si Mattermost la rechaza (400: el post se borró),
  * el aviso sale suelto: peor un aviso fuera del hilo que ninguno.
  */
-async function publicarYReleer(channelId, message, rootId = null) {
+export async function publicarYReleer(channelId, message, rootId = null) {
   const base = String(delEntorno('MM_BASE_URL') ?? '').replace(/\/+$/, '')
   const token = delEntorno('MM_BOT_TOKEN')
   if (!base || !token) throw new Error('sin MM_BASE_URL / MM_BOT_TOKEN')

@@ -379,6 +379,14 @@ test('M05: mientras falte la confirmación, el lote se LEE pero no se escribe', 
   assert.equal(port.inserts.length, 0, 'se vinculó a Compras algo que nadie confirmó')
 })
 
+test('M05: el motivo por archivo tampoco dice «quedó sin cargar» cuando lo que falta es la confirmación', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, confirmado: false })
+  await procesarUnLote({ port, procesar: async () => ({ estado: 'confirmar', texto: 'Falta algo', fajoId: 'f',
+    parte: parte({ trabados: [{ nombre: filas[0].nombre_archivo, motivo: 'quedó sin cargar' }] }) }) })
+  assert.match(port.updates[0].motivo, /confirme lo que se leyó/, 'el motivo por archivo pisó el real: nadie sabe que espera su confirmación')
+})
+
 test('M05: ya confirmado, el lote se escribe como siempre — el freno es de una sola vuelta', async () => {
   const filas = [filaRendicion('r1')]
   const port = portRendicion({ filas, confirmado: true, registrados: [{ clave: '30-1|FB|3-41927', total: 96400 }] })

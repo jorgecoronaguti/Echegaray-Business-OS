@@ -66,6 +66,13 @@ async function main() {
     else if (r.lotes.length || r.reciclados) {
       process.stdout.write(`✔ ${r.lotes.length} lote(s) procesado(s)${r.reciclados ? `, ${r.reciclados} fila(s) recicladas` : ''}\n`)
     }
+    // Lo que la app subió y espera a la persona (M05) se le dice por directo: un fajo web no tiene hilo donde
+    // el vigía pueda avisar. Una falla acá no frena nada y se reintenta en el tick siguiente.
+    try {
+      const { cicloAvisoWeb } = await import('../comunicacion/comprobantes/aviso-web.mjs')
+      const w = await cicloAvisoWeb(port, { log })
+      if (w.mensajes) process.stdout.write(`✔ ${w.avisados} comprobante(s) web esperando confirmación, avisados en ${w.mensajes} mensaje(s)\n`)
+    } catch (e) { log.warn('avisoWeb: falló', { error: String(e?.message ?? e) }) }
     // EFECTIVO A RENDIR (22/09/2026): el aviso de cada entrega nueva, con el enlace para firmar. Misma
     // cadencia que la cola; una falla del aviso no frena los comprobantes.
     try {

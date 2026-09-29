@@ -408,6 +408,8 @@ export async function procesarUnLote(dep) {
   // `a_confirmar`. Sin `leidos` no hay nada que preguntar y el ticket sigue como «leyendo».
   if (rinde && !rinde.confirmado) resultado.leidos = await leidosDelFajo(port, salida?.fajoId ?? null)
   for (const v of repartirVeredicto(filas, veredicto, salida?.parte ?? {})) {
+    // El motivo por archivo viene del parte del circuito («quedó sin cargar») y pisa al del lote: mentía.
+    if (rinde && !rinde.confirmado && v.estado === ENTRADA.EN_ESPERA) v.motivo = veredicto.motivo
     await guardarFila(port, v, { fajoId: salida?.fajoId ?? null, resultado })
   }
   // EL FAJO SE CIERRA CON EL VEREDICTO DEL LOTE, no con el de cada archivo: el fajo es uno solo y
