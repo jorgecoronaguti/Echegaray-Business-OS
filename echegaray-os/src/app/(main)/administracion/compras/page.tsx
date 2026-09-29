@@ -69,7 +69,6 @@ import { NotaBloque } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
 import { CargarComprobante } from '@/features/administracion/components/CargarComprobante'
-import { EntradasSubidas } from '@/features/administracion/components/EntradasSubidas'
 import { TablaCompras } from '@/features/administracion/components/TablaCompras'
 import { PanelCompra } from '@/features/administracion/components/PanelCompra'
 import {
@@ -98,7 +97,6 @@ import {
 import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
-import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
 import { VistaEfectivo } from '@/features/efectivo/components/VistaEfectivo'
 import { entregaPorClave } from '@/features/efectivo/services/datos'
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
@@ -187,10 +185,9 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // obras, no una fila por compra— y en paralelo no agrega una ronda. Error ⇒ lista vacía.
   // EL NÚMERO DE ENTREGA DE LAS FILAS «A RENDIR» (D07) viaja en el mismo viaje: una lectura chica del
   // vínculo `efectivo_rendicion`, que vacía (sin la migración) no le saca ninguna fila a la lista.
-  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra, opcionesObra, entregaDe] = await Promise.all([
+  const [perfil, listado, identidades, celdasObra, asignacionesObra, opcionesObra, entregaDe] = await Promise.all([
     getPerfilActual(supabase),
     getComprasSheet(supabase),
-    getEntradas(supabase),
     getIdentidades(supabase),
     getCeldasObra(supabase),
     getAsignaciones(supabase),
@@ -335,10 +332,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
           </Link>
         )}
       />
-
-      <div className="max-md:!px-4" style={{ padding: '0 20px' }}>
-        <EntradasSubidas entradas={entradas.data ?? []} />
-      </div>
 
       <div className="max-md:!px-4 max-md:!pt-3" style={{ padding: '0 20px 20px' }}>
         {filtro === 'sueltos' ? (
@@ -542,15 +535,12 @@ async function ControlArca({
   // acá el 12/09/2026 por el mismo motivo que en la pestaña Compras: era una ronda de espera entera
   // —110 ms medidos en caliente, cerca de un segundo en frío— para leer un campo, y la RLS de
   // `comprobantes_arca` es la que decide qué filas salen. Este `if` es la PUERTA, no la cerradura.
-  const [perfil, listado, conteos, obras, abierta, entradas] = await Promise.all([
+  const [perfil, listado, conteos, obras, abierta] = await Promise.all([
     getPerfilActual(supabase),
     getCompras(supabase, { q, filtro }),
     getConteos(supabase),
     getObrasCanonicas(supabase),
     sp.c ? getCompra(supabase, sp.c) : Promise.resolve(null),
-    // LA COLA DE LO SUBIDO VA EN EL MISMO VIAJE. Es la lectura más chica de la pantalla y la que más
-    // rápido cambia: pedirla aparte pagaría una ida a la base por cada refresco del polling.
-    getEntradas(supabase),
   ])
 
   // Evita mostrarle la pantalla a quien no administra nada. Ver el comentario del `Promise.all`.
@@ -620,13 +610,6 @@ async function ControlArca({
           hrefDe={(f) => url({ f, q, c: sp.c })}
         />
       </FranjaCartera>
-
-      {/* LO RECIÉN SUBIDO VA ARRIBA DE TODO lo demás y debajo de la acción que lo produjo: es lo
-          único de esta pantalla que está pasando AHORA. La banda de atención cuenta problemas
-          acumulados (653 sin imputar); esto contesta «la foto que acabo de sacar, ¿entró?». */}
-      <div style={{ padding: '0 20px' }}>
-        <EntradasSubidas entradas={entradas.data ?? []} />
-      </div>
 
       <div style={PAGINA.atencion}>
         {/* Los chips «lo que pide trabajo» salieron por orden del dueño (08/09/2026): confundían. */}
