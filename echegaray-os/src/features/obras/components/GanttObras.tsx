@@ -21,11 +21,10 @@ import { C, MONO } from './canon/tokens'
 import { bajadaGantt } from '../services/carteraCanon'
 import {
   barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
-  nombreCortoGantt, SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
+  SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
 } from '../services/carteraGantt'
-import { CabeceraCliente, type FilaCartera } from './CarteraObras'
-import { estadoDeCartera, SIN_CLIENTE } from '../services/carteraCanon'
-import { rotuloDeObra } from '@/shared/utils/obra'
+import { CabeceraCliente, CeldaObra, NombreTelefono, type FilaCartera } from './CarteraObras'
+import { SIN_CLIENTE } from '../services/carteraCanon'
 import { Hover } from './canon/Piezas'
 import type { GrupoDeCliente } from '../services/carteraCanon'
 
@@ -124,12 +123,11 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
                   display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px', height: `${ALTO_FILA_TELEFONO}px`, alignItems: 'center',
                   borderBottom: ultima ? undefined : `1px solid ${C.borde}`, fontSize: '13px', color: C.tinta, cursor: 'pointer',
                 }}>
-                {/* M02: el nombre SE LEE (dueño 25/09: «OB-0020 · ME - …» no dice nada): sin código ni prefijo
-                    del cliente, en hasta dos renglones; el código completo queda en el título. */}
-                <div title={`${o.codigo ? `${o.codigo} · ` : ''}${o.nombre}`} data-testid="nombre-gantt-telefono" style={{
-                  minWidth: 0, paddingLeft: r.nivel ? '12px' : 0, lineHeight: 1.25, overflow: 'hidden',
-                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word',
-                }}>{nombreCortoGantt(o.nombre)}</div>
+                {/* Mismo rótulo y misma sublínea que la Tabla (dueño, 29/09/2026: «OB-XXXX · NOMBRE» y el estado
+                    debajo, en las dos vistas): `NombreTelefono` es el componente de la Tabla. */}
+                <div style={{ minWidth: 0, display: 'flex', paddingLeft: r.nivel ? '12px' : 0 }} data-testid="nombre-gantt-telefono">
+                  <NombreTelefono o={o} nivel={r.nivel} unaLinea />
+                </div>
                 {b == null
                   ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-testid="obra-sin-plan">{SIN_FECHAS_TELEFONO}</div>
                   : b.fueraDeVentana
@@ -215,7 +213,6 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
           }
           const o = r.o
           const b = barrasDe(o, ventana)
-          const e = estadoDeCartera(o)
           return (
             <Hover key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={r.nivel} onClick={() => router.push(hrefDe(o.obra_id))}
               base={{
@@ -223,10 +220,9 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
                 borderBottom: ultimaFila ? undefined : `1px solid ${C.borde}`, fontSize: '13px', cursor: 'pointer', color: C.tinta,
               }}
               hover={{ background: C.tenueFondo }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, padding: `0 14px 0 ${14 + (r.nivel ? 16 : 0)}px`, borderRight: `1px solid ${C.borde}`, lineHeight: 1.25 }}>
-                {r.nivel ? <span style={{ color: C.tenue }}>└</span> : null}
-                <Link href={hrefDe(o.obra_id)} prefetch={false} onClick={(ev) => ev.stopPropagation()} title={`${rotuloDeObra(o)} · ${e.t}`}
-                  style={{ color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{rotuloDeObra(o)}</Link>
+              {/* La misma celda de la Tabla (`CeldaObra`): rótulo, estado en color debajo y adicional con «└». */}
+              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, padding: '0 14px', borderRight: `1px solid ${C.borde}`, lineHeight: 1.25 }}>
+                <CeldaObra o={o} nivel={r.nivel} href={hrefDe(o.obra_id)} />
               </div>
               {b == null || b.fueraDeVentana
                 ? (

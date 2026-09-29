@@ -56,6 +56,7 @@ import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
 import { TablaClientes } from '@/features/clientes/components/TablaClientes'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import {
   armarCartera,
 } from '@/features/administracion/services/homeCartera'
@@ -103,10 +104,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   //
   // La RPC no define nada: la convierten las mismas funciones de siempre y las filas las sigue
   // armando `armarCartera`. Ver `carteraDeUnaConsulta.ts`.
-  const {
+  // El código de cada obra (`OB-0012`) se lee EN PARALELO y aparte (ver `codigosDeObra`): no suma un viaje
+  // y, si la columna no existiera todavía, la lista sigue mostrando el nombre solo.
+  const [{
     clientes: filasDeClientes, error: errorDeLectura, perfil, obras, cobrado, certificados,
     todasLasObras, papeles, economia, contratos, economiaCliente, costosPorObra, gastosSinObra,
-  } = await leerCarteraDeUnaConsulta(supabase)
+  }, codigos] = await Promise.all([leerCarteraDeUnaConsulta(supabase), codigosDeObra(supabase, null)])
 
   const rol = perfil?.rol ?? null
   // LA CARTERA ES DE ADMINISTRACIÓN. El nivel Obras entra al detalle —necesita saber con quién habla
@@ -245,6 +248,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 costos={costosPorObra}
                 gastosSinObra={gastosSinObra}
                 obrasPorCliente={todasLasObras}
+                codigos={codigos}
                 seleccionado={seleccionado?.cliente_id}
                 // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
                 //

@@ -46,6 +46,7 @@
 // columnas —en Obras el grupo no tiene cifras propias—; los íconos de fila se fueron (Obras no los
 // dibuja: «no iconografía decorativa»); y la plata sigue en mono, como en el resto del CRM.
 
+import { rotuloDeObra } from '@/shared/utils/obra'
 import Link from 'next/link'
 import { millones, pesos } from '@/shared/components/canon/formato'
 import { V } from '@/shared/components/v2/patron'
@@ -130,7 +131,7 @@ function idsDeTodasSusObras(
 
 export function TablaClientes({
   clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, limpiarHref, vacio,
-  costos, gastosSinObra, obrasPorCliente,
+  costos, gastosSinObra, obrasPorCliente, codigos,
 }: {
   clientes: ClienteEnCartera[]
   /** `costo_obra` por trabajo. `null` = no se pudo leer: las celdas callan, no dicen «—». */
@@ -140,6 +141,8 @@ export function TablaClientes({
   /** TODAS las obras de cada cliente, activas y cerradas (`obras_todas`): el costo a la fecha del
    *  cliente suma lo gastado en todas, no sólo en las que siguen en curso (QA 14/09/2026). */
   obrasPorCliente: ReadonlyMap<string, readonly { obra_id: string }[]>
+  /** `obra_id → OB-0012`: el rótulo «OB-0012 · NOMBRE» es el de la tabla de Obras (`rotuloDeObra`). */
+  codigos: ReadonlyMap<string, string>
   seleccionado?: string
   /** Abre la ficha del cliente (o el panel, si no tiene slug). */
   hrefDe: (clienteId: string) => string
@@ -253,8 +256,8 @@ export function TablaClientes({
                   <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: sangria }}>
                     {/* EN EL TELÉFONO EL NOMBRE SE LEE ENTERO (dueño, 23/09/2026): se corta en dos
                         líneas en vez de truncarse; en escritorio sigue en una línea con «…». */}
-                    <span className="max-md:line-clamp-2 max-md:!whitespace-normal" style={ESTILO_NOMBRE_FILA} title={o.nombre}>
-                      {fila.nivel ? <span style={ESTILO_CODO}>└</span> : null}{o.nombre}
+                    <span className="max-md:line-clamp-2 max-md:!whitespace-normal" style={ESTILO_NOMBRE_FILA} title={rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.obra_id) })}>
+                      {fila.nivel ? <span style={ESTILO_CODO}>└</span> : null}{rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.obra_id) })}
                     </span>
                     <span className="flex flex-wrap items-baseline gap-x-3 gap-y-[2px]" style={{ ...ESTILO_SUBLINEA, minWidth: 0 }}>
                       {/* EL ESTADO EN AZUL, COMO OBRAS (dueño, 25/09/2026: «podrías haber respetado los
