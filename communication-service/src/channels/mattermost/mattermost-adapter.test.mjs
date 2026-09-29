@@ -104,3 +104,12 @@ test('ENTRANTE: el mismo mensaje dos veces produce la misma idempotency_key', ()
   const p = { token: 'secreto', user_id: 'u1', channel_id: 'c1', post_id: 'p1', text: 'hola' }
   assert.equal(adapter.aCanonico(p).idempotency_key, adapter.aCanonico(p).idempotency_key)
 })
+
+test('ENTRANTE: la raíz del hilo (root_id) viaja en el evento canónico; sin ella ingesta-os responde a una respuesta y Mattermost da 400', () => {
+  const { adapter } = armar()
+  const ev = adapter.aCanonico({ token: 'secreto', user_id: 'u1', channel_id: 'c1', post_id: 'respuesta1', root_id: 'raiz1', text: 'fecha de ayer' })
+  assert.equal(ev.data.root_id, 'raiz1')
+  assert.equal(ev.data.post_id, 'respuesta1')
+  const sinHilo = adapter.aCanonico({ token: 'secreto', user_id: 'u1', channel_id: 'c1', post_id: 'p2', text: 'hola' })
+  assert.equal('root_id' in sinHilo.data, false)
+})

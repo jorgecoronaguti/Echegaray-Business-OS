@@ -113,6 +113,11 @@ export class MattermostAdapter extends PuertoAdapter {
       channel_name: payload.channel_name ?? null,
       team_id: payload.team_id ?? null,
       post_id: payload.post_id ?? null,
+      // RAÍZ REAL DEL HILO (29/09). El consumer la calcula (`post.root_id || post.id`) y la manda como
+      // `root_id`; si el adapter la descarta, `ingesta-os` cae a `post_id`, que dentro de un hilo es
+      // una RESPUESTA, y Mattermost rechaza el post del OS con `400 Invalid RootId parameter`
+      // (dead-letter: la persona nunca ve la respuesta).
+      ...(payload.root_id ? { root_id: payload.root_id } : {}),
       texto: payload.text ?? '',
       // Tipo de canal y ADJUNTOS del post. Los ids de archivo, no los bytes: el evento canónico es
       // un hecho, no un depósito de binario. Quien necesite el contenido lo baja después, y sólo
