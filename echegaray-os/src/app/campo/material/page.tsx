@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { ListaMaterialTelefono } from '@/features/materiales/components/ListaMaterialTelefono'
+import { puedeOperarMaterial } from '@/features/materiales/logica/stock'
 import { agruparPedidos, hrefPedirTelefono } from '@/features/materiales/logica/pedidos'
 import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosService'
 import { leerDatosCampo } from '../datos'
@@ -30,6 +31,7 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
   const [campo, lectura, perfil] = await Promise.all([leerDatosCampo(supabase), leerMaterial(supabase), getPerfilActual(supabase)])
   // Borrar un pedido es de quien administra (la RPC lo exige igual); al operario no se le dibuja el botón.
   const puedeBorrar = perfil.data?.rol != null && perfil.data.rol !== 'campo' && perfil.data.rol !== 'cliente'
+  const puedeOperar = puedeOperarMaterial(perfil.data?.rol)
   const pedida = (await searchParams).obra
   const obra = campo.obras.length === 1 ? campo.obras[0] : campo.obras.find((o) => o.id === pedida) ?? null
   const ids = obra ? [obra.id] : campo.obras.map((o) => o.id)
@@ -67,6 +69,13 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
     )
   }
 
+  // Stock y remitos son pantallas propias (una acción = un segmento): acá sólo el acceso, en una línea.
+  const accesos = (
+    <div className="mb-3 flex items-center gap-4 text-[13px]" data-testid="accesos-material">
+      <Link href="/campo/material/stock" data-testid="ir-stock" className="inline-flex min-h-[44px] items-center font-semibold text-ink underline">Stock por lugar</Link>
+      <Link href="/campo/material/remitos" data-testid="ir-remitos" className="inline-flex min-h-[44px] items-center text-muted underline">Remitos</Link>
+    </div>
+  )
   const grupos = agruparPedidos(lectura.pedidos.filter((p) => p.obra !== null && ids.includes(p.obra)))
 
   return (
@@ -78,10 +87,11 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
           </Aviso>
         </div>
       )}
+      {accesos}
       {grupos.length === 0 ? (
         <Vacio>Nada pedido todavía{obra ? ` para ${obra.nombre}` : ''}.</Vacio>
       ) : (
-        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} puedeBorrar={puedeBorrar} />
+        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} puedeBorrar={puedeBorrar} puedeOperar={puedeOperar && lectura.conStock} />
       )}
       {pie}
     </MarcoCampo>

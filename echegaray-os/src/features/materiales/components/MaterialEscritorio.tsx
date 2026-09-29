@@ -9,7 +9,9 @@ import {
   FILTROS_ESTADO, hrefMaterialEscritorio, rotuloUrgencia, textoCantidad, type Filtro, type Pedido,
 } from '../logica/pedidos'
 import { cambiarEstadoPedido } from '../services/acciones'
+import type { Destino } from '../logica/stock'
 import { BorrarPedido } from './BorrarPedido'
+import { LlegoPedido } from './LlegoPedido'
 import { FormPedirMaterial, type ObraElegible } from './FormPedirMaterial'
 
 // MATERIAL EN LA COMPUTADORA — la lista de todas las obras para ADMINISTRAR: filtrar, cambiar el
@@ -28,7 +30,12 @@ export function MaterialEscritorio({
   filtro,
   obras,
   abrirAlEntrar = false,
+  puedeOperar = false,
+  destinos = [],
 }: {
+  /** «Llegó» suma stock: sólo quien opera (misma regla que la base). */
+  puedeOperar?: boolean
+  destinos?: Destino[]
   /** `?pedir=1` (el «Pedir material» de la portada del jefe, 25/09/2026): el panel abre solo. */
   abrirAlEntrar?: boolean
   /** Ya filtradas por la página. */
@@ -131,7 +138,12 @@ export function MaterialEscritorio({
                 </Td>
                 <Td><span className="block max-w-[260px] truncate" title={p.nota ?? undefined}>{p.nota ?? ''}</span></Td>
                 {/* BORRAR (dueño, 23/09/2026): por ítem, con confirmación en la fila. */}
-                <Td num><BorrarPedido ids={[p.id_pedido]} que="este ítem" /></Td>
+                <Td num>
+                  <span className="inline-flex items-center gap-1">
+                    {puedeOperar && <LlegoPedido pedido={p} destinos={destinos} />}
+                    <BorrarPedido ids={[p.id_pedido]} que="este ítem" />
+                  </span>
+                </Td>
               </Tr>
             ))}
           </tbody>

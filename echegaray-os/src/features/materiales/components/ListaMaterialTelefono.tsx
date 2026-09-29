@@ -2,7 +2,9 @@ import { Estado } from '@/shared/components/ds'
 import { TarjetaLista, mono } from '@/shared/components/movil/Piezas'
 import { C, diaMes } from '@/shared/components/movil/tokens'
 import { rotuloUrgencia, textoCantidad, type Grupo } from '../logica/pedidos'
+import type { Destino } from '../logica/stock'
 import { BorrarPedido } from './BorrarPedido'
+import { LlegoPedido } from './LlegoPedido'
 
 // MATERIAL EN EL TELÉFONO — lo pedido, para OPERAR: una tarjeta por pedido, sus ítems adentro, el
 // estado en una pastilla. No hay filtros ni selector de estado: el jefe mira si llegó y pide lo que
@@ -12,7 +14,10 @@ import { BorrarPedido } from './BorrarPedido'
 // Las piezas son las del mockup del teléfono (`shared/components/movil`): tarjeta de radio 14,
 // divisor entre filas más claro que el borde, cifra en mono.
 
-export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false }: {
+export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false, puedeOperar = false, destinos = [] }: {
+  /** «Llegó» suma stock: dirección, administración y jefe (la base lo exige igual). */
+  puedeOperar?: boolean
+  destinos?: Destino[]
   grupos: Grupo[]
   variasObras: boolean
   /** Borrar es de quien administra (Dirección, Administración, jefe): al operario no se le ofrece. */
@@ -37,15 +42,19 @@ export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false
               <li
                 key={it.id_pedido}
                 data-testid="item"
-                style={{
-                  minHeight: 48, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 14px',
-                  borderBottom: i === g.items.length - 1 ? undefined : `1px solid ${C.divisor}`,
-                }}
+                style={{ borderBottom: i === g.items.length - 1 ? undefined : `1px solid ${C.divisor}` }}
               >
+                <div style={{ minHeight: 48, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 14px' }}>
                 <span style={{ ...mono, fontSize: 14, color: C.ink, whiteSpace: 'nowrap' }}>{textoCantidad(it.cantidad, it.unidad)}</span>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 15, color: C.ink }}>{it.material ?? '—'}</span>
                 {g.items.length > 1 && it.lectura.clave !== g.lectura.clave && (
                   <Estado tono={it.lectura.tono} clave={it.lectura.clave}>{it.lectura.label}</Estado>
+                )}
+                </div>
+                {puedeOperar && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 6px 4px' }}>
+                    <LlegoPedido pedido={it} destinos={destinos} variante="telefono" />
+                  </div>
                 )}
               </li>
             ))}

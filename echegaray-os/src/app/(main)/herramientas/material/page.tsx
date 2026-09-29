@@ -1,9 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { Filtros } from '@/shared/components/ds'
 import { Aviso } from '@/shared/components/ds'
 import { NavHerramientas } from '@/features/herramientas/components/NavHerramientas'
 import { bajadaPagina, pagina, tituloPagina } from '@/features/herramientas/components/estilo'
 import { MaterialEscritorio } from '@/features/materiales/components/MaterialEscritorio'
 import { FiltroObra } from '@/features/materiales/components/FiltroObra'
+import { StockEscritorio } from '@/features/materiales/components/StockEscritorio'
+import { ListaRemitos } from '@/features/materiales/components/ListaRemitos'
+import { SOLAPAS_MATERIAL, puedeOperarMaterial, solapaDeUrl } from '@/features/materiales/logica/stock'
+import { MIGRACION_STOCK, leerStock } from '@/features/materiales/services/stockService'
 import { filtrarPedidos, filtroEstadoDeUrl, type Filtro } from '@/features/materiales/logica/pedidos'
 import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosService'
 
@@ -27,7 +33,9 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams
   const filtro: Filtro = { obra: uno(sp.obra), estado: filtroEstadoDeUrl(uno(sp.estado)) }
   const supabase = await createClient()
-  const lectura = await leerMaterial(supabase)
+  const solapa = solapaDeUrl(uno(sp.ver))
+  const [lectura, stock, perfil] = await Promise.all([leerMaterial(supabase), leerStock(supabase), getPerfilActual(supabase)])
+  const puedeOperar = puedeOperarMaterial(perfil.data?.rol)
 
   const obras = lectura.estado === 'ok' ? lectura.obras : []
   const pedidos = lectura.estado === 'ok' ? filtrarPedidos(lectura.pedidos, filtro) : []
@@ -37,13 +45,20 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
     <div className="min-h-[calc(100vh-48px)] bg-surface text-ink">
       <NavHerramientas
         cuentas={{ mantenimiento: null }}
-        derecha={lectura.estado === 'ok' ? <FiltroObra obras={obras} filtro={filtro} /> : undefined}
+        derecha={lectura.estado === 'ok' && solapa === 'pedidos' ? <FiltroObra obras={obras} filtro={filtro} /> : undefined}
       />
       <div style={pagina}>
         <div className="flex flex-col gap-1.5">
           <div style={tituloPagina} data-testid="titulo-material">Material</div>
-          <div style={bajadaPagina}>Lo que pidió cada obra, y en qué anda. El estado lo mueve Administración.</div>
+          <div style={bajadaPagina}>Lo que pidió cada obra, cuánto llegó y qué hay en cada lugar.</div>
         </div>
+        <Filtros
+          testid="solapas-material"
+          opciones={SOLAPAS_MATERIAL.map((s) => ({
+            label: s.label, href: s.id === 'pedidos' ? '/herramientas/material' : `/herramientas/material?ver=${s.id}`,
+            activo: s.id === solapa, testid: `solapa-${s.id}`,
+          }))}
+        />
 
         {lectura.estado === 'falta_migracion' && (
           <Aviso tono="warn" titulo={`El módulo espera la migración ${MIGRACION}`} testid="falta-migracion">
@@ -56,7 +71,20 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
             {lectura.mensaje}
           </Aviso>
         )}
-        {lectura.estado === 'ok' && <MaterialEscritorio pedidos={pedidos} total={total} filtro={filtro} obras={obras} abrirAlEntrar={uno(sp.pedir) === '1'} />}
+        {solapa !== 'pedidos' && stock.estado === 'falta_migracion' && (
+          <Aviso tono="warn" titulo={`El stock espera la migración ${MIGRACION_STOCK}`} testid="falta-migracion-stock">
+            Hasta que se aplique no hay saldo por lugar ni remitos.
+          </Aviso>
+        )}
+        {solapa !== 'pedidos' && stock.estado === 'error' && (
+          <Aviso tono="neg" titulo="No se pudo leer el stock." testid="stock-error">{stock.mensaje}</Aviso>
+        )}
+        {solapa === 'stock' && stock.estado === 'ok' && (
+          <StockEscritorio lugares={stock.lugares} existencias={stock.existencias} destinos={stock.destinos} remitos={stock.remitos} puedeOperar={puedeOperar} />
+        )}
+        {solapa === 'remitos' && stock.estado === 'ok' && <ListaRemitos remitos={stock.remitos} cara="escritorio" />}
+        {solapa === 'pedidos' && lectura.estado === 'ok' && <MaterialEscritorio pedidos={pedidos} total={total} filtro={filtro} obras={obras} abrirAlEntrar={uno(sp.pedir) === '1'}
+          puedeOperar={puedeOperar && lectura.conStock} destinos={stock.estado === 'ok' ? stock.destinos : []} />}
       </div>
     </div>
   )

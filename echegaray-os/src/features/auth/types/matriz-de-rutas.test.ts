@@ -57,7 +57,7 @@ test('LO QUE EL JEFE NECESITA PARA TRABAJAR sigue abierto (PC y teléfono)', () 
   for (const r of ['/obras/hoy', '/obras/hoy?obra=quattropani', '/obras/la-estrella', '/obras/la-estrella?vista=tareas',
     '/obras/la-estrella/cronograma', '/obras/la-estrella/dotacion', '/obras/la-estrella/avance-masivo',
     '/obra/hoy', '/obra/tareas', '/obra/avance', '/obra/personas', '/obra/efectivo', '/obra/frente',
-    '/campo/asistencia', '/campo/parte', '/campo/impedimento', '/campo/material', '/campo/material/pedir',
+    '/campo/asistencia', '/campo/parte', '/campo/impedimento', '/campo/material', '/campo/material/pedir', '/campo/material/stock', '/campo/material/mover', '/campo/material/remitos', '/campo/material/remitos/abc',
     '/campo/herramientas', '/herramientas', '/herramientas/inventario', '/h/SOL-007',
     '/administracion', '/administracion/personas', '/administracion/personas/518df458', '/administracion/personas/correcciones',
     '/administracion/personas/cuadrillas', '/administracion/base-maestra/tareas',
@@ -69,7 +69,7 @@ test('LO QUE EL JEFE NECESITA PARA TRABAJAR sigue abierto (PC y teléfono)', () 
 test('LO QUE EL OPERARIO NECESITA sigue abierto', () => {
   for (const r of ['/hoy', '/mi-trabajo', '/mi-trabajo/tareas/x', '/mi-trabajo/reportar', '/mi-informacion',
     '/mi-informacion/horas', '/mi-informacion/recibos', '/mi-informacion/efectivo/rendir?entrega=x', '/mi-informacion/epp',
-    '/herramientas', '/h/SOL-007', '/campo/herramientas/a/SOL-007', '/campo/material/pedir', '/mi-cuenta', '/mi-cuenta/seguridad',
+    '/herramientas', '/h/SOL-007', '/campo/herramientas/a/SOL-007', '/campo/material/pedir', '/campo/material/stock', '/campo/material/remitos/abc', '/mi-cuenta', '/mi-cuenta/seguridad',
     '/integraciones/herramientas']) {
     assert.equal(puedeVerRuta('campo', r), true, `el operario no pudo abrir ${r}`)
   }

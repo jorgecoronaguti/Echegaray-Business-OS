@@ -26,22 +26,33 @@ export interface ObraParaPedir {
 }
 
 export type LecturaMaterial =
-  | { estado: 'ok'; pedidos: Pedido[]; obras: ObraParaPedir[] }
+  | { estado: 'ok'; pedidos: Pedido[]; obras: ObraParaPedir[]; /** false = falta 20260929T1500: sin «Llegó» ni stock. */ conStock: boolean }
   | { estado: 'falta_migracion' }
   | { estado: 'error'; mensaje: string }
 
 const COLUMNAS =
   'id_pedido, obra_texto, obra_canonica_id, fecha, material, cantidad, unidad, estado, origen, urgencia, nota, pedido_grupo, created_at'
+// STOCK POR LUGAR (20260929T1500) agrega lo recibido. Se pide APARTE para que un pedido siga viéndose en
+// la base que todavía no la tiene: sin esto, aplicar el código antes que la migración dejaría el módulo
+// entero en «falta migración» y los pedidos de siempre desaparecerían de la pantalla.
+const COLUMNAS_CON_STOCK = `${COLUMNAS}, cantidad_recibida`
 
 export async function leerMaterial(supabase: SupabaseClient): Promise<LecturaMaterial> {
   try {
-    const [pedidos, alias, obras] = await Promise.all([
-      supabase.from('pedidos_materiales').select(COLUMNAS).order('created_at', { ascending: false }),
+    const pedirPedidos = (columnas: string) => supabase.from('pedidos_materiales').select(columnas).order('created_at', { ascending: false })
+    let conStock = true
+    const [primero, alias, obras] = await Promise.all([
+      pedirPedidos(COLUMNAS_CON_STOCK),
       supabase.from('obra_alias').select('alias, obra_id, clasificacion'),
       // Las obras ACTIVAS son las que se pueden pedir; el rótulo de las cerradas sale igual para
       // leer los pedidos viejos del Sheet.
       supabase.from('obra_canonica').select('id, nombre, codigo, estado').order('nombre'),
     ])
+    let pedidos = primero
+    if (primero.error?.code === '42703') {
+      conStock = false
+      pedidos = await pedirPedidos(COLUMNAS)
+    }
     if (pedidos.error) {
       if (pedidos.error.code === '42703') return { estado: 'falta_migracion' }
       return { estado: 'error', mensaje: pedidos.error.message }
@@ -57,8 +68,12 @@ export async function leerMaterial(supabase: SupabaseClient): Promise<LecturaMat
       if (o.estado === 'activa') activas.push({ id: o.id as string, nombre })
     }
     const indice = indiceDeAlias(alias.data ?? []) as IndiceObras
-    const filas = (pedidos.data ?? []).map((f) => ({ ...f, cantidad: f.cantidad == null ? null : Number(f.cantidad) })) as FilaPedido[]
-    return { estado: 'ok', pedidos: resolverObras(filas, indice, rotulos), obras: activas }
+    const filas = ((pedidos.data ?? []) as unknown as Array<Record<string, unknown>>).map((f) => ({
+      ...f,
+      cantidad: f.cantidad == null ? null : Number(f.cantidad),
+      cantidad_recibida: f.cantidad_recibida == null ? null : Number(f.cantidad_recibida),
+    })) as unknown as FilaPedido[]
+    return { estado: 'ok', pedidos: resolverObras(filas, indice, rotulos), obras: activas, conStock }
   } catch (err) {
     return { estado: 'error', mensaje: err instanceof Error ? err.message : 'Error al conectar con Supabase' }
   }

@@ -41,6 +41,8 @@ export interface FilaPedido {
   nota: string | null
   pedido_grupo: string | null
   created_at: string
+  /** Lo que ya llegó (acumulado). Opcional: antes de 20260929T1500 la columna no existe. */
+  cantidad_recibida?: number | null
 }
 
 /** La fila con la obra RESUELTA: por id si lo trae, por el diccionario de alias si viene del Sheet. */
