@@ -566,6 +566,36 @@ export const OBRAS_FUTURAS = [
     noCaja: { maquinaPropia: 358_974 },
     notas: 'CÁLCULO: costo unitario de la planilla (Cotizacion piso 120m2.xlsm, Análisis) × cantidades de los PDF vendidos. Piso $3.223.144 (MO+cargas $2.210.814 · mat. $775.366 · máq. $236.964) ejecutado y cobrado: real en Jornales y Compras 727/790, no se proyecta. Rampa $1.426.156 (MO+cargas $851.907 · mat. $452.239 · máq. $122.010) pendiente. Venta: Cobranzas 51, 52 y 92; la OC 2226 dice "PLAYON AZUFRE" en su detalle: conflicto declarado, manda Cobranzas.',
   },
+  {
+    clave: 'messina-platea-tanque-gasoil',
+    cliente: 'MESSINA',
+    obra: 'PLATEA TANQUE GASOIL',
+    ventaTexto: 'Platea para tanque de combustible',
+    // Cobranzas fila 104 (OC 00002-00002345, 25/09/2026): $1.209.118,58 neto. Código OB-0072.
+    // SIN COSTO INVENTADO: no hay planilla de cotización leída ni Gastos en Drive para esta obra, y
+    // sin fechas del dueño no se proyecta al flujo. `sinCosto` publica el guion, no un cero.
+    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    sinCosto: 'Alta 29/09/2026 desde la OC 2345: todavía no se cargó la explosión de costo ni las fechas de la obra.',
+    pctEjecutado: 0,
+    notas: 'DATO REAL: venta de Cobranzas fila 104 (OC 00002-00002345, $1.209.118,58 neto). DESCONOCIDO: costo y fechas.',
+  },
+  {
+    clave: 'messina-adicional-playon-dilucion',
+    cliente: 'MESSINA',
+    obra: 'ADICIONAL PLAYÓN DILUCIÓN (EXCAVACIONES Y PLATEA)',
+    ventaTexto: 'Adicional Playón Dilución de Ácido',
+    // Cobranzas fila 105 (OC 00002-00002361, 25/09/2026): $5.025.105,97 neto. Código OB-0073, adicional
+    // de OB-0022 (obra_padre_id = messina-playon-dilucion-acido).
+    // SIN COSTO INVENTADO, por lo mismo que la platea del tanque.
+    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    sinCosto: 'Alta 29/09/2026 desde la OC 2361: todavía no se cargó la explosión de costo ni las fechas de la obra.',
+    pctEjecutado: 0,
+    notas: 'DATO REAL: venta de Cobranzas fila 105 (OC 00002-00002361, $5.025.105,97 neto). DESCONOCIDO: costo y fechas.',
+  },
 ]
 
 /**

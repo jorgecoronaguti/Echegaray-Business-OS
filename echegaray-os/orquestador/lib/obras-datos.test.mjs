@@ -19,7 +19,7 @@ test('el shape es completo: cada obra trae todo lo que la grilla consume', () =>
   // DIEZ desde el 07/09/2026: el dueño cruzó la pestaña contra COBRANZAS y faltaban tres de MESSINA
   // —Playón para Dilución de Ácido (OC 2266), Adicional tercer muro (OC 2256) y Pisos 120 m² + Rampa
   // (OC 2097 y 2226)—. Las tres entran con la VENTA que dice Cobranzas y sin costo inventado.
-  assert.equal(OBRAS_FUTURAS.length, 10, 'las obras que Cobranzas declara vivas')
+  assert.equal(OBRAS_FUTURAS.length, 12, 'las obras que Cobranzas declara vivas')
   for (const o of OBRAS_FUTURAS) {
     assert.ok(o.clave && typeof o.clave === 'string', 'clave')
     assert.ok(o.cliente && o.obra && o.ventaTexto, `${o.clave}: cliente, obra y texto de venta`)
@@ -137,12 +137,12 @@ test('LOS DOS CONSUMIDORES DE MAIN encuentran las obras: el desacuerdo de nombre
   // sólo el piso al convenio.
   // scripts/libro-movimientos-pestana.mjs → m.OBRAS_FUTURAS ?? []
   assert.equal(datos.OBRAS_FUTURAS ?? [], OBRAS_FUTURAS)
-  assert.equal((datos.OBRAS_FUTURAS ?? []).length, 10, 'el Libro tiene que ver las 10 obras')
+  assert.equal((datos.OBRAS_FUTURAS ?? []).length, 12, 'el Libro tiene que ver las 12 obras')
   // lib/jornales-demanda-fuente.mjs → m.obrasVendidas ?? m.OBRAS_VENDIDAS ?? m.OBRAS ?? m.default
   const bruto = datos.obrasVendidas ?? datos.OBRAS_VENDIDAS ?? datos.OBRAS ?? datos.default
   const paraJornales = typeof bruto === 'function' ? bruto() : bruto
   assert.ok(Array.isArray(paraJornales), 'si esto no es un arreglo, Jornales pierde la demanda sin un solo log')
-  assert.equal(paraJornales.length, 10, 'Jornales tiene que ver las 10 obras')
+  assert.equal(paraJornales.length, 12, 'Jornales tiene que ver las 12 obras')
   // Y es LA MISMA fuente, no una copia que pueda divergir.
   assert.equal(paraJornales, OBRAS_FUTURAS, 'un alias, no un segundo arreglo')
 })
