@@ -22,8 +22,11 @@
 //   hizo a su ficha, y cada una tiene su propio control de acceso. El mockup no las tiene porque su
 //   legajo de ejemplo es de un oficial albañil sin cuenta.
 //
-//   RECIBOS no existe como cara propia: los recibos son una CATEGORÍA de `documento_legajo`, así que
-//   viven en Papeles. Separarlos exigiría una columna que hoy no distingue nada.
+//   RECIBOS (dueño, 30/09/2026) es cara propia: «una sección exclusiva que diga recibos, ahí deben ir los
+//   blancos y los firmados». Lo que antes se descartaba («exigiría una columna que no distingue nada») se
+//   resolvió sin columna nueva: los del estudio son los `documentacion_legajo` de tipo recibo_sueldo y los
+//   de la app los firmados de `recibo_liquidacion_emitido`. Misma puerta que Retribución (`liquidaSueldos`):
+//   el jefe de obra abre el legajo y no ve sueldos. Deep link: `?v=recibos` (lo usa Liquidación).
 //
 // NINGUNA VISTA SE RENOMBRÓ: los valores de `?v=` que ya circulan siguen valiendo, así que no hace
 // falta ningún redirect y ningún enlace guardado se rompe.
@@ -39,7 +42,7 @@
 //   Un `?v=auditoria` viejo cae en el Resumen: no hay redirect que mantener.
 
 export const VISTAS_FICHA = [
-  'resumen', 'asignaciones', 'horas', 'retribucion', 'documentos', 'usuario', 'epp',
+  'resumen', 'asignaciones', 'horas', 'retribucion', 'recibos', 'documentos', 'usuario', 'epp',
 ] as const
 export type VistaFicha = (typeof VISTAS_FICHA)[number]
 
@@ -48,6 +51,7 @@ export const LABEL_FICHA: Record<VistaFicha, string> = {
   asignaciones: 'Asignaciones',
   horas: 'Horas',
   retribucion: 'Retribución',
+  recibos: 'Recibos',
   documentos: 'Documentos',
   usuario: 'Usuario y permisos',
   epp: 'EPP y Ropa de Trabajo',

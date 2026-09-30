@@ -93,6 +93,8 @@ import { RetribucionDelLegajo } from '@/features/administracion/components/Retri
 import { getHaberesDelBanco } from '@/features/administracion/services/haberesDelBancoService'
 import { getRecibosEmitidos } from '@/features/administracion/services/recibosEmitidosService'
 import { RecibosEmitidos } from '@/features/administracion/components/RecibosEmitidos'
+import { RecibosDelLegajo } from '@/features/administracion/components/RecibosDelLegajo'
+import { getRecibosDelLegajo } from '@/features/administracion/services/recibosDelLegajoService'
 import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
 import { conLiquidacionEstimada } from '@/features/administracion/services/haberesDelBanco'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
@@ -207,6 +209,10 @@ export default async function FichaPersonaPage({
       getRecibosEmitidos(supabase, { personaId: id, puedeVer: true }),
     ])
     : [null, null, null]
+  // LA SOLAPA «RECIBOS»: sólo su vista y sólo con la puerta de sueldos (trae el neto de cada recibo).
+  const recibosDelLegajo = vista === 'recibos' && liquida
+    ? await getRecibosDelLegajo(supabase, { personaId: id, puedeVer: true })
+    : null
   const haberesBanco = haberesBancoCrudo && retribucion
     ? conLiquidacionEstimada(haberesBancoCrudo, retribucion.filas.filter((f) => f.bancoEstimado).map((f) => f.desde))
     : haberesBancoCrudo
@@ -480,7 +486,7 @@ export default async function FichaPersonaPage({
       <SolapasDeFicha
         testid="nav-ficha-persona"
         solapas={VISTAS_FICHA
-          .filter((v) => (veLaCuenta || v !== 'usuario') && (liquida || v !== 'retribucion'))
+          .filter((v) => (veLaCuenta || v !== 'usuario') && (liquida || (v !== 'retribucion' && v !== 'recibos')))
           .map((v) => ({
             clave: v,
             titulo: LABEL_FICHA[v],
@@ -601,6 +607,15 @@ export default async function FichaPersonaPage({
             </div>
           )}
 
+          {vista === 'recibos' && !liquida && (
+            <div data-testid="recibos-sin-permiso">
+              <Aviso tono="info" titulo="Esta solapa es de Dirección y Administración">
+                Los recibos dicen cuánto cobró cada persona y se ven donde se liquida. No es que no existan:
+                sin permiso para liquidar sueldos no se muestran.
+              </Aviso>
+            </div>
+          )}
+          {vista === 'recibos' && recibosDelLegajo && <RecibosDelLegajo datos={recibosDelLegajo} />}
           {vista === 'retribucion' && retribucion && (
             <RetribucionDelLegajo
               r={retribucion} rotulo={valorHora.rotulo}

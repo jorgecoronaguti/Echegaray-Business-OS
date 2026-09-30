@@ -97,6 +97,10 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
               Recibo en blanco
             </button>
           )}
+          {/* «RECIBOS» DEL LEGAJO (dueño, 30/09/2026: «al hacer click en la persona [...] acceso a esto, ya te lo había
+              solicitado»): los recibos en blanco del estudio y los firmados, en la solapa propia del legajo. */}
+          <Link href={`/administracion/personas/${fila.personaId}?v=recibos`} prefetch={false} data-testid="panel-recibos-legajo"
+            style={{ fontSize: '12.5px', color: V.tinta, fontWeight: 600, textDecoration: 'underline' }}>Recibos</Link>
           <Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>
         </div>
       }
