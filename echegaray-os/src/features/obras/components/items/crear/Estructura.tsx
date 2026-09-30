@@ -150,6 +150,15 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
     creada(r.id ?? null, m)
   }
   const creada = (id: string | null, m: ModoEnvio) => {
+    // PRIMER RUBRO: la obra pasa de 0 a 1 nodo y el servidor vuelve a decidir el modo. Si la URL sólo se
+    // tocó con replaceState, el render nuevo puede no verla, `modoParaObra` ya no fuerza «mano» y el alta
+    // se desmonta (en escritorio, «Crear y seguir» terminaba en la tabla). Se navega de verdad.
+    if (nodos.length === 0 && m !== 'abrir') {
+      const padre = m === 'bajar' && id ? id : null
+      setNuevo({ padreId: padre, nombre: '' }); setPrevia(null)
+      ir(`&crear=mano&nuevo=${padre ?? 'raiz'}`)
+      return
+    }
     if (m === 'abrir' && id) { setNuevo(null); ir(`&act=${id}&panel=subtareas`); return }
     if (m === 'bajar' && id) fijarNuevo(id)
     else fijarNuevo(nuevo?.padreId ?? null)
@@ -313,7 +322,7 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
       </div>
       {/* TELÉFONO: el panel lateral es `hidden md:flex`; rubro, épica y subtarea sólo tenían Enter en el teclado. */}
       {enMano && !conAsideForm && (
-        <BarraCrearTelefono nombre={nuevo.nombre} pendiente={pendiente} alEnviar={(m) => void crearRapido(m)} alCerrar={() => setNuevo(null)} />
+        <BarraCrearTelefono nombre={nuevo.nombre} pendiente={pendiente} alEnviar={(m) => void crearRapido(m)} alCerrar={() => setNuevo(null)} conCerrar={nodos.length > 0} />
       )}
     </>
   )

@@ -73,8 +73,10 @@ export function RubrosPropuestos({ rubros, alElegir }: { rubros: RubroPropuesto[
 }
 
 /** TELÉFONO: la barra fija con «Crear». El aside de arriba es `hidden md:flex`, así que a menos de 768 px no existe. */
-export function BarraCrearTelefono({ nombre, pendiente, alEnviar, alCerrar }: {
+export function BarraCrearTelefono({ nombre, pendiente, alEnviar, alCerrar, conCerrar }: {
   nombre: string; pendiente: boolean; alEnviar: (m: ModoEnvio) => void; alCerrar: () => void
+  /** Con 0 rubros el alta no se cierra (no hay otra cosa que ver): un «Cerrar» sería una salida muerta. */
+  conCerrar: boolean
 }) {
   const listo = nombre.trim().length >= 2
   return (
@@ -84,7 +86,7 @@ export function BarraCrearTelefono({ nombre, pendiente, alEnviar, alCerrar }: {
         style={{ ...ESTILO_PRIMARIA_32, flex: 1, height: '48px', justifyContent: 'center', opacity: listo ? 1 : 0.5 }}>
         <Ico d={P.ok} s={14} />{pendiente ? 'Creando…' : listo ? 'Crear y seguir con otro' : 'Escribí el nombre'}
       </button>
-      <button type="button" onClick={alCerrar} data-testid="telefono-cerrar-alta" style={{ ...ESTILO_SECUNDARIA_32, height: '48px' }}>Cerrar</button>
+      {conCerrar && <button type="button" onClick={alCerrar} data-testid="telefono-cerrar-alta" style={{ ...ESTILO_SECUNDARIA_32, height: '48px' }}>Cerrar</button>}
     </div>
   )
 }
