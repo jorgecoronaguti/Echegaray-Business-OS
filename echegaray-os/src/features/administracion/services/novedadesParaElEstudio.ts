@@ -25,12 +25,17 @@
 //
 // El blanco usa la categoría y el $/h del último recibo real (`categoriaRecibo`). Sólo si la persona nunca tuvo
 // recibo caen a los del legajo, y la fila lo dice en Observaciones para que el estudio no los tome por los suyos.
+//
+// SALVO RECATEGORIZACIÓN (dueño, 18/09/2026, al estudio: cuatro obreros suben de categoría desde Q2-09/2026): cuando el
+// legajo —la planilla del dueño— dice una categoría distinta de la del último recibo, manda el legajo, porque el
+// recibo anterior es justamente el que el estudio tiene que dejar de repetir. La fila lo aclara en Observaciones
+// con la categoría vieja, para que el estudio lo lea como cambio y no como error de carga.
 
 import { compararPorApellido } from '../../../shared/personas/nombre.ts'
 import type { FilaDelEspejo } from './espejoDeJornales.ts'
 import type { PresentismoDeLinea } from './presentismo.ts'
 import { EMPLEADOR, esReciboContador, periodoDePago, reciboFormatoContador } from './reciboFormatoContador.ts'
-import { categoriaVisible } from './vocabularioPersona.ts'
+import { categoriaVisible, mismaCategoria } from './vocabularioPersona.ts'
 
 /** Lo que la pantalla sabe de la persona y `FilaDelEspejo` no trae: viene del legajo. */
 export interface DatosDelLegajo {
@@ -125,8 +130,12 @@ export function textoDePresentismo(p: PresentismoDeLinea | null): string {
 }
 
 /** Lo que pasó en la quincena y el estudio tiene que saber: licencias, ingreso, egreso. Sólo de lo que ya está. */
-export function observacionesDe(f: FilaDelEspejo, q: { desde: string; hasta: string }, sinReciboPrevio: boolean): string {
+export function observacionesDe(
+  f: FilaDelEspejo, q: { desde: string; hasta: string }, sinReciboPrevio: boolean,
+  recategorizado: { vieja: string; periodo: string | null } | null = null,
+): string {
   const partes: string[] = []
+  if (recategorizado) partes.push(`Recategorizado desde esta quincena: antes ${recategorizado.vieja}${recategorizado.periodo ? ` (recibo ${recategorizado.periodo})` : ''}`)
   const licencias = f.celdas.filter((c) => c.marca === 'licencia').map((c) => ddmm(c.fecha))
   if (licencias.length) partes.push(`Licencia ${licencias.length} ${licencias.length === 1 ? 'día' : 'días'}: ${licencias.join(', ')}`)
   if (f.alta && f.alta >= q.desde && f.alta <= q.hasta) partes.push(`Ingresó el ${ddmm(f.alta)}`)
@@ -157,12 +166,16 @@ function filaDe(f: FilaDelEspejo & { grupo: GrupoDeNovedades }, l: DatosDelLegaj
   const s = f.linea.sueldo
   const r = reciboFormatoContador(s)
   const categoriaRecibo = s?.categoriaRecibo ?? null
+  const categoriaLegajo = categoriaVisible(f.categoria, l?.puesto ?? null)
+  // RECATEGORIZADO: el legajo dice otra cosa que el último recibo → manda el legajo y se avisa la vieja.
+  const recategorizado = categoriaRecibo != null && categoriaLegajo != null && !mismaCategoria(categoriaRecibo, categoriaLegajo)
+    ? { vieja: categoriaRecibo, periodo: s?.periodoRecibo ?? null } : null
   return {
     ...base,
-    categoria: categoriaRecibo ?? categoriaVisible(f.categoria, l?.puesto ?? null), categoriaDelLegajo: categoriaRecibo == null,
+    categoria: recategorizado ? categoriaLegajo : (categoriaRecibo ?? categoriaLegajo), categoriaDelLegajo: categoriaRecibo == null || !!recategorizado,
     valorHora: esReciboContador(r) ? r.valorHora : (s?.valorHoraCategoria ?? null),
     horasBlanco: s?.horasBlanco ?? null,
-    observaciones: observacionesDe(f, q, categoriaRecibo == null),
+    observaciones: observacionesDe(f, q, categoriaRecibo == null, recategorizado),
   }
 }
 

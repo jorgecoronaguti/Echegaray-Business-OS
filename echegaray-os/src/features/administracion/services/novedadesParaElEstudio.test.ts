@@ -172,11 +172,30 @@ test('orden por apellido, con la Ñ después de la N y sin que las tildes lo rom
   assert.deepEqual(r.filas.map((f) => f.apellidoYNombre), ['Álvarez Bruno', 'Nuñez Carlos', 'Ñandú Ana', 'Zapata Luis'])
 })
 
+// RECATEGORIZACIÓN (dueño al estudio, 18/09/2026: cuatro obreros suben desde Q2-09/2026): el legajo dice Oficial
+// especializado y el último recibo (Q1-09) todavía dice Ayudante → va la del legajo y Observaciones aclara la vieja.
+// MUTACIÓN que pone rojo: volver a `categoriaRecibo ?? legajo` sin comparar.
+test('obreros recategorizados: manda la categoría del legajo sobre la del último recibo, y la fila lo dice', () => {
+  const r = reporte(
+    [fila('q', 'Quiroga Sebastian', sueldo({ categoriaRecibo: 'AYUDANTE', periodoRecibo: 'Q1-09/2026', valorHoraCategoria: 5000, horasBlanco: 37.5 }), { categoria: 'oficial_especializado' })],
+    [['q', legajo('Quiroga Sebastian', 1)]],
+  )
+  const f = r.filas[0]
+  assert.equal(f.categoria, 'Oficial especializado')
+  assert.equal(f.categoriaDelLegajo, true)
+  assert.match(f.observaciones, /Recategorizado desde esta quincena: antes AYUDANTE \(recibo Q1-09\/2026\)/)
+  // La misma categoría con otra grafía NO es recategorización.
+  const igual = reporte([fila('a', 'Alvarez Bruno', sueldo({ categoriaRecibo: 'OFICIAL' }), { categoria: 'oficial' })], [['a', legajo('Alvarez Bruno', 1)]])
+  assert.equal(igual.filas[0].categoria, 'OFICIAL')
+  assert.doesNotMatch(igual.filas[0].observaciones, /Recategorizado/)
+})
+
 test('obreros: categoría y $/h del recibo, y las horas son sueldo.horasBlanco, no lo trabajado', () => {
-  const r = reporte([fila('a', 'Alvarez Bruno', sueldo({ categoriaRecibo: 'MEDIO OFICIAL', valorHoraCategoria: 5000, horasBlanco: 37.5 }))], [['a', legajo('Alvarez Bruno', 1)]])
+  const r = reporte([fila('a', 'Alvarez Bruno', sueldo({ categoriaRecibo: 'MEDIO OFICIAL', valorHoraCategoria: 5000, horasBlanco: 37.5 }), { categoria: 'medio_oficial' })], [['a', legajo('Alvarez Bruno', 1)]])
   const f = r.filas[0]
   assert.equal(f.categoria, 'MEDIO OFICIAL')
   assert.equal(f.categoriaDelLegajo, false)
+  assert.doesNotMatch(f.observaciones, /Recategorizado/)
   assert.equal(f.horasBlanco, 37.5, 'horasPorTipo.total (91) no es lo que va al recibo')
   assert.equal(typeof f.valorHora, 'number')
   const fila1 = celdasDelXlsx(xlsxDeNovedades(r)).find((x) => x[1] === 'Alvarez Bruno')!

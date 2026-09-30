@@ -36,6 +36,11 @@ function clave(v: string): string {
     .replace(/[\s_-]+/g, '_')
 }
 
+/** \u00abOFICIAL\u00bb, \u00abOficial\u00bb y \u00aboficial\u00bb son la misma categor\u00eda; \u00abOficial\u00bb y \u00abOficial especializado\u00bb, no. */
+export function mismaCategoria(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && clave(a) === clave(b)
+}
+
 /**
  * ¿ESTE TEXTO LIBRE ES, EN REALIDAD, UNA CATEGORÍA DEL CONVENIO?
  *
