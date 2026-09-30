@@ -20,3 +20,17 @@ export function esModoEstructura(m: ModoEstructura): boolean {
   // B07: la ponderación de la obra entera no mira un ítem (`?panel=ponderacion` sin `act`).
   return m.crear != null || m.panel === 'ponderacion' || (m.panel != null && m.act != null) || m.sel
 }
+
+/**
+ * OBRA SIN TRABAJO: QUIEN PUEDE CARGAR ENTRA DIRECTO A ARMAR, NO A ELEGIR UNA PUERTA.
+ *
+ * Antes la obra vacía dibujaba dos tarjetas (C01) y recién el clic en «Armar a mano» abría el alta; en
+ * el teléfono, además, el alta no tenía un solo botón visible. El equipo lo vivía como «la obra nueva no
+ * me deja cargar» (30/09/2026, OB-0072 y OB-0073). Con permiso de editar y obra vigente, sin actividades
+ * y sin otro modo pedido, el alta del primer rubro está abierta desde el primer render. El presupuesto
+ * sigue a un enlace de distancia (`&crear=presupuesto`). Quien no puede editar conserva la C01.
+ */
+export function modoParaObra(modo: ModoEstructura, nNodos: number, puedeEditar: boolean, archivada: boolean): ModoEstructura {
+  if (nNodos > 0 || !puedeEditar || archivada || esModoEstructura(modo)) return modo
+  return { ...modo, crear: 'mano' }
+}

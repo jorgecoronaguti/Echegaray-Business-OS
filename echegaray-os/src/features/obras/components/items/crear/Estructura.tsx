@@ -11,6 +11,7 @@
 // Estado del cliente con la URL sincronizada (`replaceState`); las ESCRITURAS van por server actions.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { C } from '../../canon/tokens'
 import { ArbolEstructura, type PreviaNuevo, type Tecla } from './ArbolEstructura'
@@ -18,7 +19,7 @@ import { CrearDesdePresupuesto } from './CrearDesdePresupuesto'
 import { CrearPegandoPlanilla } from './CrearPegandoPlanilla'
 import { FormHistoria, type ModoEnvio } from './FormHistoria'
 import { FormTarea } from './FormTarea'
-import { AsideRubroNuevo, RubrosPropuestos } from './NuevoRubro'
+import { AsideRubroNuevo, BarraCrearTelefono, RubrosPropuestos } from './NuevoRubro'
 import { PanelPonderacion } from './PanelPonderacion'
 import { PanelPonderacionObra } from './PanelPonderacionObra'
 import { PanelFrentes, VistaPreviaFrentes } from './PanelFrentes'
@@ -94,11 +95,14 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
   const ir = useCallback((sufijo: string) => { router.replace(`${base}${sufijo}`); router.refresh() }, [router, base])
   const cerrar = () => ir('')
 
-  const [nuevo, setNuevo] = useState<{ padreId: string | null; nombre: string } | null>(
+  const [nuevoElegido, setNuevo] = useState<{ padreId: string | null; nombre: string } | null>(
     () => modo.crear !== 'mano' ? null
       : modo.nuevo ? { padreId: modo.nuevo === 'raiz' ? null : modo.nuevo, nombre: '' }
         : nodos.length === 0 ? { padreId: null, nombre: '' } : null,
   )
+  // OBRA SIN RUBROS: el alta del primer rubro nunca se cierra. Con Escape o la «x» el árbol quedaba vacío
+  // y sin ningún control a la vista, que es justo el «no me deja cargar» de una obra nueva.
+  const nuevo = nuevoElegido ?? (modo.crear === 'mano' && nodos.length === 0 ? { padreId: null, nombre: '' } : null)
   const [previa, setPrevia] = useState<PreviaNuevo | null>(null)
   const [pendiente, setPendiente] = useState(false)
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
@@ -130,7 +134,16 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
     setPendiente(true)
     const form = new FormData()
     form.set('nombre', nuevo.nombre.trim()); form.set('padre_id', nuevo.padreId ?? '')
-    const r = await acciones.crearItem(form)
+    // Si la acción LANZA (403 de la lente, corte de red) `pendiente` quedaba en true para siempre y el
+    // botón en «Creando…» sin decir nada: se atrapa y se dice.
+    let r: Awaited<ReturnType<typeof acciones.crearItem>>
+    try {
+      r = await acciones.crearItem(form)
+    } catch {
+      setPendiente(false)
+      setResultado({ ok: false, texto: 'No se pudo guardar: el servidor no aceptó el pedido. Si tenés «Ver como» puesto, salí de la lente; si no, revisá la conexión y repetí.' })
+      return
+    }
     setPendiente(false)
     if (!r.ok) { setResultado({ ok: false, texto: r.error }); return }
     setResultado(null)
@@ -284,6 +297,12 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
             alAlternarSubtarea={async (id, hecha) => { const r = await acciones.alternarSubtarea(id, hecha); if (r.ok) router.refresh(); else setResultado({ ok: false, texto: r.error }) }}
             query={query}
             debajoDeLaRama={act && modo.panel === 'frentes' ? <VistaPreviaFrentes nodo={act} codigo={filas.find((f) => f.id === act.id)?.codigo ?? ''} texto={textoFrentes} /> : null} />
+          {enMano && sinRubros && (
+            <div className="px-5 pt-3 text-[13px] text-muted" data-testid="obra-vacia-presupuesto">
+              Escribí el nombre del primer rubro y creá. ¿Hay presupuesto?{' '}
+              <Link href={`${base}&crear=presupuesto`} prefetch={false} className="font-medium text-ink underline">Armar desde el presupuesto</Link>
+            </div>
+          )}
           {enMano && sinRubros && <RubrosPropuestos rubros={datos.rubrosPropuestos} alElegir={(nombre) => fijarNuevo(null, nombre)} />}
           {modo.sel && (
             <CajaMasiva ids={[...sel]} datos={{ contenedores, cuadrillas: datos.cuadrillas, personas: datos.personas }} aplicar={acciones.aplicarMasiva}
@@ -292,6 +311,10 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
         </div>
         {aside}
       </div>
+      {/* TELÉFONO: el panel lateral es `hidden md:flex`; rubro, épica y subtarea sólo tenían Enter en el teclado. */}
+      {enMano && !conAsideForm && (
+        <BarraCrearTelefono nombre={nuevo.nombre} pendiente={pendiente} alEnviar={(m) => void crearRapido(m)} alCerrar={() => setNuevo(null)} />
+      )}
     </>
   )
 }

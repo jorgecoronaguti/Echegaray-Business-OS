@@ -51,6 +51,7 @@ import { TablaItems } from './items/TablaItems'
 import { ListaItems } from './items/ListaItems'
 import { TablaItemsTelefono, type NivelTelefono } from './items/TablaItemsTelefono'
 import { EstadoVacio } from './items/crear/EstadoVacio'
+import { modoParaObra } from './items/crear/modo'
 import { Estructura, esModoEstructura, type AccionesEstructura, type DatosEstructura, type ModoEstructura } from './items/crear/Estructura'
 import { cifrasDelArbol, cifrasSerieB, publicarCifras } from './items/crear/estadoCabecera'
 import { itemsMO } from '../services/arbolEstructura'
@@ -130,7 +131,7 @@ export function TabTareas({
   // ═══ CREAR LA ESTRUCTURA (C01–C09) ═══
   // Sin trabajo cargado se dibuja la C01 (o, con `?nueva=1`, se arma a mano); con `?crear=`, `&panel=`
   // o `?sel=1` la pantalla de armado reemplaza a la tabla. Las cifras de la cabecera las publica esto.
-  const modoEfectivo: ModoEstructura = nodos.length === 0 && nuevaInicial && !esModoEstructura(modo) ? { ...modo, crear: 'mano' } : modo
+  const modoEfectivo: ModoEstructura = modoParaObra(modo, nodos.length, puedeEditar, Boolean(estructura.obra.archivada))
   const enEstructura = esModoEstructura(modoEfectivo)
   const vacia = nodos.length === 0 && !enEstructura
   useEffect(() => {

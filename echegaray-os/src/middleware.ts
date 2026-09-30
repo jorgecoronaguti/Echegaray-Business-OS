@@ -13,6 +13,7 @@ import { trazar } from '@/lib/supabase/traza'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
 import { destinoPermanente } from '@/shared/auth/rutasViejas'
+import { BLOQUEO_POR_LENTE, CABECERA_BLOQUEO } from '@/lib/auth/bloqueo-escritura'
 import { clasificar, debeRegistrar, esDeFondo, registrar, uidDeCookies } from '@/shared/registro/registroApp'
 import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe, caraDeTelefonoDelJefe, obraQueSeMira } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
@@ -308,7 +309,7 @@ async function middlewareConBackend(request: NextRequest) {
     if (mirando && esPeticionDeEscritura(request.method)) {
       return new NextResponse(
         'Estás mirando la aplicación como otro rol («ver como»). Con la lente puesta no se escribe: ni con la identidad imitada ni con la propia. Salí del modo y repetí la acción.',
-        { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } },
+        { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', [CABECERA_BLOQUEO]: BLOQUEO_POR_LENTE } },
       )
     }
 

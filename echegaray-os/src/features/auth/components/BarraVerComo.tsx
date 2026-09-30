@@ -1,6 +1,7 @@
 'use client'
 
 import { useLente } from './useLente'
+import { AvisoEscrituraBloqueada } from './AvisoEscrituraBloqueada'
 
 // LA FRANJA DE «VER COMO», DIBUJADA.
 //
@@ -68,6 +69,7 @@ export function BarraVerComo({
         Salir del modo
       </button>
       {lente.error && <span role="alert" className="text-[11.5px] text-neg">{lente.error}</span>}
+      <AvisoEscrituraBloqueada />
     </div>
   )
 }
