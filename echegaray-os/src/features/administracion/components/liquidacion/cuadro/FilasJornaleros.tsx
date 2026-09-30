@@ -98,7 +98,7 @@ export function TotalJornaleros({ columnas, dias, t }: { columnas: string; dias:
   const noCierra = cierre?.cierra === false
   return (
     <div data-testid="espejo-total" style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
-      <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} jornalero${t.personas === 1 ? '' : 's'}`}</div>
+      <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} quincenal${t.personas === 1 ? '' : 'es'}`}</div>
       {dias.map((f, i) => (
         <div key={f} style={{ textAlign: 'center', color: V.tinta }}>{t.porDia[i] == null ? '' : nHoras(t.porDia[i])}</div>
       ))}

@@ -105,8 +105,10 @@ export function GrillaEspejoQuincena({
     // quedaría clavado a esta caja. `clip` recorta las esquinas sin crear scrollport.
     <div style={{ background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, overflow: 'clip' }}>
       {sello}
+      {/* Cabecera de la quincena: el Total general va antes de los cuadros (dueño, 30/09/2026). */}
+      <PieTotalGeneral g={general} hayMensuales={mensuales.length > 0} />
       {jornaleros.length > 0 && (
-        <TablaDeBloques testid="cuadro-jornaleros" principal titulo="Jornaleros" meta={`por hora · ${jornaleros.length}`}
+        <TablaDeBloques testid="cuadro-jornaleros" principal titulo="Quincenales" meta={`por hora · ${jornaleros.length}`}
           resumen={<ResumenJornaleros t={tJ} pagos={jornaleros.map((f) => f.linea.pago)} sellada={sellada} />} definicion={CUADRO_JORNALEROS} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
           filas={(c) => filasDe('jornalero', c)}
@@ -119,7 +121,6 @@ export function GrillaEspejoQuincena({
           filas={(c) => filasDe('mensual', c)}
           total={(c) => <TotalMensuales columnas={c} t={tM} />} />
       )}
-      <PieTotalGeneral g={general} hayMensuales={mensuales.length > 0} />
       {/* `key` = LA PERSONA. Sin la clave, abrir a otra persona reutiliza el mismo árbol y cada celda editable
           conserva lo tecleado para la anterior (dueño, 11/09/2026: «si cambiás de persona la hora se cambia»). */}
       {filaAbierta && (

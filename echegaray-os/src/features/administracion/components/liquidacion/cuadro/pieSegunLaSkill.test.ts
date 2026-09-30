@@ -54,8 +54,8 @@ test('las filas de cifras no llevan notas pegadas: los ajustes del saldo van apa
 
 test('el resumen va debajo del título y la cantidad de personas es metadato, no parte del título', () => {
   assert.match(TABLA, /className="flex flex-col gap-3[^"]*"[^>]*>\s*<h3/, 'título y resumen apilados')
-  assert.doesNotMatch(GRILLA, /titulo=\{`Jornaleros · por hora/, 'la cantidad volvió a pegarse al título')
-  assert.match(GRILLA, /titulo="Jornaleros" meta=/)
+  assert.doesNotMatch(GRILLA, /titulo=\{`Quincenales · por hora/, 'la cantidad volvió a pegarse al título')
+  assert.match(GRILLA, /titulo="Quincenales" meta=/)
 })
 
 test('«Ir a» es navegación secundaria de texto, como los filtros: sin píldoras con borde', () => {
@@ -64,4 +64,27 @@ test('«Ir a» es navegación secundaria de texto, como los filtros: sin píldor
   assert.doesNotMatch(saltos, /border-line-strong|border-ink/)
   assert.match(saltos, /bg-line-hairline font-semibold text-ink/, 'el activo se marca como en `FiltrosDelEspejo`')
   assert.match(saltos, /max-md:min-h-\[40px\]/, 'en el teléfono el blanco táctil mide 40 px')
+})
+
+// EL TOTAL GENERAL ES LA CABECERA (dueño, 30/09/2026: «esto es importante y está abajo de todo, mal puesto»).
+test('el Total general va ARRIBA: después del sello y antes de los dos cuadros', () => {
+  const sello = GRILLA.indexOf('{sello}')
+  const total = GRILLA.indexOf('<PieTotalGeneral')
+  const primerCuadro = GRILLA.indexOf('<TablaDeBloques')
+  assert.ok(sello !== -1 && total !== -1 && primerCuadro !== -1, 'faltan piezas en la grilla')
+  assert.ok(sello < total, 'el Total general va después del sello')
+  assert.ok(total < primerCuadro, 'el Total general volvió a quedar debajo de los cuadros')
+  assert.equal(GRILLA.split('<PieTotalGeneral').length - 1, 1, 'una sola vez')
+})
+
+test('el Total general: el Saldo es la cifra grande, el resto es contexto y cabe apilado a 390 px', () => {
+  const total = cuerpo(PIE, 'export function PieTotalGeneral')
+  assert.doesNotMatch(total, /style=\{\{/)
+  assert.match(total, /data-testid="pie-general-saldo"[\s\S]*text-2xl/, 'el Saldo es lo que decide: la cifra principal')
+  assert.doesNotMatch(total, /pie-general-(total|pagado)[^\n]*text-2xl/, 'Total y Pagado no compiten con el Saldo')
+  assert.match(total, /grid-cols-2[^"]*sm:flex/, 'teléfono: dos columnas; PC: una fila')
+  assert.match(total, /col-span-2/, 'el Saldo ocupa el ancho en el teléfono')
+  assert.doesNotMatch(total, /border-t/, 'el borde va debajo de la cabecera, no arriba')
+  for (const id of ['pie-total-general', 'pie-general-total', 'pie-general-pagado', 'pie-general-saldo', 'pie-general-redondeo', 'pie-general-saldo-redondeado', 'pie-general-no-cierra'])
+    assert.match(total, new RegExp(id), `se perdió el testid ${id}`)
 })

@@ -37,7 +37,7 @@
 //                      Si lo tiene, el pago puede estar cubriendo esa quincena más la final (Aguirre 09/04:
 //                      551.429,04 contra BANCO 383.347,94 de 16–31/03 que el banco nunca acreditó sola), y
 //                      partir el importe no es decisión del cargador: va «a_confirmar» con la fila nombrada.
-//   quincena (por lote) un jornalero que cobró en un lote de 5 o más acreditaciones de jornaleros del mismo
+//   quincena (por lote) un jornalero que cobró en un lote de 5 o más acreditaciones de quincenales del mismo
 //                      día, y que FIGURA en el bloque de esa quincena de la planilla, aunque el BANCO de la
 //                      planilla diga otro número o nada. Es la evidencia del 30/04 (Alaniz y Castro con los
 //                      importes cruzados en la planilla) y del 15/09 (la planilla todavía no anotó el banco).
@@ -280,12 +280,12 @@ export function clasificar({ acreditaciones, personas, planilla }) {
       const anotado = delBloque.map((r) => fmt(aCent(r.por_banco))).join(' / ')
       return {
         ...base, clase: 'quincena', periodo_desde: q.desde, periodo_hasta: q.hasta, confianza: 'regla_fecha',
-        evidencia: `lote del ${a.fecha} (${n} acreditaciones de jornaleros); figura en el bloque ${bloque(delBloque[0])} y la planilla anota BANCO ${anotado}`,
+        evidencia: `lote del ${a.fecha} (${n} acreditaciones de quincenales); figura en el bloque ${bloque(delBloque[0])} y la planilla anota BANCO ${anotado}`,
       }
     }
     const motivos = [
       q ? null : 'la fecha cae entre el 21 y el 24: la regla de la quincena no contesta',
-      n < MIN_LOTE ? `pago suelto (${n} acreditación(es) de jornaleros ese día)` : null,
+      n < MIN_LOTE ? `pago suelto (${n} acreditación(es) de quincenales ese día)` : null,
       q && delBloque.length === 0 ? `no figura en el bloque de ${q.desde}–${q.hasta} de la planilla` : null,
       egreso ? (dias <= 0 ? `anterior a su baja del ${egreso}` : `${dias} días después de su baja del ${egreso}: fuera de la ventana de ${MAX_DIAS_FINAL}`)
         : 'sin fecha de egreso en el padrón',

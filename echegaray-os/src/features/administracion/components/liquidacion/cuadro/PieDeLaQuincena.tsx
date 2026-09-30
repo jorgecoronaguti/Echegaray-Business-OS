@@ -4,8 +4,8 @@
 //
 // El pie de antes era una sola tira que mezclaba jornaleros y mensuales: «Efectivo redondeado» sumaba el sueldo
 // entero de los jefes y «el total no cierra por $3.600.000» era la suma de los mensuales, no un error. Ahora cada
-// cuadro dice lo suyo debajo de su título, y abajo va el total general con una sola pregunta contestada: ¿Total −
-// Pagado = Saldo? Si no, por cuánto y por qué (`totalGeneral`).
+// cuadro dice lo suyo debajo de su título, y el total general (ARRIBA de todo, ver `PieTotalGeneral`) contesta una
+// sola pregunta: ¿Total − Pagado = Saldo? Si no, por cuánto y por qué (`totalGeneral`).
 //
 // Las cifras salen de `liquidacionPorTipo.ts` y `conciliacionDePlata.ts`; acá no se suma nada.
 //
@@ -237,19 +237,31 @@ export function ResumenMensuales({ t, sellada = false }: { t: TotalesDeMensuales
 
 // ─── Total general ──────────────────────────────────────────────────────────────────────────────────────────────
 
-/** El total general: jornaleros (la quincena) + mensuales (el sueldo del mes), y si cierra. */
+/**
+ * EL TOTAL GENERAL ES LA CABECERA DE LA QUINCENA (dueño, 30/09/2026: «esto es importante y está abajo de todo, mal
+ * puesto. falta ux ui»). Es la respuesta de la pantalla —cuánto falta pagar y si el total cierra—, así que va ANTES
+ * de los cuadros y no al final, donde había que recorrer ~40 filas para llegar. Se sigue exportando con el nombre
+ * de siempre (`PieTotalGeneral`) y los mismos `data-testid`.
+ *
+ * Jerarquía: el Saldo (lo que falta pagar) es la única cifra grande; Total y Pagado lo explican; el efectivo
+ * redondeado y el saldo redondeado son detalle en segundo plano. En teléfono el Saldo ocupa el ancho y el resto
+ * cae en dos columnas: nada se corta ni desplaza de costado a 390 px.
+ */
 export function PieTotalGeneral({ g, hayMensuales }: { g: TotalGeneral; hayMensuales: boolean }) {
   return (
-    // `px-5` = `CANAL_SCROLL` (20 px): el mismo margen que los títulos y la cinta de los cuadros de arriba.
-    <div data-testid="pie-total-general" className="flex flex-col gap-3 border-t border-accent px-5 pb-4 pt-3">
-      <h3 className="m-0 text-[13px] font-semibold leading-5 text-ink">{hayMensuales ? 'Total general · jornaleros + mensuales' : 'Total general'}</h3>
-      <Tira testid="pie-general">
+    // `px-5` = `CANAL_SCROLL` (20 px): el mismo margen que el sello de arriba y los títulos de los cuadros.
+    <section data-testid="pie-total-general" className="flex flex-col gap-3 border-b border-line px-5 py-4">
+      <h3 className={`m-0 ${ROTULO}`}>{hayMensuales ? 'Total general · quincenales + mensuales' : 'Total general'}</h3>
+      <div data-testid="pie-general" className="grid grid-cols-2 items-end gap-x-4 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-10">
+        <div data-testid="pie-general-saldo" className="col-span-2 flex min-w-0 flex-col gap-0.5">
+          <span className={ROTULO}>Saldo · lo que falta pagar</span>
+          <strong className="text-2xl font-semibold leading-8 tabular-nums text-ink">{pesos(g.saldo)}</strong>
+        </div>
         <Cifra rotulo="Total" valor={pesos(g.total)} testid="pie-general-total" />
         <Cifra rotulo="Pagado" valor={pesos(g.pagado)} testid="pie-general-pagado" />
-        <Cifra rotulo="Saldo" valor={pesos(g.saldo)} testid="pie-general-saldo" />
-        <Cifra rotulo="Efectivo redondeado" valor={pesos(g.redondeo > 0 ? g.redondeo : null)} testid="pie-general-redondeo" />
-        <Cifra rotulo="Saldo red." valor={pesos(g.saldoRedondeado > 0 ? g.saldoRedondeado : null)} testid="pie-general-saldo-redondeado" />
-      </Tira>
+        <Cifra rotulo="Efectivo redondeado" valor={pesos(g.redondeo > 0 ? g.redondeo : null)} testid="pie-general-redondeo" tono="text-ink-soft" />
+        <Cifra rotulo="Saldo red." valor={pesos(g.saldoRedondeado > 0 ? g.saldoRedondeado : null)} testid="pie-general-saldo-redondeado" tono="text-ink-soft" />
+      </div>
       {g.cierra
         ? <Estado tono="text-pos">el total cierra: total − pagado = saldo</Estado>
         : g.sinAlarma ? (
@@ -262,6 +274,6 @@ export function PieTotalGeneral({ g, hayMensuales }: { g: TotalGeneral; hayMensu
             <span data-testid="pie-general-no-cierra">{`no cierra por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}</span>
           </Callout>
         )}
-    </div>
+    </section>
   )
 }

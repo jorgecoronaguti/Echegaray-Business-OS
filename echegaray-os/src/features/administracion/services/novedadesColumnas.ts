@@ -55,7 +55,7 @@ export const columnasDe = (g: GrupoDeNovedades): readonly ColumnaDeSalida[] => C
 const fechaAR = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
 const ROTULO_ALCANCE: Record<AlcanceDeNovedades, string> = {
-  todos: 'Obreros y oficina', obreros: 'Obreros (jornaleros por hora)', oficina: 'Oficina (mensuales)',
+  todos: 'Obreros y oficina', obreros: 'Obreros (quincenales por hora)', oficina: 'Oficina (mensuales)',
 }
 
 /** Las líneas del encabezado, iguales en el Excel y en el PDF. */

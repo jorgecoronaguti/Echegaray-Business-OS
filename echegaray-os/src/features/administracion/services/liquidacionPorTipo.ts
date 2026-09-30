@@ -243,8 +243,8 @@ export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales, sell
     if (Math.abs(j.sinSaldoImporte) > 1) {
       causas.push({
         causa: sellada
-          ? `${j.pago.sinSaldo} jornalero${j.pago.sinSaldo === 1 ? '' : 's'} con el pago sin registrar`
-          : `${j.pago.sinSaldo} jornalero${j.pago.sinSaldo === 1 ? '' : 's'} sin saldo que afirmar`,
+          ? `${j.pago.sinSaldo} quincenal${j.pago.sinSaldo === 1 ? '' : 'es'} con el pago sin registrar`
+          : `${j.pago.sinSaldo} quincenal${j.pago.sinSaldo === 1 ? '' : 'es'} sin saldo que afirmar`,
         importe: j.sinSaldoImporte,
       })
     }
@@ -255,7 +255,7 @@ export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales, sell
     if (Math.abs(resto) > 1) {
       const cierre = cierreDeTotales(j)
       causas.push({
-        causa: cierre?.cierra === false ? 'jornaleros: total escrito a mano distinto de banco + negro' : 'sin causa identificada',
+        causa: cierre?.cierra === false ? 'quincenales: total escrito a mano distinto de banco + negro' : 'sin causa identificada',
         importe: resto,
       })
     }

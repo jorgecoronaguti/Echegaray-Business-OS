@@ -119,7 +119,7 @@ test('cuando no cierra dice por cuánto y por qué, sin repartir lo que no sabe'
   const g = totalGeneral(j, totalesDeMensuales([]))
   assert.equal(g.cierra, false)
   assert.equal(g.descuadre, 70_000, '600.000 escritos contra 230.000 + 300.000')
-  assert.deepEqual(g.causas, [{ causa: 'jornaleros: total escrito a mano distinto de banco + negro', importe: 70_000 }])
+  assert.deepEqual(g.causas, [{ causa: 'quincenales: total escrito a mano distinto de banco + negro', importe: 70_000 }])
 })
 
 test('la asistencia del mensual es referencia: días con horas, ausencias y licencias', () => {
