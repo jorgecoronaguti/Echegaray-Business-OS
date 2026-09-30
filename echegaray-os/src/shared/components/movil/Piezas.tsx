@@ -41,6 +41,8 @@ export function MarcoMovil({ children, conBarra }: { children: ReactNode; conBar
         background: C.canvas,
         paddingBottom: conBarra ? ALTO_BARRA : 0,
         fontFamily: SANS,
+        // Lo que tiene debajo un `Pie` fijo (efectivo/campo): la barra si la hay, si no el borde.
+        ['--os-pie-abajo' as string]: conBarra ? `${ALTO_BARRA}px` : '0px',
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import { abiertas, conVuelta, estadoVisible } from '@/features/efectivo/campo/logica'
 import { Caja, FilaTicket, Pie, Primario, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
+import { RefrescarMientrasLee } from '@/features/efectivo/campo/components/RefrescarMientrasLee'
 
 // M06 · MIS RENDICIONES — porte de `efectivo-a-rendir.dc.html`, pantalla M06.
 //
@@ -47,6 +48,7 @@ export default async function RendicionesPage({ searchParams }: { searchParams: 
 
   return (
     <PantallaEmpleado titulo="Mis rendiciones" volver={{ ...volver }}>
+      <RefrescarMientrasLee activo={tickets.some((t) => t.estado === 'leyendo')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 'calc(100vh - 110px)' }}>
         <div style={{ display: 'flex', gap: 8, marginTop: -6 }} data-testid="filtros-rendiciones">
           <Filtro href={ruta('/rendiciones')} texto="Todas" cuenta={tickets.length} activo={!soloPiden} />
@@ -57,7 +59,7 @@ export default async function RendicionesPage({ searchParams }: { searchParams: 
           <Caja fondo={C.posFondo} borde={C.posBorde} gap={4} relleno="12px 16px" testid="rendicion-enviada">
             <div style={{ fontSize: 13.5, fontWeight: 600, color: C.pos }}>Mandado</div>
             <div style={{ fontSize: 13, color: C.inkSuave, lineHeight: 1.5 }}>
-              El OS lee el ticket y lo carga solo en Compras. El estado cambia acá abajo, sin recargar.
+              El OS lee el ticket y en unos segundos te muestra lo que leyó para que confirmes. El estado cambia acá abajo, sin recargar.
             </div>
           </Caja>
         )}

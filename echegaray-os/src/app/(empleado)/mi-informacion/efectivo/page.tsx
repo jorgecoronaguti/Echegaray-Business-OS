@@ -12,6 +12,7 @@ import {
   Caja, CifraGrande, Contorno, FilaAcceso, Pie, Primario, Renglon, Rotulo, SinPublicar,
 } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/components/TarjetasHoy'
+import { RefrescarMientrasLee } from '@/features/efectivo/campo/components/RefrescarMientrasLee'
 
 // M03 · MI EFECTIVO — porte de `efectivo-a-rendir.dc.html`, pantalla M03.
 //
@@ -64,6 +65,7 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
 
   return (
     <PantallaEmpleado titulo="Mi efectivo" volver={{ ...volver }}>
+      <RefrescarMientrasLee activo={tickets.some((t) => t.estado === 'leyendo')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 'calc(100vh - 110px)' }}>
         {hoy?.tipo === 'recibir' && <TarjetaRecibir t={hoy} sufijo={ctx.sufijo} />}
         {entregas.length === 0 ? <SinEfectivo /> : (

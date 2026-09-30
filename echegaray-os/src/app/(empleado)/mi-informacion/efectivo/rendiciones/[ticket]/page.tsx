@@ -9,6 +9,8 @@ import { conVuelta, diaHora, estadoVisible, fechaDelTicket, pesos, totalDelTicke
 import type { TicketRendicion } from '@/features/efectivo/campo/tipos'
 import { Caja, Renglon, Rotulo, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { ResponderDato } from '@/features/efectivo/campo/components/ResponderDato'
+import { RefrescarMientrasLee } from '@/features/efectivo/campo/components/RefrescarMientrasLee'
+import { redirect } from 'next/navigation'
 
 // M07 · UN GASTO OBSERVADO — y, para los otros estados, las tarjetas de M12 (carga, error).
 //
@@ -47,6 +49,8 @@ export default async function TicketPage({ params, searchParams }: Props) {
     )
   }
 
+  // Leído y esperando la palabra de la persona: la pantalla que sirve es la de confirmar, no el detalle.
+  if (t.estado === 'a_confirmar') redirect(conVuelta(`/mi-informacion/efectivo/rendir/confirmar?ticket=${t.id}`, ctx.sufijo))
   const v = estadoVisible(t)
   const foto = await urlDeLaFoto(ctx.supabase, t.storage_path)
   const total = totalDelTicket(t)
@@ -100,7 +104,8 @@ function Estado({ t }: { t: TicketRendicion }) {
         <Caja gap={9} relleno="16px 18px" testid="ticket-leyendo">
           <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>Leyendo el ticket</div>
           <BarraAvance pct={38} color={C.grafito} alto={10} />
-          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Cuando termine, entra solo a Compras. No hace falta mandarlo de nuevo.</div>
+          <RefrescarMientrasLee activo />
+          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Tarda unos segundos. Cuando termine, esta pantalla te muestra lo que leyó para que confirmes. No hace falta mandarlo de nuevo.</div>
         </Caja>
       )
     case 'en_compras':

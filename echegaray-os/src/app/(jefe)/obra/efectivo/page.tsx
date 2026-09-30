@@ -17,6 +17,7 @@ import {
   Caja, FilaAcceso, FilaTicket, Pie, Primario, Rotulo, SinPublicar,
 } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/components/TarjetasHoy'
+import { RefrescarMientrasLee } from '@/features/efectivo/campo/components/RefrescarMientrasLee'
 
 // D15 · MI EFECTIVO DE LA OBRA — la misma entrega, vista por el jefe de obra.
 //
@@ -67,6 +68,7 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
         sub={`${deLaObra[0]?.persona ?? perfil?.data?.nombre ?? 'jefe de obra'} · ${obra?.nombre ?? 'todas tus obras'}`}
       />
       <RefrescarEnVivo tablas={TABLAS_DE.efectivoCampo} />
+      <RefrescarMientrasLee activo={tickets.some((t) => t.estado === 'leyendo')} />
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 'calc(100vh - 66px)' }}>
         {!personaId && <SinVinculo que="el efectivo que te entregaron" disponible={perfil?.data?.vinculoDisponible !== false} />}
         {lectura?.estado === 'sin-publicar' && <SinPublicar />}

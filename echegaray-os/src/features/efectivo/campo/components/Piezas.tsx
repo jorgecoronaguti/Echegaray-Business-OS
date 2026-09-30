@@ -182,7 +182,24 @@ export function Columna({ children, conPie }: { children: ReactNode; conPie?: bo
   )
 }
 
-/** El bloque del tercio inferior: `margin-top:auto` lo baja al pie de la pantalla. */
+/**
+ * El bloque del tercio inferior: `margin-top:auto` lo baja al pie de la pantalla, y `sticky` lo deja
+ * A LA VISTA cuando la pantalla es más larga que el teléfono (dueño 30/09/2026: «si era un botón que
+ * estaba abajo, fijarlo para que no desaparezca»: a los jefes «Rendir un gasto» quedaba fuera de vista
+ * debajo de las entregas). Se apoya sobre la barra del teléfono si la hay (`--os-pie-abajo`, la pone
+ * `MarcoMovil`) y pinta el canvas detrás para que la lista no se lea a través del botón.
+ */
 export function Pie({ children }: { children: ReactNode }) {
-  return <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>{children}</div>
+  return (
+    <div
+      data-testid="pie-fijo"
+      style={{
+        position: 'sticky', bottom: 'var(--os-pie-abajo, 0px)', zIndex: 5,
+        marginTop: 'auto', marginLeft: -16, marginRight: -16, padding: '8px 16px',
+        background: C.canvas, display: 'flex', flexDirection: 'column', gap: 10,
+      }}
+    >
+      {children}
+    </div>
+  )
 }
