@@ -30,10 +30,11 @@ import { ListaPersonas } from './ListaPersonas'
 import { Tarjetas } from './Tarjetas'
 import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
+import { PanelRendirManual } from './PanelRendirManual'
 import { PanelImputar } from './PanelImputar'
 import { PanelObservado } from './PanelObservado'
 import { RevisarComprobante } from './RevisarComprobante'
-import { ANCHO_PANEL, ANCHO_PANEL_OBSERVADO, V, botonOscuro } from './estilo'
+import { ANCHO_PANEL, ANCHO_PANEL_OBSERVADO, V, botonClaro, botonOscuro } from './estilo'
 
 type Params = Record<string, string | undefined>
 
@@ -136,7 +137,7 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   const claves = [...new Set([...rendiciones.map((r) => r.compra_clave), ...comprobantes.map((c) => c.compra_clave).filter((x): x is string => !!x)])]
   const elegido = sp.comprobante ? comprobantes.find((c) => c.id === sp.comprobante) ?? null : null
   const [extra, foto, edicion] = await Promise.all([
-    leerExtraDeFicha(e.id, claves),
+    leerExtraDeFicha(e.id, claves, filasManuales(rendiciones)),
     elegido && elegido.estado !== 'observado' ? urlDeFoto(elegido.storage_path) : Promise.resolve(null),
     leerEdicionDeFicha(e.id),
   ])
@@ -153,6 +154,8 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   }
 
   const devolviendo = sp.panel === 'devolucion' && e.estado === 'abierta'
+  // RENDIR SIN FOTO (30/09/2026): un gasto tipeado, para cualquiera que vea la ficha. Va a Compras igual que un ticket.
+  const rindiendo = sp.panel === 'rendir' && e.estado === 'abierta' && !devolviendo
   // «IMPUTAR UN COMPROBANTE YA CARGADO» (24/09/2026): sólo Dirección y Administración, y sólo con la
   // entrega abierta (la base lo exige igual). La lista se lee sólo con el panel abierto.
   const imputando = sp.panel === 'imputar' && e.estado === 'abierta' && d.veEconomia && !devolviendo
@@ -166,7 +169,9 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   const rendEditada = sp.panel === 'editar-comprobante'
     ? rendiciones.find((x) => x.id === sp.item) ?? (compEditado ? rendiciones.find((x) => x.comprobante_id === compEditado.id) ?? null : null)
     : null
-  const filaEditada = rendEditada ? extra.compras.get(rendEditada.compra_clave) ?? null : null
+  const filaEditada = rendEditada
+    ? extra.compras.get(rendEditada.compra_clave) ?? (rendEditada.fila != null ? extra.compras.get('fila:' + rendEditada.fila) : null) ?? null
+    : null
   const edicionPanel = editandoEntrega ? (
     <PanelEditarEntrega
       e={e} personas={d.personas} obras={d.obras} tickets={comprobantes.length} devoluciones={devoluciones.length} cerrarHref={cerrarEdicion}
@@ -185,7 +190,7 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
     obras: Object.fromEntries(d.obras.map((o) => [o.id, o.nombre] as const)),
     entregas: Object.fromEntries(d.entregas.map((x) => [x.id, x.codigo] as const)),
   }
-  const conPanel = devolviendo || !!observado || imputando || !!edicionPanel
+  const conPanel = devolviendo || !!observado || imputando || !!edicionPanel || rindiendo
   const volver = (
     <Link href={urlEfectivo({ persona: e.persona_id })} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-entregas">
       ← volver a {e.persona}
@@ -196,7 +201,7 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
       {cabecera(
         conPanel ? undefined : volver,
         abiertas,
-        devolviendo || imputando || edicionPanel ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
+        devolviendo || imputando || edicionPanel || rindiendo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
       )}
       <div className="flex flex-col lg:flex-row lg:items-start">
         <div className={`min-w-0 flex-1 max-md:!px-4 ${conPanel ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: conPanel ? 0.4 : 1 }}>
@@ -206,13 +211,14 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
           />
         </div>
         {imputando && paraImputar && <PanelImputar e={e} destino={destino} lectura={paraImputar} />}
+        {rindiendo && <PanelRendirManual entregas={[e]} entregaInicial={e.id} cerrarHref={cerrarEdicion} quien={e.persona} />}
         {edicionPanel}
         {devolviendo && (
           <PanelDevolucion
             e={e} destino={destino} porImputar={cola.length} personas={d.personas} miPersona={d.miPersona}
           />
         )}
-        {observado && !devolviendo && !imputando && !edicionPanel && <PanelObservado c={observado} e={e} destino={destino} />}
+        {observado && !devolviendo && !imputando && !edicionPanel && !rindiendo && <PanelObservado c={observado} e={e} destino={destino} />}
       </div>
     </>
   )
@@ -239,16 +245,24 @@ async function vistaPersona({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; s
   const comprobantes = d.comprobantes.filter((c) => ids.has(c.entrega_id))
   const rendiciones = d.rendiciones.filter((r) => ids.has(r.entrega_id))
   const claves = [...new Set([...rendiciones.map((r) => r.compra_clave), ...comprobantes.map((c) => c.compra_clave).filter((x): x is string => !!x)])]
-  const compras = await leerComprasPorClave(claves)
+  const compras = await leerComprasPorClave(claves, filasManuales(rendiciones))
   const cronologia = cronologiaDePersona({
     entregas: suyas, comprobantes, rendiciones, devoluciones: d.devoluciones.filter((x) => ids.has(x.entrega_id)), compras,
   })
   const puesto = d.personas.find((x) => x.id === id)?.puesto ?? null
   const entregando = sp.panel === 'entregar'
+  const vivas = suyas.filter((e) => e.estado === 'abierta')
+  const rindiendo = sp.panel === 'rendir' && vivas.length > 0 && !entregando
+  const conPanel = entregando || rindiendo
   const cerrar = urlEfectivo({ persona: id })
   const accion = (
     <span className="max-md:!flex max-md:!flex-col-reverse max-md:!items-stretch max-md:!gap-2 max-md:[&>*]:!min-h-[48px] max-md:[&>*]:!w-full max-md:[&>*]:!justify-center max-md:[&>*]:!text-[15px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}>
       <Link href={urlEfectivo({})} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-personas">← volver a las personas</Link>
+      {vivas.length > 0 && (
+        <Link href={urlEfectivo({ persona: id, panel: 'rendir' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-rendir">
+          Rendir sin foto
+        </Link>
+      )}
       <Link href={urlEfectivo({ persona: id, panel: 'entregar' })} prefetch={false} scroll={false} style={botonOscuro} data-testid="abrir-entregar">
         <span aria-hidden style={{ fontSize: '15px', lineHeight: 1 }}>+</span> Entregar efectivo
       </Link>
@@ -256,13 +270,19 @@ async function vistaPersona({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; s
   )
   return (
     <>
-      {cabecera(entregando ? undefined : accion, abiertas, entregando && ANCHO_PANEL)}
+      {cabecera(conPanel ? undefined : accion, abiertas, conPanel && ANCHO_PANEL)}
       <div className="flex flex-col lg:flex-row lg:items-start">
-        <div className={`min-w-0 flex-1 max-md:!px-4 ${entregando ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: entregando ? 0.4 : 1 }}>
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${conPanel ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: conPanel ? 0.4 : 1 }}>
           <FichaPersona p={p} cronologia={cronologia} puesto={puesto} />
         </div>
         {entregando && <PanelEntregar personas={d.personas} obras={d.obras} entregas={d.entregas} cerrarHref={cerrar} personaInicial={id} />}
+        {rindiendo && <PanelRendirManual entregas={vivas} cerrarHref={cerrar} quien={p.nombre} />}
       </div>
     </>
   )
+}
+
+/** Filas de Compras de las rendiciones manuales (su clave `m:<id>` no está en Compras: se atan por número de fila). */
+function filasManuales(rendiciones: { fila?: number | null }[]): number[] {
+  return [...new Set(rendiciones.map((r) => r.fila).filter((f): f is number => f != null))]
 }

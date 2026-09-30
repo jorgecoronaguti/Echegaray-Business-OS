@@ -61,11 +61,58 @@ export async function borrarFirmaAction(entrega: string): Promise<Resultado> {
 
 // ─── rendiciones y tickets ───
 
-export async function editarRendicionAction(rendicion: string, monto: string, entrega: string): Promise<Resultado> {
+const fechaIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Poné la fecha')
+
+/**
+ * Importe y entrega siempre; fecha y concepto opcionales (20260930T2200 / 20261001T0010): en un ticket o una
+ * reimputada van a la fila de Compras por la cola; en una manual sin fila todavía, corrigen el fajo antes de
+ * que se escriba.
+ */
+export async function editarRendicionAction(
+  rendicion: string, monto: string, entrega: string, detalle?: { fecha?: string; concepto?: string },
+): Promise<Resultado> {
   if (!id.safeParse(rendicion).success || !id.safeParse(entrega).success) return { ok: false, error: 'Rendición inválida' }
   const m = validarMonto(monto)
   if (!m.ok) return { ok: false, error: m.error }
-  return rpc('editar_rendicion_efectivo', { p_rendicion: rendicion, p_monto: m.dato, p_entrega: entrega })
+  const fecha = detalle?.fecha?.trim() || null
+  if (fecha && !fechaIso.safeParse(fecha).success) return { ok: false, error: 'Poné la fecha' }
+  const concepto = detalle?.concepto?.trim() || null
+  if (concepto && concepto.length > 400) return { ok: false, error: 'El concepto es demasiado largo' }
+  return rpc('editar_rendicion_efectivo', {
+    p_rendicion: rendicion, p_monto: m.dato, p_entrega: entrega, p_fecha: fecha, p_concepto: concepto,
+  })
+}
+
+export interface GastoManual { fecha: string; total: string; concepto: string; proveedor?: string; cuit?: string }
+
+/**
+ * RENDIR UN GASTO SIN COMPROBANTE (dueño, 30/09/2026: «soy admin, tengo que tener ABM de todo en efectivo»).
+ * Lo puede hacer quien tiene la entrega o Administración (lo decide `_efectivo_actua_por` en la base). La fila
+ * de Compras nace «A rendir» por el worker de comprobantes en menos de un minuto; la ficha la muestra desde ya.
+ */
+export async function rendirGastoManualAction(
+  entrega: string, g: GastoManual,
+): Promise<Resultado<{ rendicion: string; fajo: string; codigo: string }>> {
+  if (!id.safeParse(entrega).success) return { ok: false, error: 'Falta la entrega' }
+  if (!fechaIso.safeParse(g.fecha?.trim() ?? '').success) return { ok: false, error: 'Poné la fecha del gasto' }
+  const m = validarMonto(g.total)
+  if (!m.ok) return { ok: false, error: m.error }
+  const concepto = g.concepto?.trim() ?? ''
+  if (!concepto) return { ok: false, error: 'Escribí qué se pagó' }
+  if (concepto.length > 300) return { ok: false, error: 'El concepto es demasiado largo' }
+  const proveedor = g.proveedor?.trim() || null
+  if (proveedor && proveedor.length > 120) return { ok: false, error: 'El proveedor es demasiado largo' }
+  const cuit = g.cuit?.replace(/\D/g, '') || null
+  if (cuit && cuit.length !== 11) return { ok: false, error: 'El CUIT tiene 11 dígitos (o dejalo vacío)' }
+  const r = await rpc<{ rendicion: string; fajo: string; codigo: string }>('rendir_gasto_manual', {
+    p_entrega: entrega, p_fecha: g.fecha.trim(), p_total: m.dato, p_concepto: concepto, p_proveedor: proveedor, p_cuit: cuit,
+  })
+  if (r.ok) {
+    revalidatePath('/mi-informacion/efectivo')
+    revalidatePath('/mi-cuenta/efectivo')
+    revalidatePath('/obra/efectivo')
+  }
+  return r
 }
 
 export async function borrarRendicionAction(rendicion: string): Promise<Resultado> {

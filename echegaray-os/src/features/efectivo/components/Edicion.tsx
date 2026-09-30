@@ -344,6 +344,11 @@ export function PanelEditarComprobante({ e, comprobante, rendicion, fila, entreg
   const router = useRouter()
   const [destino, setDestino] = useState(e.id)
   const [monto, setMonto] = useState(rendicion ? String(rendicion.monto).replace('.', ',') : '')
+  // FECHA Y CONCEPTO (30/09/2026): editables en toda rendición que no sea un adelanto. La manual guarda lo
+  // tipeado y corrige su fajo/fila; la de ticket con fila encola la celda en Compras.
+  const editaDetalle = !!rendicion && !rendicion.adelanto_persona_id
+  const [fecha, setFecha] = useState(rendicion?.fecha ?? '')
+  const [concepto, setConcepto] = useState(rendicion?.concepto ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()
   const nueva = entregas.find((x) => x.id === destino) ?? null
@@ -357,8 +362,12 @@ export function PanelEditarComprobante({ e, comprobante, rendicion, fila, entreg
     if (rendicion) {
       const m = validarMonto(monto)
       if (!m.ok) { setError(m.error); return }
-      if (Math.abs(m.dato - rendicion.monto) >= 0.005 || (destino !== e.id && !comprobante)) {
-        const r = await editarRendicionAction(rendicion.id, monto, destino)
+      const detalle: { fecha?: string; concepto?: string } = {}
+      if (editaDetalle && fecha && fecha !== (rendicion.fecha ?? '')) detalle.fecha = fecha
+      if (editaDetalle && concepto.trim() !== (rendicion.concepto ?? '')) detalle.concepto = concepto.trim()
+      const cambiaDetalle = Object.keys(detalle).length > 0
+      if (Math.abs(m.dato - rendicion.monto) >= 0.005 || (destino !== e.id && !comprobante) || cambiaDetalle) {
+        const r = await editarRendicionAction(rendicion.id, monto, destino, cambiaDetalle ? detalle : undefined)
         if (!r.ok) { setError(r.error); return }
       }
     }
@@ -381,8 +390,23 @@ export function PanelEditarComprobante({ e, comprobante, rendicion, fila, entreg
       {rendicion && (
         <Campo rotulo="Importe que rinde">
           <input value={monto} onChange={(x) => { setMonto(x.target.value); setError(null) }} inputMode="decimal" style={campoMonto} aria-label="Importe que rinde" data-testid="editar-comp-monto" />
-          <div style={{ fontSize: '12px', color: V.apagado }}>La fila de Compras no cambia: su Total se corrige en Compras.</div>
+          <div style={{ fontSize: '12px', color: V.apagado }}>
+            {rendicion.origen === 'manual'
+              ? (fila ? 'Corrige la fila de Compras (la escribe el worker en minutos).' : 'Todavía se está escribiendo en Compras: el cambio va al alta.')
+              : 'La fila de Compras no cambia: su Total se corrige en Compras.'}
+          </div>
         </Campo>
+      )}
+      {editaDetalle && (
+        <>
+          <Campo rotulo="Fecha del gasto">
+            <input type="date" value={fecha} onChange={(x) => { setFecha(x.target.value); setError(null) }} style={campo} aria-label="Fecha del gasto" data-testid="editar-comp-fecha" />
+          </Campo>
+          <Campo rotulo="Concepto">
+            <input value={concepto} onChange={(x) => { setConcepto(x.target.value); setError(null) }} maxLength={400} style={campo} aria-label="Concepto" data-testid="editar-comp-concepto" placeholder="Qué se compró" />
+            {!!comprobante && fila && <div style={{ fontSize: '12px', color: V.apagado }}>Se corrige en la fila {fila} de Compras.</div>}
+          </Campo>
+        </>
       )}
       <ErrorPanel texto={error} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

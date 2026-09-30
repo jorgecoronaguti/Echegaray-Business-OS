@@ -16,7 +16,7 @@ import { fraseDelCambio, type Nombres } from '../logica/edicion'
 import { QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
 import { AvisosDeLaEntrega } from './Edicion'
 import { Firma } from './Firma'
-import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
+import { ALTO_HEADER_APP, ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, TOQUE_TELEFONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
 /**
@@ -96,7 +96,13 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
           Compras, y se puede borrar entera.
         </div>
       )}
-      <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
+      {/* LA CABECERA NO SE VA (30/09/2026, pedido del dueño): quién, cuánto y los botones quedan pegados bajo el
+          header de la app mientras se recorre la lista de tickets. Fondo opaco para que lo de abajo no se lea a través. */}
+      <div
+        className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between"
+        style={{ columnGap: 30, position: 'sticky', top: ALTO_HEADER_APP, zIndex: 5, background: V.fondo, paddingBottom: 8, marginBottom: -8 }}
+        data-testid="ficha-cabecera"
+      >
         {/* `flex: 1 1 320px` SÓLO EN FILA (lg). En el teléfono el contenedor es columna y la base de 320
             se volvía ALTO: el nombre quedaba centrado en un hueco de 320 px (auditoría por nivel 25/09). */}
         <div className="lg:flex-[1_1_320px]" style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
@@ -144,6 +150,11 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 Rendir un gasto por {e.persona}
               </Link>
             )}
+            {/* RENDIR SIN FOTO (30/09/2026): un gasto tipeado, para todos los que ven la ficha. Va a Compras como
+                «A rendir» y baja el saldo en el acto; la foto se puede sumar después desde el teléfono. */}
+            <Link href={urlEfectivo({ entrega: e.codigo, panel: 'rendir' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-rendir">
+              Rendir sin foto
+            </Link>
             <Link href={urlEfectivo({ entrega: e.codigo, panel: 'devolucion' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-devolucion">
               Registrar devolución
             </Link>

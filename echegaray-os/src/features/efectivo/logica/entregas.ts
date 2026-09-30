@@ -195,6 +195,7 @@ export const ROTULO_COMPROBANTE: Record<EstadoComprobante, { texto: string; tono
   // imputar algo que no está esperándola a ella.
   a_confirmar: { texto: 'Espera que lo confirme', tono: 'neutro' },
   en_compras: { texto: 'En Compras', tono: 'pos' },
+  escribiendo: { texto: 'Escribiendo en Compras', tono: 'neutro' },
   en_liquidacion: { texto: 'En Liquidación', tono: 'pos' },
   observado: { texto: 'Observado', tono: 'warn' },
   respondido: { texto: 'Contestó · falta cargar', tono: 'neutro' },
@@ -395,10 +396,14 @@ export function filasDeLaFicha(
       })
       continue
     }
-    const f = compras.get(r.compra_clave)
+    // LA MANUAL SE ATA POR FILA: nace con clave `m:<id>` que Compras no conoce; cuando el cargador la
+    // escribe, `fila` es el puente. Mientras tanto muestra lo que la persona tipeó (denormalizado).
+    const f = compras.get(r.compra_clave) ?? (r.fila != null ? compras.get('fila:' + r.fila) : undefined)
     out.push({
-      comprobante: null, fecha: f?.fecha ?? r.imputada_en, proveedor: f?.proveedor ?? null, rubro: f?.concepto ?? null,
-      importe: Number(r.monto), estado: 'en_compras', fila: f?.fila ?? null, rendicion: r,
+      comprobante: null, fecha: f?.fecha ?? r.fecha ?? r.imputada_en, proveedor: f?.proveedor ?? r.proveedor ?? null,
+      rubro: f?.concepto ?? r.concepto ?? null, importe: Number(r.monto),
+      estado: f ? 'en_compras' : r.origen === 'manual' ? 'escribiendo' : 'en_compras',
+      fila: f?.fila ?? r.fila ?? null, rendicion: r,
     })
   }
   return out.sort((a, b) => diaAR(b.fecha ?? '').localeCompare(diaAR(a.fecha ?? '')))

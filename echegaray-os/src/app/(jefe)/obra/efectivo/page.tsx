@@ -101,6 +101,9 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {suyos.length > 0 && <FilaAcceso href={ruta('/rendiciones')} cuenta={r.piden.length}>Mis rendiciones</FilaAcceso>}
               {acciones.devolver && <FilaAcceso href={ruta('/devolver')}>Devolver efectivo</FilaAcceso>}
+              {acciones.rendir && (
+                <FilaAcceso href={ruta(acciones.rendir.replace('/rendir', '/rendir/sin-foto'))} testid="jefe-rendir-sin-foto">Rendir sin foto</FilaAcceso>
+              )}
               {otras.some((e) => e.estado === 'abierta') && (
                 <FilaAcceso href={ruta('')} testid="jefe-otras-entregas">Mi efectivo de otras obras</FilaAcceso>
               )}

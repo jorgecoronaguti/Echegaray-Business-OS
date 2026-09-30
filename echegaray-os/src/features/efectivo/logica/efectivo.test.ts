@@ -358,3 +358,30 @@ test('la tarjeta «Por imputar» lleva al comprobante que espera hace más tiemp
   assert.deepEqual(resumir([], [nuevo, comp('en_compras', { enviado_en: '2026-09-01T00:00:00Z' }), viejo], [], '2026-09-29').primeroPorImputar, { entrega: 'ER-0021', id: 'c-viejo' })
   assert.equal(resumir([], [comp('en_compras')], [], '2026-09-29').primeroPorImputar, null)
 })
+
+test('la rendición manual (20261001T0010) se muestra con lo tipeado mientras el cargador la escribe, y por fila cuando ya está en Compras', () => {
+  const r: Rendicion = {
+    id: 'r-man', entrega_id: 'e1', compra_clave: 'm:r-man', monto: 15000, imputada_en: '2026-09-30T20:00:00Z',
+    comprobante_id: null, adelanto_persona_id: null, adelanto_quincena: null, adelanto_expresion: null,
+    origen: 'manual', fila: null, fajo_id: 'fajo-1', fecha: '2026-09-29', concepto: 'Flete de arena', proveedor: 'Fletes Díaz',
+  }
+  // Sin fila todavía: no es «En Compras», y se ve lo que la persona tipeó.
+  const [sinFila] = filasDeLaFicha([], [r], new Map())
+  assert.equal(sinFila.estado, 'escribiendo')
+  assert.equal(sinFila.fecha, '2026-09-29')
+  assert.equal(sinFila.proveedor, 'Fletes Díaz')
+  assert.equal(sinFila.rubro, 'Flete de arena')
+  assert.equal(sinFila.fila, null)
+  assert.equal(sinFila.rendicion?.id, 'r-man')
+  assert.equal(ROTULO_COMPROBANTE.escribiendo.texto, 'Escribiendo en Compras')
+  // Con fila: se ata por `fila:<n>` (la clave `m:` no existe en Compras) y manda lo que dice Compras.
+  const compras = new Map([['fila:1041', {
+    fila: 1041, clave: null, fecha: '2026-09-29', proveedor: 'FLETES DIAZ SRL', concepto: 'Flete arena Galpón 8',
+    tipo: 'Directo', comprobante: null, total: 15000, tipo_pago: 'A rendir',
+  }]])
+  const [conFila] = filasDeLaFicha([], [{ ...r, fila: 1041 }], compras as never)
+  assert.equal(conFila.estado, 'en_compras')
+  assert.equal(conFila.fila, 1041)
+  assert.equal(conFila.proveedor, 'FLETES DIAZ SRL')
+  assert.equal(conFila.rubro, 'Flete arena Galpón 8')
+})

@@ -51,6 +51,9 @@ export const COLUMNAS_ENTREGA = [
 // en Liquidación, en «Pagado efectivo» del empleado.
 export type EstadoComprobante =
   | 'leyendo' | 'a_confirmar' | 'en_compras' | 'en_liquidacion' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
+  // RENDICIÓN MANUAL RECIÉN CARGADA: ya bajó el saldo y está encolada como fajo; el cargador la escribe en Compras
+  // en ≤ 60 s. No tiene fila todavía, así que no es «En Compras».
+  | 'escribiendo'
 
 /** Lo que el worker guardó de cada comprobante leído (`comprobante_entrada.resultado.comprobantes[]`). */
 export interface LeidoDelPapel {
@@ -136,12 +139,22 @@ export interface Rendicion {
   /** El nombre para mostrar del empleado, resuelto al leer. Decorativo. */
   adelanto_persona?: string | null
   /** `ticket` = la escribió un ticket; `reimputada` = compra ya cargada imputada a mano (migración 20260925T1000). */
-  origen?: 'ticket' | 'reimputada' | 'iniciales'
+  origen?: 'ticket' | 'reimputada' | 'iniciales' | 'manual'
   /** reimputada: el pedido a la cola de Compras que cambia su Tipo pago. */
   cambio_id?: string | null
+  /**
+   * RENDICIÓN MANUAL (20261001T0010): un gasto sin comprobante anotado a mano. Su fila de Compras la escribe el
+   * worker de comprobantes desde un fajo web (`fajo_id`); hasta entonces la fila no existe y la ficha muestra
+   * estos denormalizados. `fila` se ata cuando el cargador la escribió (la clave del espejo queda NULL: sin número).
+   */
+  fila?: number | null
+  fajo_id?: string | null
+  fecha?: string | null
+  concepto?: string | null
+  proveedor?: string | null
 }
 
-export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion, origen, cambio_id'
+export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion, origen, cambio_id, fila, fajo_id, fecha, concepto, proveedor'
 
 /** La fila de Compras que rinde (lo que se mira de `compra_sheet`). La verdad del gasto es ésa. */
 export interface FilaDeCompras {

@@ -24,11 +24,13 @@ import { mandarFotos, type FotoElegida } from '../subida'
 
 const ACEPTA_GALERIA = [...MEDIA_ACEPTADOS, '.heic', '.heif'].join(',')
 
-export function CamaraTicket({ entrega, destino, volverA, alTerminar }: {
+export function CamaraTicket({ entrega, destino, volverA, alTerminar, sinFotoHref }: {
   entrega: string
   destino: string
   volverA: string
   alTerminar: string
+  /** El gasto sin ticket (30/09/2026): se tipea en vez de fotografiarse. */
+  sinFotoHref?: string
 }) {
   const router = useRouter()
   const [fotos, setFotos] = useState<FotoElegida[]>([])
@@ -74,6 +76,16 @@ export function CamaraTicket({ entrega, destino, volverA, alTerminar }: {
         </Link>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Rendir un gasto</div>
         <div style={{ marginLeft: 'auto', fontSize: 12.5, color: C.faint, paddingRight: 8 }}>{destino}</div>
+        {sinFotoHref && (
+          <Link
+            href={sinFotoHref}
+            prefetch={false}
+            data-testid="camara-sin-foto"
+            style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 13, fontWeight: 500, color: C.surface, textDecoration: 'underline', textUnderlineOffset: 3 }}
+          >
+            Sin foto
+          </Link>
+        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, padding: '0 24px' }}>

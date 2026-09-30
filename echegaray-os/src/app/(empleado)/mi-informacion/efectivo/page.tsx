@@ -126,6 +126,7 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
           <FilaAcceso href={ruta('/rendiciones')} cuenta={r.piden.length} testid="ir-rendiciones">Mis rendiciones</FilaAcceso>
           <FilaAcceso href="/mi-informacion/recibos" testid="ir-recibos-efectivo">Mis recibos</FilaAcceso>
           <FilaAcceso href={ruta('/devolver')} testid="ir-devolver">Devolver efectivo</FilaAcceso>
+          {puedeRendir && <FilaAcceso href={ruta('/rendir/sin-foto')} testid="ir-rendir-sin-foto">Rendir sin foto</FilaAcceso>}
         </div>
 
         {puedeRendir && (

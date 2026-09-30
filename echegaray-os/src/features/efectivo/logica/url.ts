@@ -19,7 +19,7 @@ export interface EstadoURL {
   entrega?: string | null
   /** El id de la persona cuya cronología se abre (29/09/2026: la unidad de la pantalla es la persona). */
   persona?: string | null
-  panel?: 'entregar' | 'devolucion' | 'imputar' | PanelEdicion | null
+  panel?: 'entregar' | 'devolucion' | 'imputar' | 'rendir' | PanelEdicion | null
   comprobante?: string | null
   /** El id de lo que se edita en `editar-devolucion` / `editar-comprobante`. */
   item?: string | null

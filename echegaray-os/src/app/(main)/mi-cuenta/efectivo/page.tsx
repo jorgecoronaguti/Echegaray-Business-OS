@@ -21,8 +21,8 @@ import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 // costado. Lee lo MISMO que el teléfono (`getMiEfectivo`, con la sesión de la persona; la base sólo le
 // da lo suyo por `ve_efectivo_entrega`). La cuenta no se hace acá: sale de `efectivo_entrega_saldo`.
 //
-// Lo que NO está: rendir un gasto (mandar la foto del ticket) y declarar una devolución. Son actos de
-// obra, con la cámara en la mano, y siguen en el teléfono (`/mi-informacion/efectivo/rendir`).
+// Rendir (con foto o tipeado) y declarar una devolución se abren desde acá con las mismas pantallas que
+// usa el teléfono (30/09/2026, dueño: «me molesta que le saques funciones a uno»).
 
 export const dynamic = 'force-dynamic'
 
@@ -90,6 +90,14 @@ export default async function MiEfectivoEscritorioPage({ searchParams }: { searc
               ]}
             />
 
+            {abiertas(entregas).length > 0 && (
+              <div className="flex flex-wrap items-center gap-2" data-testid="efectivo-acciones">
+                <BotonEnlace href="/mi-informacion/efectivo/rendir" variante="primaria" data-testid="mi-efectivo-rendir">Rendir un gasto</BotonEnlace>
+                <BotonEnlace href="/mi-informacion/efectivo/rendir/sin-foto" data-testid="mi-efectivo-rendir-sin-foto">Rendir sin foto</BotonEnlace>
+                <BotonEnlace href="/mi-informacion/efectivo/devolver" data-testid="mi-efectivo-devolver">Declarar devolución</BotonEnlace>
+              </div>
+            )}
+
             <section className="flex flex-col gap-3">
               <div className="flex items-baseline gap-3">
                 <TituloPanel>Entregas</TituloPanel>
@@ -117,7 +125,7 @@ export default async function MiEfectivoEscritorioPage({ searchParams }: { searc
                 <span className="font-mono text-[12px] text-faint">{tickets.length}</span>
               </div>
               {recientes.length === 0 ? (
-                <Vacio>Todavía no mandaste tickets. Se rinden desde el teléfono, con la foto.</Vacio>
+                <Vacio>Todavía no rendiste ningún gasto.</Vacio>
               ) : (
                 <Tabla testid="tabla-rendiciones" minWidth={640}>
                   <THead>

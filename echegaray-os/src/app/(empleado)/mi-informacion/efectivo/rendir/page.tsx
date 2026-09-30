@@ -49,6 +49,7 @@ export default async function RendirPage({ searchParams }: { searchParams: Param
         destino={destino(elegida)}
         volverA={ctx.volverA}
         alTerminar={conVuelta('/mi-informacion/efectivo/rendiciones?enviado=1', ctx.sufijo)}
+        sinFotoHref={conVuelta(`/mi-informacion/efectivo/rendir/sin-foto?entrega=${elegida.id}`, ctx.sufijo)}
       />
     )
   }

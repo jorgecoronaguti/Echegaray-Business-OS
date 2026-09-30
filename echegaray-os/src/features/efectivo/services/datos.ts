@@ -144,13 +144,26 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
  * columnas que la ficha de una entrega (`leerExtraDeFicha`), pero para todas las entregas de la persona
  * de una vez. La verdad del gasto es la fila de Compras; la cronología no la recalcula.
  */
-export async function leerComprasPorClave(claves: string[]): Promise<Map<string, FilaDeCompras>> {
+export async function leerComprasPorClave(claves: string[], filas: number[] = []): Promise<Map<string, FilaDeCompras>> {
   const mapa = new Map<string, FilaDeCompras>()
-  if (!claves.length) return mapa
+  if (!claves.length && !filas.length) return mapa
   const supabase = await createClient()
-  const { data } = await supabase.from('compra_sheet').select('fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago').in('clave', claves)
-  for (const c of (data ?? []) as FilaDeCompras[]) if (c.clave) mapa.set(c.clave, { ...c, total: c.total == null ? null : Number(c.total) })
+  const sel = 'fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago'
+  const [porClave, porFila] = await Promise.all([
+    claves.length ? supabase.from('compra_sheet').select(sel).in('clave', claves) : Promise.resolve({ data: [] as unknown[] }),
+    filas.length ? supabase.from('compra_sheet').select(sel).in('fila', filas) : Promise.resolve({ data: [] as unknown[] }),
+  ])
+  cargarMapa(mapa, [...(porClave.data ?? []), ...(porFila.data ?? [])] as FilaDeCompras[])
   return mapa
+}
+
+/** Cada fila entra dos veces: por su clave (tickets) y por `fila:<n>` (rendiciones manuales, que no tienen clave de Compras). */
+function cargarMapa(mapa: Map<string, FilaDeCompras>, filas: FilaDeCompras[]) {
+  for (const c of filas) {
+    const fila = { ...c, total: c.total == null ? null : Number(c.total) }
+    if (c.clave) mapa.set(c.clave, fila)
+    if (c.fila != null) mapa.set('fila:' + c.fila, fila)
+  }
 }
 
 export interface ExtraDeFicha {
@@ -175,13 +188,11 @@ export interface ExtraDeFicha {
  * LO QUE SÓLO LA FICHA ABIERTA NECESITA: quién entregó y cuándo (la vista no lo trae), el papel firmado y
  * las filas de Compras que la rinden. Se pide para UNA entrega, no para la lista.
  */
-export async function leerExtraDeFicha(entregaId: string, claves: string[]): Promise<ExtraDeFicha> {
+export async function leerExtraDeFicha(entregaId: string, claves: string[], filas: number[] = []): Promise<ExtraDeFicha> {
   const supabase = await createClient()
   const [fila, compras, reclamo] = await Promise.all([
     supabase.from('efectivo_entrega').select('creada_en, entregada_por, conformidad_papel_url, conformidad_trazo').eq('id', entregaId).maybeSingle(),
-    claves.length
-      ? supabase.from('compra_sheet').select('fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago').in('clave', claves)
-      : Promise.resolve({ data: [] as unknown[], error: null }),
+    leerComprasPorClave(claves, filas),
     // SIN LA 2800 LA TABLA NO EXISTE: se lee con `maybeSingle` y el error se ignora — la ficha sigue
     // entera, sólo que no cuenta el reclamo. Nunca se inventa que no hubo ninguno.
     supabase.from('efectivo_aviso').select('pedido_en, enviado_en').eq('entrega_id', entregaId)
@@ -197,8 +208,7 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
   for (const d of (firmasDev.data ?? []) as { id: string; firma_entrega: string | null; firma_recibe: string | null }[]) {
     firmas.set(d.id, { entrega: d.firma_entrega, recibe: d.firma_recibe })
   }
-  const mapa = new Map<string, FilaDeCompras>()
-  for (const c of (compras.data ?? []) as FilaDeCompras[]) if (c.clave) mapa.set(c.clave, { ...c, total: c.total == null ? null : Number(c.total) })
+  const mapa = compras
   const r = reclamo.data as { pedido_en: string; enviado_en: string | null } | null
   return {
     creadaEn: f?.creada_en ?? null,
