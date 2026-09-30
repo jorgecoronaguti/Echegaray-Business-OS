@@ -17,6 +17,8 @@ export type EstadoStock = { error: string | null; ok?: boolean; remito?: { id: s
 
 const id = z.string().uuid('Elegí de nuevo el material o el lugar')
 const cantidad = z.number({ message: 'Poné una cantidad' }).positive('La cantidad tiene que ser mayor a cero').max(1_000_000, 'La cantidad es demasiado grande')
+/** Id de obra del índice (texto, no uuid). */
+const obraId = z.string().trim().min(1, 'Elegí la obra').max(120)
 const texto = (max: number) => z.string().trim().max(max, 'El texto es demasiado largo').optional()
 
 function revalidar() {
@@ -91,16 +93,16 @@ export async function anularLlegadaAction(input: { id_pedido: string; cantidad: 
   return { error: null, ok: true }
 }
 
-const usoSchema = z.object({ material: id, lugar: id, cantidad, nota: texto(400) })
+const usoSchema = z.object({ material: id, lugar: id, cantidad, nota: texto(400), acopio: obraId.nullish() })
 
 /** «Usé»: resta del lugar. No deja pasar de lo que hay. */
-export async function usoMaterialAction(input: { material: string; lugar: string; cantidad: number; nota?: string }): Promise<EstadoStock> {
+export async function usoMaterialAction(input: { material: string; lugar: string; cantidad: number; nota?: string; /** Obra del acopio del que sale; omitido = lo libre. */ acopio?: string | null }): Promise<EstadoStock> {
   const p = usoSchema.safeParse(input)
   if (!p.success) return { error: p.error.issues[0].message }
   try {
     const supabase = await createClient()
     const { error } = await supabase.rpc('usar_material', {
-      p_material: p.data.material, p_ubicacion: p.data.lugar, p_cantidad: p.data.cantidad, p_nota: p.data.nota || null,
+      p_material: p.data.material, p_ubicacion: p.data.lugar, p_cantidad: p.data.cantidad, p_nota: p.data.nota || null, p_acopio: p.data.acopio ?? null,
     })
     if (error) return { error: error.message }
   } catch (err) { return falla(err) }
@@ -111,14 +113,14 @@ export async function usoMaterialAction(input: { material: string; lugar: string
 const moverSchema = z.object({
   origen: id,
   destino: z.string().trim().min(1, 'Elegí a dónde va'),
-  items: z.array(z.object({ material: id, cantidad })).min(1, 'Elegí qué material se mueve').max(60, 'Son demasiados renglones para un remito'),
+  items: z.array(z.object({ material: id, cantidad, acopio: obraId.nullish(), reasignar: z.boolean().optional() })).min(1, 'Elegí qué material se mueve').max(60, 'Son demasiados renglones para un remito'),
   recibe: texto(120),
   nota: texto(500),
 })
 
 /** «Sobra → Taller / otra obra»: mueve y emite el remito. Devuelve su número para imprimirlo. */
 export async function moverMaterialAction(input: {
-  origen: string; destino: string; items: Array<{ material: string; cantidad: number }>; recibe?: string; nota?: string
+  origen: string; destino: string; items: Array<{ material: string; cantidad: number; /** Obra del acopio del que sale; omitido = automático (primero el acopio de la obra destino). */ acopio?: string | null; /** Confirmación explícita de pasar un acopio a OTRA obra. */ reasignar?: boolean }>; recibe?: string; nota?: string
 }): Promise<EstadoStock> {
   const p = moverSchema.safeParse(input)
   if (!p.success) return { error: p.error.issues[0].message }
@@ -144,6 +146,7 @@ const ingresoSchema = z.object({
   lugar: z.string().trim().min(1, 'Elegí dónde queda'),
   cantidad,
   origen: z.string().trim().min(3, 'Decí de dónde viene (compra directa, stock inicial…)').max(400, 'El texto es demasiado largo'),
+  paraObra: obraId.nullish(),
 })
 
 /**
@@ -151,7 +154,7 @@ const ingresoSchema = z.object({
  * puerta el stock sólo nacía de un «Llegó» y el control no tenía por dónde arrancar. El origen es
  * obligatorio (lo exige también la base): una entrada sin decir de dónde vino no se puede auditar.
  */
-export async function ingresarMaterialAction(input: { nombre: string; unidad: string; lugar: string; cantidad: number; origen: string }): Promise<EstadoStock> {
+export async function ingresarMaterialAction(input: { nombre: string; unidad: string; lugar: string; cantidad: number; origen: string; /** Obra para la que se acopia (sólo en el Taller). */ paraObra?: string | null }): Promise<EstadoStock> {
   const p = ingresoSchema.safeParse(input)
   if (!p.success) return { error: p.error.issues[0].message }
   try {
@@ -159,7 +162,7 @@ export async function ingresarMaterialAction(input: { nombre: string; unidad: st
     const l = await resolverLugar(supabase, p.data.lugar)
     if ('error' in l) return { error: l.error }
     const { error } = await supabase.rpc('ingresar_material', {
-      p_nombre: p.data.nombre, p_unidad: p.data.unidad, p_ubicacion: l.id, p_cantidad: p.data.cantidad, p_origen: p.data.origen,
+      p_nombre: p.data.nombre, p_unidad: p.data.unidad, p_ubicacion: l.id, p_cantidad: p.data.cantidad, p_origen: p.data.origen, p_para_obra: p.data.paraObra ?? null,
     })
     if (error) return { error: error.message }
   } catch (err) { return falla(err) }
@@ -172,16 +175,43 @@ const ajusteSchema = z.object({
   contado: z.number({ message: 'Poné lo que contaste' }).min(0, 'Lo contado no puede ser negativo').max(1_000_000),
   motivo: z.enum(['recuento', 'perdido', 'descartado']),
   nota: texto(400),
+  acopio: obraId.nullish(),
 })
 
 /** Recuento: lo que hay contado reemplaza al saldo, y la diferencia queda en el libro con su motivo. */
-export async function ajusteMaterialAction(input: { material: string; lugar: string; contado: number; motivo: string; nota?: string }): Promise<EstadoStock> {
+export async function ajusteMaterialAction(input: { material: string; lugar: string; contado: number; motivo: string; nota?: string; acopio?: string | null }): Promise<EstadoStock> {
   const p = ajusteSchema.safeParse(input)
   if (!p.success) return { error: p.error.issues[0].message }
   try {
     const supabase = await createClient()
     const { error } = await supabase.rpc('ajustar_material', {
-      p_material: p.data.material, p_ubicacion: p.data.lugar, p_contado: p.data.contado, p_motivo: p.data.motivo, p_nota: p.data.nota || null,
+      p_material: p.data.material, p_ubicacion: p.data.lugar, p_contado: p.data.contado, p_motivo: p.data.motivo, p_nota: p.data.nota || null, p_acopio: p.data.acopio ?? null,
+    })
+    if (error) return { error: error.message }
+  } catch (err) { return falla(err) }
+  revalidar()
+  return { error: null, ok: true }
+}
+
+const reasignarSchema = z.object({
+  material: id, lugar: id,
+  de: obraId.nullable(),
+  para: obraId.nullable(),
+  cantidad,
+  nota: texto(400),
+})
+
+/**
+ * Cambia el destino de un acopio desde la ficha: a otra obra o a libre (`null`). El asiento queda con quién y
+ * cuándo. La base exige que sea el Taller, que la obra destino esté activa y que el destino cambie de verdad.
+ */
+export async function reasignarAcopioAction(input: { material: string; lugar: string; de: string | null; para: string | null; cantidad: number; nota?: string }): Promise<EstadoStock> {
+  const p = reasignarSchema.safeParse(input)
+  if (!p.success) return { error: p.error.issues[0].message }
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('reasignar_acopio', {
+      p_material: p.data.material, p_ubicacion: p.data.lugar, p_de: p.data.de, p_para: p.data.para, p_cantidad: p.data.cantidad, p_nota: p.data.nota || null,
     })
     if (error) return { error: error.message }
   } catch (err) { return falla(err) }

@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { hrefPedirTelefono } from '@/features/materiales/logica/pedidos'
+import { AcopioDeLaObra } from '@/features/materiales/components/AcopioDeLaObra'
+import { leerAcopioDeObra } from '@/features/materiales/services/stockService'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { inicialesDe } from '@/features/empleado/components/shell-logica'
@@ -55,13 +57,14 @@ export default async function JefeHoyPage({
   if (!obra) return <SinObra error={error} />
 
   const hoy = hoyEnObra()
-  const [actividades, arbol, impedimentos, hh, presencia, esperados] = await Promise.all([
+  const [actividades, arbol, impedimentos, hh, presencia, esperados, acopioTaller] = await Promise.all([
     getActividades(supabase, obra.id),
     getArbol(supabase, obra.id),
     getImpedimentos(supabase, obra.id),
     getHHDelDia(supabase, obra.id, hoy),
     getPresencia(supabase, hoy, obra.id),
     getEsperados(supabase, obra.id),
+    leerAcopioDeObra(supabase, obra.id),
   ])
 
   const grupos = agrupar(presencia.data ?? [], esperados.data ?? [])
@@ -270,6 +273,8 @@ export default async function JefeHoyPage({
             Mover herramientas de esta obra
           </Link>
         </div>
+        {/* Sólo aparece si el Taller guarda algo para esta obra (dueño, 30/09/2026). */}
+        <AcopioDeLaObra items={acopioTaller} />
       </div>
     </>
   )

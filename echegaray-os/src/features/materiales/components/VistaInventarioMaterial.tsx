@@ -9,18 +9,22 @@ import Link from 'next/link'
 import { BuscadorURL, Filtros } from '@/shared/components/ds'
 import { eyebrow, V } from '@/features/herramientas/components/estilo'
 import { cuando } from '@/features/herramientas/components/formato'
+import { obrasAcopiables } from '../logica/acopio'
 import { inventarioPorMaterial, type MovimientoMaterial } from '../logica/inventario'
 import { textoStock, type Destino, type Existencia, type Lugar } from '../logica/stock'
+import { FichaMaterial } from './FichaMaterial'
 import { IngresarEscritorio } from './IngresarEscritorio'
 
 const BASE = '/herramientas/material'
 const COLS = 'minmax(0,1.3fr) 120px minmax(0,1.6fr) 110px'
 
-export function VistaInventarioMaterial({ existencias, lugares, movimientos, destinos, q, lugar, puedeOperar, hoy = new Date() }: {
+export function VistaInventarioMaterial({ existencias, lugares, movimientos, destinos, rotulosObra = {}, q, lugar, puedeOperar, hoy = new Date() }: {
   existencias: Existencia[]
   lugares: Lugar[]
   movimientos: MovimientoMaterial[]
   destinos: Destino[]
+  /** «OB-00xx · Obra» por id: nombra el destino de cada acopio en la ficha. */
+  rotulosObra?: Record<string, string>
   q: string | null
   lugar: string | null
   puedeOperar: boolean
@@ -30,6 +34,7 @@ export function VistaInventarioMaterial({ existencias, lugares, movimientos, des
   const filas = inventarioPorMaterial(existencias, lugares, movimientos, { q, lugar })
   const conStock = new Set(existencias.filter((e) => e.cantidad > 0).map((e) => e.ubicacion_id))
   const lugaresConStock = lugares.filter((l) => conStock.has(l.id))
+  const obras = obrasAcopiables(destinos)
   const href = (l: string | null) => {
     const p = new URLSearchParams({ ver: 'inventario' })
     if (q) p.set('q', q)
@@ -69,12 +74,16 @@ export function VistaInventarioMaterial({ existencias, lugares, movimientos, des
             {filas.map((f, i) => (
               <div key={f.material_id} data-testid="inventario-fila" className="hover:bg-surface-quiet"
                 style={{ display: 'grid', gridTemplateColumns: COLS, gap: 18, minHeight: 44, alignItems: 'center', padding: '6px 0', borderBottom: i < filas.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px' }}>
-                <div style={{ fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.material}</div>
+                <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <FichaMaterial material={{ id: f.material_id, nombre: f.material }} unidad={f.unidad} lugares={lugares} obras={obras} rotulosObra={rotulosObra} puedeOperar={puedeOperar}
+                    existencias={existencias.filter((e) => e.material_id === f.material_id)} movimientos={movimientos.filter((m) => m.material_id === f.material_id)} />
+                </div>
                 <div className="font-mono tabular-nums" style={{ textAlign: 'right', fontWeight: 500 }}>{textoStock(f.total, f.unidad)}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', color: V.tintaSuave, fontSize: '12.5px' }}>
                   {f.lugares.map((l) => (
                     <Link key={l.id} href={href(l.id)} prefetch={false} style={{ whiteSpace: 'nowrap' }}>
                       {l.rotulo} <span className="font-mono tabular-nums" style={{ color: V.tinta }}>{textoStock(l.cantidad, f.unidad)}</span>
+                      {l.acopiado > 0 && <span style={{ color: V.tenue }}> · {textoStock(l.acopiado, f.unidad)} acopiado</span>}
                     </Link>
                   ))}
                 </div>

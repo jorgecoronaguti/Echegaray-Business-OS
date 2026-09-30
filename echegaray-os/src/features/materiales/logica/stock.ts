@@ -19,6 +19,15 @@ export interface Existencia {
   unidad: string | null
   ubicacion_id: string
   cantidad: number
+  /**
+   * Obra para la que está acopiado este material en el Taller; `null` u omitido = libre. El cliente se
+   * deduce de la obra y no se guarda: dos verdades del cliente se desincronizan.
+   */
+  destino_obra_id?: string | null
+  /** Rótulo «OB-00xx · Obra» del destino, resuelto en la lectura. */
+  destino_rotulo?: string | null
+  /** Cuándo entró esa fila (fecha de ingreso del acopio). */
+  desde?: string | null
 }
 
 export interface RemitoItem {
@@ -103,6 +112,10 @@ export interface Destino {
   /** uuid de `ubicacion`, o `obra:<id>` si la obra aún no tiene lugar: la acción lo resuelve con `ubicacion_de_obra`. */
   valor: string
   rotulo: string
+  /** Qué es el lugar: el Taller es el único que acopia para una obra. */
+  tipo?: 'taller' | 'obra'
+  /** La obra a la que pertenece el destino (nula en el Taller): de ahí sale el destino del acopio. */
+  obra_id?: string | null
 }
 
 export const PREFIJO_OBRA = 'obra:'
@@ -113,10 +126,9 @@ export const PREFIJO_OBRA = 'obra:'
  */
 export function destinosPosibles(lugares: Lugar[], obrasActivas: string[], rotulos: Map<string, string>): Destino[] {
   const conLugar = new Set(lugares.map((l) => l.obra_id).filter((o): o is string => o != null))
-  const nuevos: Destino[] = obrasActivas.filter((o) => !conLugar.has(o)).map((o) => ({ valor: `${PREFIJO_OBRA}${o}`, rotulo: rotulos.get(o) ?? o }))
-  const existentes: Destino[] = lugares.map((l) => ({ valor: l.id, rotulo: l.rotulo, tipo: l.tipo }))
+  const nuevos: Destino[] = obrasActivas.filter((o) => !conLugar.has(o)).map((o) => ({ valor: `${PREFIJO_OBRA}${o}`, rotulo: rotulos.get(o) ?? o, tipo: 'obra' as const, obra_id: o }))
+  const existentes: Destino[] = lugares.map((l) => ({ valor: l.id, rotulo: l.rotulo, tipo: l.tipo, obra_id: l.obra_id }))
     .sort((a, b) => (a.tipo === b.tipo ? a.rotulo.localeCompare(b.rotulo, 'es') : a.tipo === 'taller' ? -1 : 1))
-    .map(({ valor, rotulo }) => ({ valor, rotulo }))
   return [...existentes, ...nuevos.sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'es'))]
 }
 

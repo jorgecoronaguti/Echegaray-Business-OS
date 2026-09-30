@@ -28,7 +28,7 @@ export function StockEscritorio({ lugares, existencias, destinos, remitos, puede
 
   return (
     <>
-      <StockPorLugar lugares={lugares} existencias={existencias} puedeOperar={puedeOperar} cara="escritorio" alMover={setDesde} />
+      <StockPorLugar lugares={lugares} existencias={existencias} puedeOperar={puedeOperar} cara="escritorio" alMover={setDesde} destinos={destinos} />
       {desde && !emitido && (
         <Drawer
           titulo="Sobra → Taller u otra obra" onCerrar={() => setDesde(null)} ancho={480} testid="panel-mover"
