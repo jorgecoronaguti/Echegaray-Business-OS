@@ -181,12 +181,22 @@ type Blanco = Pick<SueldoBlancoNegro,
  * 6 de 15 obreros no es la de la plataforma (Quiroga Sebastián: of. especializado en la app, AYUDANTE en el recibo).
  * El piso de la categoría de plataforma queda de respaldo sólo para quien no tiene ningún recibo real anterior.
  */
-export function valorHoraDelUltimoRecibo(e: EntradaDeSueldo): number | null {
+export function valorHoraDelUltimoRecibo(e: EntradaDeBlanco): number | null {
   return num(ultimoReciboReal(e)?.valorHora)
 }
 
+/**
+ * EL $/H DEL BLANCO, EN UN SOLO LADO: el escrito a mano, si no el del último recibo real, si no el piso de la categoría
+ * de plataforma. Lo usan el 0401 del estimado y el básico del presentismo (dueño 30/09: «corregí los valores hora de la
+ * segunda quincena en blanco según lo que indica el valor de los recibos de la primera quincena»): el presentismo
+ * seguía con el piso de plataforma y Zogbe mostraba 0425 a $6.468/h en el recibo y el bloque a $6.348/h.
+ */
+export function valorHoraDelBlanco(e: EntradaDeBlanco, valorHoraManual: number | null = null): number | null {
+  return num(valorHoraManual) ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria)
+}
+
 /** El último recibo real anterior al período, con $/h: el que le presta el $/h y la categoría al blanco estimado. */
-function ultimoReciboReal(e: EntradaDeSueldo): { periodo: string; valorHora: number | null; categoria?: string | null } | null {
+function ultimoReciboReal(e: EntradaDeBlanco): { periodo: string; valorHora: number | null; categoria?: string | null } | null {
   const est = e.estimacion
   if (!est?.persona) return null
   const tope = periodoOrdenable(est.base.periodo)
@@ -201,7 +211,7 @@ function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valor
   const est = e.estimacion
   if (!est) return null
   return estimarRecibo(est.base.reglas, {
-    persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria), horasRecibo,
+    persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraDelBlanco(e, valorHoraRecibo), horasRecibo,
     feriados: est.base.feriados, recibosPropios: est.persona ? est.base.recibos.filter((r) => r.persona === est.persona) : [],
     presentismoPropio: est.base.presentismoPropio === true, presentismoCobra: e.presentismoCobra === true, presentismoPierde: e.presentismoPierde === true,
   })

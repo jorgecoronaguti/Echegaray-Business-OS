@@ -30,10 +30,11 @@
 
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
-import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
+import { sueldoBlancoNegro, valorHoraDelBlanco, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
 import { cobraConPresentismo, presentismoDeLinea, presentismoNoAplica, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
 import { pagoDeLaLinea, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
+import type { ArrastreAplicado, ArrastreSaliente } from './liquidacionArrastre.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -204,6 +205,10 @@ export interface LineaConOverrides extends LineaLiquidada {
    * negro − pagado, y el exceso de un lado descontado del otro. Acá sólo se le entrega la entrada.
    */
   pago: PagoDeLaLinea
+  /** La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`). */
+  arrastre?: ArrastreAplicado | null
+  /** Del lado del origen: la parte de su recibo que otra quincena paga por banco. */
+  arrastradoA?: ArrastreSaliente | null
   /**
    * LA CUENTA QUE ESCRIBIÓ UNA PERSONA EN CADA CELDA, por campo: `{ pagadoEfectivo: '=100000+40000' }`.
    *
@@ -364,8 +369,11 @@ export function aplicarOverrides(
   // EL PRESENTISMO SE EVALÚA CON LAS HORAS QUE QUEDARON, y sólo en obreros: la regla dice quién queda afuera.
   // QUIEN COBRA POR MES LO DICE (dueño, 17/09/2026: el presentismo no aplica a mensuales). Oficina no arma entrada:
   // sin esto su celda quedaba en «—», que se lee igual que «todavía no rige». No toca la cadena: no es «perdido».
+  // EL BÁSICO ES EL $/H DEL BLANCO, el mismo del 0401 (`valorHoraDelBlanco`); el piso de plataforma sólo sin recibo.
   const presentismo = entradaPresentismo && grupo === 'obreros'
-    ? presentismoDeLinea(entradaPresentismo, horas)
+    ? presentismoDeLinea(conModelo
+      ? { ...entradaPresentismo, basico: valorHoraDelBlanco(blanco!, puesto('valorHoraRecibo')) ?? entradaPresentismo.basico }
+      : entradaPresentismo, horas)
     : base.modalidad === 'mensual' ? presentismoNoAplica() : null
   // EL PRESENTISMO VIVE SÓLO EN EL BLANCO (dueño 28/09: «el presentismo es para la parte en blanco no toques nada del
   // negro»): cumple → 0425 en el recibo; perdido → 0426 lo anula ahí. El negro queda horas × $/h, sin descuento.

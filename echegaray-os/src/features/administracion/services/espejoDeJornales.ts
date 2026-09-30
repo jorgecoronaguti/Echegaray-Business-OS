@@ -308,8 +308,10 @@ export interface TotalesDelEspejo {
   sinTarifa: number
   /** El negro de las filas que suman (`negroDeLaFila`): del modelo, o total − neto en la foto sellada. */
   negro: number
-  /** El neto (banco) de las filas que van en las bandas: sin los mensuales. */
+  /** El neto (banco) de las filas que van en las bandas: sin los mensuales ni la resta arrastrada de otro recibo. */
   netoBandas: number
+  /** La resta de recibos anteriores que estas filas pagan por banco (sólo la aplicada): está en `porBanco`, no en el neto. */
+  arrastre?: { importe: number; estado: 'aplicado' }
   /** Sueldos mensuales (Oficina): una línea propia del pie, fuera de las bandas. */
   mensuales: number
   /** Filas con $/h y horas cuyo blanco no tiene neto: no suman y se cuentan aparte de «sin tarifa». */
@@ -365,6 +367,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     horasPagas: 0,
     pago: totalesDePago([]),
   }
+  let arrastre = 0
   const deLasBandas: FilaDelEspejo['linea']['pago'][] = []
   for (const f of filas) {
     const l = f.linea
@@ -390,7 +393,15 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     // sueldo fijo sumaba al Total sin estar en Neto ni en Negro, y el pie no cerraba por 3.600.000.
     // POR MODALIDAD: el jefe sin neto cargado cobra por mes igual (`cobroMensual.ts`) y no va en las bandas.
     if (l.modalidad === 'mensual') t.mensuales += l.cobra
-    else { t.netoBandas += l.porBanco; t.negro += negroDeLaFila(l) ?? 0; deLasBandas.push(l.pago) }
+    else {
+      // NETO + NEGRO = COBRA SIGUE EXACTO CON EL ARRASTRE: la resta está en el banco de la fila pero es efectivo
+      // reclasificado, así que sale del neto y se muestra aparte.
+      const arr = l.arrastre?.estado === 'aplicado' ? l.arrastre.importe : 0
+      t.netoBandas += l.porBanco - arr
+      arrastre += arr
+      t.negro += negroDeLaFila(l) ?? 0
+      deLasBandas.push(l.pago)
+    }
     t.adelanto += l.adelanto
     t.yaTransferido += l.yaTransferido
     t.porBanco += l.porBanco
@@ -401,6 +412,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     'horasDeDiferencia', 'horasPagas', 'negro', 'netoBandas', 'mensuales', 'presentismoEnJuego', 'presentismoPerdido'] as const) {
     t[k] = r2(t[k])
   }
+  t.arrastre = { importe: r2(arrastre), estado: 'aplicado' }
   t.pago = totalesDePago(deLasBandas)
   return t
 }

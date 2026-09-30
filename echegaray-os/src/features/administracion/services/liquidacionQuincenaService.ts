@@ -47,6 +47,7 @@ import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornal
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
 import { leerRestituciones } from './presentismoRestitucionService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
+import { conArrastres, leerArrastres } from './liquidacionArrastre.ts'
 import { estadoDelCuadro } from './estadoDelCuadro.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
@@ -145,7 +146,7 @@ export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
   const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, espejo, sesionDePrueba,
-    exposicion, feriados, subcontratos] =
+    exposicion, feriados, subcontratos, arrastres] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -205,6 +206,8 @@ export async function getLiquidacionDeLaQuincena(
       leerFeriadosDeLaQuincena(supabase, q.desde, q.hasta),
       // LA CUADRILLA DE UN SUBCONTRATISTA NO ES PLANTEL PROPIO (dueño, 15/09/2026). Lectura aparte: ver la puerta.
       leerSubcontratoDePersonas(supabase),
+      // LA RESTA DE UN RECIBO QUE SE PAGA POR BANCO EN OTRA QUINCENA (dueño, 30/09/2026): la que entra y la que sale.
+      leerArrastres(supabase, q.desde, periodoDeRecibo(q)),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -213,6 +216,7 @@ export async function getLiquidacionDeLaQuincena(
   }
   anotar('el plantel', directorio.error)
   anotar('las cuadrillas de subcontrato', subcontratos.error)
+  anotar('lo que un recibo anterior dejó por banco', arrastres.error)
   anotar('los CUIL del legajo', legajo.error)
   anotar('las tarifas', tarifas.error)
   // `leerRegistrosHH` devuelve el error ya en texto: no trae `code` porque un tope alcanzado no es
@@ -412,16 +416,16 @@ export async function getLiquidacionDeLaQuincena(
         // LO PAGADO VIAJA TAMBIÉN EN LA CERRADA: es el registro de una plata que salió, no un override del
         // cálculo. Sin esto, cerrar la quincena borraría de la pantalla el pago que alguien registró.
         // EL ESPEJO VIAJA TAMBIÉN A LA CERRADA, pero no manda: sólo dice si la planilla midió el banco (`sinDesglose`).
-        ? c.lineas.map((l) => conMarcaDePago(
+        ? c.lineas.map((l) => conMarcaDePago(conArrastres(
           sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l),
-            espejo.cadenaPorPersona.get(l.personaId) ?? null), pagadas,
+            espejo.cadenaPorPersona.get(l.personaId) ?? null), arrastres, false), pagadas,
         ))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
-        : c.lineas.map((l) => conMarcaDePago(aplicarOverrides(
+        : c.lineas.map((l) => conMarcaDePago(conArrastres(aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
           blancoDe(c.grupo, l), presentismoDe(c.grupo, l), formulas.get(l.personaId) ?? {},
-        ), pagadas)),
+        ), arrastres, true), pagadas)),
     })),
     camposEditables,
     espejo,

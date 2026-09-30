@@ -73,6 +73,11 @@ export interface CadenaParaCerrar {
   porBanco: number
   enEfectivo: number | null
   total: number | null
+  /**
+   * La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`). Sólo la `aplicado`
+   * está dentro de `porBanco`; `no_alcanza` no movió nada.
+   */
+  arrastre?: { importe: number; estado: 'aplicado' | 'no_alcanza' } | null
 }
 
 export interface Cierre {
@@ -101,7 +106,10 @@ export function cierreDeLaFila(c: CadenaParaCerrar): Cierre | null {
   const diferencia = r2(c.total - esperado)
   // CON BLANCO + NEGRO TAMBIÉN: COBRA TOTAL = BANCO + NEGRO. Con celdas escritas a mano puede no dar, y se dice
   // (dueño, 15/09/2026: se guarda igual, la fila se marca).
-  const sueldo = c.negro == null ? 0 : r2(c.cobra - c.porBanco - c.negro)
+  // EL ARRASTRE SE DESCUENTA DEL BANCO ANTES DE COMPARAR: es efectivo que pasó a banco, no sueldo nuevo. Sin esto la
+  // fila con la resta Q1-09 aplicada se marcaba «no cierra» por exactamente la resta, y el total sí cierra.
+  const aplicado = c.arrastre?.estado === 'aplicado' ? c.arrastre.importe : 0
+  const sueldo = c.negro == null ? 0 : r2(c.cobra - (c.porBanco - aplicado) - c.negro)
   const cierra = Math.abs(diferencia) <= 1 && Math.abs(r2(c.total - repartido)) <= 1 && Math.abs(sueldo) <= 1
   const diferenciaQueSeDice = Math.abs(diferencia) > 1 ? diferencia
     : Math.abs(r2(c.total - repartido)) > 1 ? r2(c.total - repartido) : sueldo

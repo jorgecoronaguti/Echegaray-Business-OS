@@ -87,6 +87,9 @@ function Totales({ quincena, totales, sinGiro, sinActividad }: {
       {/* LOS MISMOS NÚMEROS QUE EL PIE DE LA QUINCENA (QA, 16/09/2026): antes esta línea sumaba banco + efectivo SIN
           los sueldos mensuales y se llamaba «total», $424.795 menos que el cuadro. Banco + negro + mensuales = total. */}
       <Cifra testid="por-banco" rotulo="Banco" valor={totales.netoBandas} />
+      {(totales.arrastre?.importe ?? 0) > 0 && (
+        <Cifra testid="caja-arrastre" rotulo="+ Resta recibo anterior (banco, sale del efectivo)" valor={totales.arrastre?.importe ?? 0} />
+      )}
       <Cifra testid="efectivo-viernes" rotulo="Negro (efectivo)" valor={totales.negro} />
       {totales.mensuales > 0 && <Cifra testid="caja-mensuales" rotulo="Sueldos mensuales" valor={totales.mensuales} />}
       <Cifra testid="total-quincena" rotulo="Total quincena" valor={totales.cobra} fuerte />

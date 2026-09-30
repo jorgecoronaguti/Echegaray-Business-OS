@@ -25,6 +25,8 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
 import { saldoRedondeado } from '../../../services/efectivoRedondeado'
+import { arrastreAplicado, conNetoDelRecibo } from '../../../services/liquidacionArrastre'
+import { MarcaDeArrastre } from './MarcaDeArrastre'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
 
@@ -147,8 +149,11 @@ export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edi
 export const AVISO_NETO_NO_RECALCULADO = 'el neto es del recibo del estudio y no se recalcula: editá Banco si cambió'
 
 /** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe. */
-export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
+export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
+  // EL NETO DEL RECIBO, SIN LA RESTA DE OTRO: la resta va en la marca, y escribir la celda escribe el neto.
+  const fila = conNetoDelRecibo(conResta)
   const l = fila.linea
+  const marca = <MarcaDeArrastre l={conResta.linea} testid={`neto-arrastre-${fila.personaId}`} />
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
   // ⚠ JUNTO AL NÚMERO, SIN TEXTO (dueño, 15/09/2026, fila de Agüero: el aviso quedaba pegado debajo): se corrigieron las horas o el
@@ -162,6 +167,7 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
         <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
           camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
         {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
+        {marca}
         {s?.driveFileId && (
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
             title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
@@ -176,7 +182,7 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
   return (
     <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
       style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
-      {pesos(l.porBanco)}{estimado && <Est />}
+      {pesos(l.porBanco)}{estimado && <Est />}{marca}
       {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
       <MarcaDeOrigen origen={l.origen.porBanco} compacta />
       {s?.driveFileId && (
@@ -266,7 +272,7 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
     )
   }
   const estimado = s?.estado === 'estimado' && l.origen.cobra === 'calculado'
-  const cuenta = s ? `neto ${pesos(l.porBanco)} + negro ${pesos(s.negro)}` : null
+  const cuenta = s ? `neto ${pesos(l.porBanco - arrastreAplicado(l))} + negro ${pesos(s.negro)}` : null
   return (
     <div data-testid={`total-${fila.personaId}`} title={[cuenta, jornales].filter(Boolean).join(' · ') || undefined}
       style={{ ...DERECHA, fontSize: '14px', fontWeight: 600, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>

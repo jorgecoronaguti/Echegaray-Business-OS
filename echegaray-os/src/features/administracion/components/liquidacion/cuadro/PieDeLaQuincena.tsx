@@ -88,7 +88,11 @@ export function ResumenJornaleros({ t, pagos, sellada = false }: { t: TotalesDeJ
     <div data-testid="espejo-pie" style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: '12px', color: V.tinta }}>
       {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro. */}
       <div data-testid="pie-a-pagar" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 32, rowGap: 8 }}>
-        <APagar rotulo="A pagar hoy · banco" valor={c.aPagarBanco} testid="pie-a-pagar-banco" />
+        <div>
+          <APagar rotulo="A pagar hoy · banco" valor={c.aPagarBanco} testid="pie-a-pagar-banco" />
+          {/* LA RESTA DE RECIBOS ANTERIORES VA APARTE: sale por banco pero ya está dentro del efectivo. */}
+          {(t.arrastre?.importe ?? 0) > 0 && <div data-testid="pie-arrastre" style={ROT}>{`+ Resta recibo anterior (banco) ${pesos(t.arrastre?.importe ?? null)}`}</div>}
+        </div>
         <div>
           <APagar rotulo="A pagar hoy · efectivo" valor={c.aPagarEfectivo} testid="pie-a-pagar-efectivo" />
           {t.redondeo > 0 && <div data-testid="pie-redondeo" style={ROT}>{`Efectivo redondeado ${pesos(t.redondeo)}`}</div>}

@@ -42,6 +42,8 @@ import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../..
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
 import { ReciboEnBlanco } from './ReciboEnBlanco'
+import { conNetoDelRecibo } from '../../../services/liquidacionArrastre'
+import { MarcaDeArrastre } from './MarcaDeArrastre'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
@@ -154,7 +156,9 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
             style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
         )}
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        {/* EL NETO SIN LA RESTA DE OTRO RECIBO: la resta va en la marca; escribir acá escribe el neto. */}
+        <Escribible campo="porBanco" fila={conNetoDelRecibo(fila)} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" />
       </Renglon>
       {/* EL RECIBO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el estimado cuyo neto es el Banco preliminar, o el real
           contra el estimado cuando llegó el del estudio. */}
@@ -314,7 +318,9 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={l.total} medio origen={l.origen.total} />
       </Renglon>
       <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        {/* EL NETO SIN LA RESTA DE OTRO RECIBO: la resta va en la marca; escribir acá escribe el neto. */}
+        <Escribible campo="porBanco" fila={conNetoDelRecibo(fila)} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" />
       </Renglon>
       <Renglon rotulo="Efectivo">
         <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />
