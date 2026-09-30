@@ -24,7 +24,7 @@
 // —un presupuesto ES precio— así que al jefe de obra no se le dibuja la sección.
 
 import type { Rol } from './index'
-import { AREA_HREF, AREA_LABEL, INICIO_JEFE_TELEFONO, areasDe, puedeVerRuta } from './areas.ts'
+import { AREA_HREF, AREA_LABEL, ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES, INICIO_JEFE_TELEFONO, areasDe, puedeVerRuta } from './areas.ts'
 import { INICIO_JEFE_ESCRITORIO } from '../../../shared/auth/caraDelJefe.ts'
 export { INICIO_JEFE_TELEFONO }
 
@@ -58,16 +58,21 @@ const HERRAMIENTAS: SolapaNav = { clave: 'herramientas', label: 'Herramientas', 
  * nombre del área, que es información y no un botón que no lleva a ningún lado.
  */
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
-  // ═══ EL JEFE EN LA COMPUTADORA: OBRAS · HERRAMIENTAS (dueño, 25/09/2026) ═══
-  // «Tiene que tener un diseño de computadora». Su nivel 1 es su obra y las herramientas; nunca
-  // Clientes, Compras ni sueldos. «Administración» se le dibujaba para una sola sección (Personal), y
-  // lo que de ahí usa —el plantel, cargar la asistencia— cuelga ahora de su portada de obras. Las RUTAS
-  // de Personal le siguen abiertas (`puedeVerRuta`, decisión del 24/09): cambia la barra, no el permiso.
+  // ═══ EL JEFE EN LA COMPUTADORA: ADMINISTRACIÓN · OBRAS · HERRAMIENTAS (dueño, 30/09/2026) ═══
+  // El 25/09 («tiene que tener un diseño de computadora») se le sacó «Administración» de la barra y
+  // Personal quedó colgando sólo de su portada: el 30/09 Maldonado no encontraba cómo cargar la
+  // asistencia y el dueño lo leyó como lo que era — «borraste el acceso a CRM admin para el jefe».
+  // Vuelve la solapa, y entra DIRECTO a Personal (`ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES`): su
+  // Administración es Personal sin Liquidación (24/09); nunca Clientes, Compras ni sueldos.
   // «Obras» lleva a su portada de escritorio (`/obras/hoy`): la cartera `/obras` no es suya
   // (`RUTAS_CERRADAS_AL_JEFE_EXACTAS`) y una solapa que rebota enseña que la barra miente. En el
   // teléfono estas solapas no se dibujan: manda la barra de abajo (`barraTelefonoDe`).
   if (rol === 'jefe_obra') {
-    return [{ clave: 'obras', label: AREA_LABEL.obras, href: INICIO_JEFE_ESCRITORIO }, HERRAMIENTAS]
+    return [
+      { clave: 'administracion', label: AREA_LABEL.administracion, href: ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES },
+      { clave: 'obras', label: AREA_LABEL.obras, href: INICIO_JEFE_ESCRITORIO },
+      HERRAMIENTAS,
+    ]
   }
   const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
   const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
