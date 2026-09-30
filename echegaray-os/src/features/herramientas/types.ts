@@ -60,7 +60,7 @@ export interface Ubicacion {
   archivada: boolean
   /** El proveedor que ES este lugar (servicio técnico o tercero, 20260923T2400): el nombre sale de ahí. */
   proveedor_id?: string | null
-  /** La persona que ES este lugar (tipo persona, 20260925T1100). */
+  /** Histórico: las ubicaciones tipo persona quedaron archivadas el 30/09 (una persona no es un lugar). */
   persona_id?: string | null
 }
 
@@ -91,6 +91,9 @@ export interface Movimiento {
   comprobante_id?: string | null
   /** El papel en Drive que respalda el movimiento (20260925T1400): la constancia SRT 299/11 firmada. */
   respaldo_drive_file_id?: string | null
+  /** Quién lo tenía antes y quién lo tiene después (20260930T2100). null = libre en el lugar. */
+  persona_origen?: string | null
+  persona_destino?: string | null
 }
 
 /**
@@ -100,8 +103,11 @@ export interface Movimiento {
  */
 export interface Existencia {
   activo_id: string
+  /** DÓNDE está: una obra, el Taller, un rodado o un servicio técnico. Nunca una persona. */
   ubicacion_id: string
   cantidad: number
+  /** QUIÉN lo tiene (20260930T2100): null = libre en ese lugar. */
+  persona_id?: string | null
 }
 
 export interface Incidencia {
@@ -133,14 +139,16 @@ export const COLUMNAS_ACTIVO =
 export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id, persona_id'
 export const COLUMNAS_PROVEEDOR_LUGAR = 'id, nombre, cuit, rubro, rubro_deducido'
 export const COLUMNAS_MOVIMIENTO =
-  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad, comprobante_id, respaldo_drive_file_id'
-export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad'
+  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad, comprobante_id, respaldo_drive_file_id, persona_origen, persona_destino'
+export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad, persona_id'
 
 /** Un cambio de cantidad en un lugar que no es un movimiento: recuento o baja de parte de un lote. */
 export interface Ajuste {
   id: string
   activo_id: string
   ubicacion_id: string
+  /** Sobre lo que tenía esta persona (20260930T2100); null = sobre lo libre del lugar. */
+  persona_id?: string | null
   antes: number
   despues: number
   /** 'egreso' (20260925T1500): la persona se fue sin devolver lo que tenía; se cierra, no vuelve al Taller. */
@@ -149,7 +157,7 @@ export interface Ajuste {
   usuario_id: string | null
   creado_en: string
 }
-export const COLUMNAS_AJUSTE = 'id, activo_id, ubicacion_id, antes, despues, motivo, detalle, usuario_id, creado_en'
+export const COLUMNAS_AJUSTE = 'id, activo_id, ubicacion_id, persona_id, antes, despues, motivo, detalle, usuario_id, creado_en'
 export const COLUMNAS_INCIDENCIA =
   'id, activo_id, tipo, texto, foto_url, ubicacion_id, estado_resultante, usuario_id, creado_en, cerrada_en'
 

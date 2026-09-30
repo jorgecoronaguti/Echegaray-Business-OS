@@ -8,7 +8,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { aplicarBusqueda, cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
-import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
+import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloQuien, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo, Clase } from '../types'
@@ -30,6 +30,7 @@ const ESPECIAL: Record<string, string> = {
   alta_desde_obra: 'Altas desde obra sin revisar',
   repetidos: 'Nombres repetidos: pueden ser la misma herramienta',
   sin_etiqueta: 'Sin etiqueta impresa',
+  con_alguien: 'Lo tiene alguien (entregado a una persona)',
 }
 
 export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo: string | null }) {
@@ -48,7 +49,8 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const lista = useMemo(() => filtrar(parque, filtros), [parque, filtros])
   const cats = categorias(parque.activos)
   const abierto = activo ? parque.activos.find((x) => x.codigo === activo) ?? null : null
-  // Las personas (EPP y ropa entregados) van juntas en «Entregado a personas»: cada una se ve en su legajo.
+  // Una persona no es un lugar (dueño 30/09): lo que tiene está en su obra o en el Taller. Quién lo tiene
+  // es otro filtro («con alguien», en los totales), no una opción de Ubicación.
   const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado' && u.tipo !== 'persona')
   const obrasConAlgo = parque.ubicaciones.filter((u) => u.tipo === 'obra' && (parque.existEn.get(u.id)?.length ?? 0) > 0)
   // Mirando un lugar concreto, los lotes salen de ahí al moverlos.
@@ -130,7 +132,6 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <option value="tipo:servicio_tecnico">Servicio técnico</option>
               <option value="tipo:rodado">Arriba de un rodado</option>
               <option value="tipo:tercero">Terceros</option>
-              <option value="tipo:persona">Entregado a personas</option>
               {lugares.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {obrasConAlgo.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {rodados.map((r) => { const u = parque.ubicaciones.find((x) => x.activo_id === r.id); return u ? <option key={u.id} value={u.id}>{rotuloRodado(r)}</option> : null })}
@@ -176,14 +177,15 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
 
-          <TotalesInventario t={totales(parque, lista, filtros.ubicacion)} activo={filtros.ubicacion} onFiltrar={(u) => ir({ ubicacion: filtros.ubicacion === u ? null : u })} />
+          <TotalesInventario t={totales(parque, lista, filtros.ubicacion)} activo={filtros.ubicacion} onFiltrar={(u) => ir({ ubicacion: filtros.ubicacion === u ? null : u })}
+            conAlguien={filtros.especial === 'con_alguien'} onConAlguien={() => ir({ especial: filtros.especial === 'con_alguien' ? null : 'con_alguien' })} />
           <div role="table" aria-label="Inventario (rótulos)">
           <div role="row" style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 16, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
             <div>
               <input type="checkbox" aria-label="Seleccionar todos" checked={lista.length > 0 && lista.every((a) => sel.includes(a.id))}
                 onChange={(e) => setSel(e.target.checked ? lista.map((a) => a.id) : [])} style={{ accentColor: V.grafito }} />
             </div>
-            <div>Activo</div><div>Categoría</div><div>Estado</div><div>Ubicación actual</div><div>Quién la movió</div><div style={{ textAlign: 'right' }}>Visto</div>
+            <div>Activo</div><div>Categoría</div><div>Estado</div><div>Dónde</div><div>{personalMirado ? 'Quién lo tiene' : 'Quién la movió'}</div><div style={{ textAlign: 'right' }}>Visto</div>
           </div>
           </div>
         </div>
@@ -228,7 +230,9 @@ const TIPO_TOTAL: Record<string, string> = {
 }
 
 /** Los totales de lo que se ve, arriba del listado: cambian con cada filtro y con cada letra del buscador. */
-function TotalesInventario({ t, activo, onFiltrar }: { t: ReturnType<typeof totales>; activo: string | null; onFiltrar: (u: string) => void }) {
+function TotalesInventario({ t, activo, onFiltrar, conAlguien, onConAlguien }: {
+  t: ReturnType<typeof totales>; activo: string | null; onFiltrar: (u: string) => void; conAlguien: boolean; onConAlguien: () => void
+}) {
   return (
     <div data-testid="totales-inventario" style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', fontSize: '12.5px', color: V.apagado, marginBottom: -8 }}>
       <span><b style={{ fontSize: '14px', color: V.tinta, fontWeight: 600 }}>{t.activos}</b> {t.activos === 1 ? 'activo' : 'activos'}</span>
@@ -247,6 +251,13 @@ function TotalesInventario({ t, activo, onFiltrar }: { t: ReturnType<typeof tota
           </button>
         )
       })}
+      {/* QUIÉN, no DÓNDE: lo que tiene una persona se cuenta en su lugar (arriba) y además acá. */}
+      {(t.conAlguien > 0 || conAlguien) && (
+        <button type="button" onClick={onConAlguien} data-testid="total-con-alguien" title={conAlguien ? 'Quitar el filtro' : 'Ver sólo lo que tiene alguien'}
+          style={{ color: V.apagado, textDecoration: conAlguien ? 'none' : 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3, fontWeight: conAlguien ? 600 : 400, background: conAlguien ? V.hover : 'transparent', borderRadius: 4, padding: conAlguien ? '1px 6px' : 0 }}>
+          Lo tiene alguien <b style={{ color: V.tintaSuave, fontWeight: 500 }}>{t.conAlguien}</b>
+        </button>
+      )}
     </div>
   )
 }
@@ -339,6 +350,8 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
   const cant = cantidadVisible(parque, a, filtroUbicacion)
   const lugares = rotuloLugares(parque, a)
   const quien = quienLaMovio(parque, a.id)
+  // EPP y ropa: la quinta columna es QUIÉN LO TIENE (dueño 30/09), no quién la movió. Dónde es la cuarta.
+  const tiene = esPersonal(a) ? rotuloQuien(parque, a) : null
   const visto = vistoEn(parque, a.id)
   const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
   // EPP y ropa: el stock se ve siempre (también 0) y en 0 dice «sin stock», no «sin ubicación cargada».
@@ -364,7 +377,9 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
       <div style={a.ubicacion_id ? { color: V.tintaSuave } : sinStock ? { color: V.apagado } : vacio}>
         {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : sinStock ? 'sin stock' : lugares}
       </div>
-      <div style={quien ? { color: V.apagado } : vacio}>{quien ?? 'sin registro'}</div>
+      {tiene != null
+        ? <div style={tiene ? { color: V.tintaSuave, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : { color: V.apagado }} data-testid="quien-lo-tiene" title={tiene || undefined}>{tiene || 'nadie · disponible'}</div>
+        : <div style={quien ? { color: V.apagado } : vacio}>{quien ?? 'sin registro'}</div>}
       <div style={{ textAlign: 'right', ...(visto ? { color: V.apagado } : vacio) }}>{textoVisto(visto)}</div>
     </div>
   )

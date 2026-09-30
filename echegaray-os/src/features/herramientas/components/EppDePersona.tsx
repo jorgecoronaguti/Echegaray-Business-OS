@@ -6,9 +6,14 @@
 //
 // ═══ CÓMO SE LEE ═══
 // Arriba, sus talles (los usa la entrega para proponer el talle). Después dos bloques, EPP y Ropa de
-// trabajo, con lo que tiene HOY: ítem, talle, cantidad, cuándo se le entregó y quién. La entrega se abre
+// trabajo, con lo que tiene HOY: ítem, talle, cantidad, DÓNDE está y cuándo se le entregó. La entrega se abre
 // EN EL BLOQUE, sin salir del legajo: ítem → talle → cantidad → Entregar. Devolver y dar de baja van en
 // la fila. Abajo, el historial (base de la constancia de la Res. SRT 299/11, que queda como siguiente paso).
+//
+// ═══ DÓNDE ≠ QUIÉN (dueño, 30/09/2026) ═══
+// «la ubicación es un cliente/una obra, no una persona; eso es quien lo tiene». La persona es QUIÉN lo
+// tiene; DÓNDE es la obra de su asignación vigente (o el Taller) y se mueve con ella si cambia de obra.
+// Devolver le saca la persona: el ítem queda donde está, libre. La baja descuenta de lo que tiene ella.
 //
 // ═══ SIN STOCK ═══
 // La base no deja entregar lo que no hay (no hay stock negativo). Si el inventario dice 0, la entrega
@@ -41,7 +46,8 @@ const enlace = { fontSize: '12.5px', color: V.apagado, textDecoration: 'underlin
 export interface PropsEpp {
   personaId: string
   enLaEmpresa: boolean
-  ubicacionPersona: string | null
+  /** Dónde queda lo que se le entregue: su obra vigente o el Taller. */
+  dondeRecibe: { ubicacionId: string | null; rotulo: string } | null
   tallerId: string | null
   tiene: FilaTiene[]
   /** Lo que tenía cuando se fue, cerrado como «egresó · no devuelto». */
@@ -142,10 +148,15 @@ function Seccion({ clase, filas, ...p }: PropsEpp & { clase: ClasePersonal; fila
         </div>
       </div>
       {entregando && (
-        <FormEntrega clase={clase} catalogo={catalogo} personaId={p.personaId} talles={p.talles} tallerId={p.tallerId} onCerrar={() => setEntregando(false)} />
+        <FormEntrega clase={clase} catalogo={catalogo} personaId={p.personaId} talles={p.talles} tallerId={p.tallerId} dondeRecibe={p.dondeRecibe} onCerrar={() => setEntregando(false)} />
+      )}
+      {filas.length > 0 && (
+        <div className={`hidden sm:grid ${COLUMNAS}`} style={{ ...rotulo, padding: '8px 0 4px' }} aria-hidden>
+          <span>Ítem</span><span>Talle</span><span className="text-right">Cant.</span><span>Dónde</span><span>Entrega</span><span />
+        </div>
       )}
       {filas.map((f) => (
-        <FilaTenencia key={f.activoId} f={f} personaId={p.personaId} ubicacionPersona={p.ubicacionPersona} tallerId={p.tallerId} />
+        <FilaTenencia key={`${f.activoId}:${f.dondeId}`} f={f} personaId={p.personaId} />
       ))}
       {!filas.length && !entregando && (
         <div style={{ fontSize: '13px', color: V.tenue, padding: '12px 0' }}>
@@ -176,7 +187,10 @@ function SeccionCerrada({ clase, filas }: { clase: ClasePersonal; filas: FilaCer
   )
 }
 
-function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTiene; personaId: string; ubicacionPersona: string | null; tallerId: string | null }) {
+/** Ítem · talle · cantidad · DÓNDE · entrega · acciones. Un solo lugar para que encabezado y filas no se desalineen. */
+const COLUMNAS = 'grid-cols-[minmax(0,1.6fr)_56px_48px_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] gap-x-4'
+
+function FilaTenencia({ f, personaId }: { f: FilaTiene; personaId: string }) {
   const router = useRouter()
   const [accion, setAccion] = useState<null | 'devolver' | 'baja'>(null)
   const [n, setN] = useState(String(f.cantidad))
@@ -185,14 +199,13 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
   const [enviando, setEnviando] = useState(false)
 
   async function confirmar() {
-    if (!ubicacionPersona) return
     const cantidad = Math.trunc(Number(n))
     if (!(cantidad >= 1 && cantidad <= f.cantidad)) return setError(`Entre 1 y ${f.cantidad}`)
     setEnviando(true)
     setError(null)
     const r = accion === 'devolver'
-      ? (tallerId ? await devolverDePersonaAction({ persona: personaId, ubicacionPersona, activo: f.activoId, cantidad, destino: tallerId }) : { ok: false as const, error: 'No hay Taller cargado para devolver' })
-      : await bajaDePersonaAction({ persona: personaId, ubicacionPersona, activo: f.activoId, cantidad, motivo })
+      ? await devolverDePersonaAction({ persona: personaId, activo: f.activoId, cantidad })
+      : await bajaDePersonaAction({ persona: personaId, donde: f.dondeId, activo: f.activoId, cantidad, motivo })
     setEnviando(false)
     if (!r.ok) return setError(r.error)
     setAccion(null)
@@ -201,7 +214,8 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
 
   return (
     <div data-testid="fila-tenencia" data-codigo={f.codigo} style={{ borderBottom: `1px solid ${V.linea}`, padding: '10px 0', fontSize: '13px' }}>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1.6fr)_56px_48px_minmax(0,1.2fr)_auto]">
+      {/* Las columnas de `sm:` repiten COLUMNAS a mano: Tailwind sólo ve clases literales. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1.6fr)_56px_48px_minmax(0,1.2fr)_minmax(0,1.2fr)_auto]">
         <div className="min-w-0">
           <div style={{ fontWeight: 500, color: V.tinta }}>{f.nombre}</div>
           <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>{f.codigo}</div>
@@ -211,6 +225,9 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
           <span className="sm:hidden" style={{ color: V.tenue }}> · × </span><span className="sm:hidden" style={{ fontWeight: 600 }}>{f.cantidad}</span>
         </div>
         <div className="hidden text-right sm:block" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{f.cantidad}</div>
+        <div className="col-span-2 min-w-0 sm:col-span-1" style={{ color: V.tintaSuave }} data-testid="donde">
+          <span className="sm:hidden" style={{ color: V.tenue }}>en </span>{f.donde}
+        </div>
         <div className="col-span-2 sm:col-span-1" style={{ color: V.apagado, fontSize: '12.5px' }}>
           {f.fecha ? `${f.yaLaTenia ? 'ya la tenía · cargado' : 'entregado'} el ${diaMesAnio(f.fecha)}${f.quien && !f.historica ? ` · ${f.quien}` : ''}` : 'sin registro de entrega'}
           {f.respaldo && <> · <a href={f.respaldo} target="_blank" rel="noreferrer" style={{ color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 3 }} data-testid="respaldo-constancia">constancia firmada</a></>}
@@ -222,7 +239,7 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
       </div>
       {accion && (
         <div className="mt-3 flex flex-wrap items-center gap-3" style={{ padding: 12, background: '#FAFAF8', border: `1px solid ${V.linea}`, borderRadius: 6 }}>
-          <span style={{ color: V.apagado }}>{accion === 'devolver' ? 'Vuelve al Taller' : 'Baja por'}</span>
+          <span style={{ color: V.apagado }}>{accion === 'devolver' ? `Queda en ${f.donde}, sin nadie a cargo` : 'Baja por'}</span>
           {accion === 'baja' && (
             <select value={motivo} onChange={(e) => setMotivo(e.target.value as typeof motivo)} style={campo} aria-label="Motivo">
               <option value="descartada">gastada o rota</option>
@@ -246,8 +263,9 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
 }
 
 // ── ENTREGAR: ítem → talle → cantidad → confirmar ───────────────────────────────────────────────
-function FormEntrega({ clase, catalogo, personaId, talles, tallerId, onCerrar }: {
-  clase: ClasePersonal; catalogo: PrendaPlana[]; personaId: string; talles: TallesPersona | null; tallerId: string | null; onCerrar: () => void
+function FormEntrega({ clase, catalogo, personaId, talles, tallerId, dondeRecibe, onCerrar }: {
+  clase: ClasePersonal; catalogo: PrendaPlana[]; personaId: string; talles: TallesPersona | null; tallerId: string | null
+  dondeRecibe: PropsEpp['dondeRecibe']; onCerrar: () => void
 }) {
   const router = useRouter()
   const [prendaIdx, setPrendaIdx] = useState<number | null>(null)
@@ -367,6 +385,7 @@ function FormEntrega({ clase, catalogo, personaId, talles, tallerId, onCerrar }:
           {enviando ? 'Guardando…' : yaLaTenia ? 'Registrar' : 'Entregar'}
         </button>
         <button type="button" onClick={onCerrar} style={enlace}>cancelar</button>
+        {dondeRecibe && <span style={{ color: V.apagado }} data-testid="donde-recibe">queda en {dondeRecibe.rotulo}</span>}
         {error && <span role="alert" style={{ color: V.neg }}>{error}</span>}
       </div>
     </div>
@@ -374,6 +393,17 @@ function FormEntrega({ clase, catalogo, personaId, talles, tallerId, onCerrar }:
 }
 
 // ── HISTORIAL ───────────────────────────────────────────────────────────────────────────────────
+/** Dónde pasó, en palabras: de dónde salió y dónde quedó. La persona es quien lo tiene, nunca el lugar. */
+function dondeDelEvento(h: FilaHistorial): string | null {
+  switch (h.tipo) {
+    case 'traslado': return h.lugar && h.donde ? `${h.lugar} → ${h.donde}` : null
+    case 'devolucion': return h.lugar ? `a ${h.lugar}` : h.donde ? `queda en ${h.donde}` : null
+    case 'baja': return h.donde ? `en ${h.donde}` : null
+    case 'egreso': return null
+    default: return [h.lugar && `de ${h.lugar}`, h.donde && h.donde !== h.lugar && `queda en ${h.donde}`].filter(Boolean).join(' · ') || null
+  }
+}
+
 function Historial({ filas }: { filas: FilaHistorial[] }) {
   return (
     <section data-testid="historial-epp" className="flex flex-col gap-2">
@@ -388,7 +418,7 @@ function Historial({ filas }: { filas: FilaHistorial[] }) {
           <span className="col-start-2 sm:col-start-auto" style={{ color: V.tinta }}>{h.nombre}</span>
           <span className="col-start-2 sm:col-start-auto" style={{ fontVariantNumeric: 'tabular-nums' }}>× {h.cantidad}</span>
           <span className="col-start-2 sm:col-start-auto">
-            {[h.tipo === 'historica' ? null : h.quien, h.lugar && (h.tipo === 'devolucion' ? `a ${h.lugar}` : `de ${h.lugar}`)].filter(Boolean).join(' · ')}
+            {[h.tipo === 'historica' ? null : h.quien, dondeDelEvento(h)].filter(Boolean).join(' · ')}
             {h.respaldo && <a href={h.respaldo} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>constancia</a>}
           </span>
         </div>

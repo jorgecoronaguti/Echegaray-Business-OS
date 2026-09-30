@@ -8,7 +8,7 @@
 // Una línea contada en 0 nunca se ajusta: dejar un lugar en 0 es una baja o un movimiento (regla de
 // `ajustar_existencia`, 22/09). Queda en el recuento como evidencia y la pantalla lo dice antes de cerrar.
 
-import { activosEn, cantidadEn, vivo, type Parque } from './parque.ts'
+import { activosEn, libreEn, vivo, type Parque } from './parque.ts'
 import { compararTalle, esPersonal, rotuloConTalle } from './vestimenta.ts'
 
 /** La migración que crea `activo_recuento`; la pantalla la nombra cuando falta. */
@@ -191,12 +191,14 @@ export interface ItemRecuento {
  * las dos listas no coinciden, la pantalla mostraría líneas que la base no tiene.
  */
 export function itemsDeRecuento(p: Parque, ubicacionId: string): ItemRecuento[] {
-  const aca = activosEn(p, ubicacionId)
+  // Se cuenta lo LIBRE (30/09, igual que `abrir_recuento`): lo que tiene una persona está en la obra
+  // pero no se cuenta en el lugar; se controla en su legajo.
+  const aca = activosEn(p, ubicacionId).filter((a) => libreEn(p, a.id, ubicacionId) > 0)
   const esTaller = p.ubicacionPorId.get(ubicacionId)?.tipo === 'taller'
   const presentes = new Set(aca.map((a) => a.id))
   const enCero = esTaller ? p.activos.filter((a) => vivo(a) && esPersonal(a) && !presentes.has(a.id)) : []
   return [...aca, ...enCero]
     .sort((a, b) => Number(b.clase === 'rodado') - Number(a.clase === 'rodado') || Number(esPersonal(a)) - Number(esPersonal(b))
       || a.nombre.localeCompare(b.nombre, 'es') || compararTalle(a.talle, b.talle))
-    .map((a) => ({ id: a.id, codigo: a.codigo, nombre: rotuloConTalle(a), clase: a.clase, patente: a.patente, esperado: cantidadEn(p, a.id, ubicacionId) }))
+    .map((a) => ({ id: a.id, codigo: a.codigo, nombre: rotuloConTalle(a), clase: a.clase, patente: a.patente, esperado: libreEn(p, a.id, ubicacionId) }))
 }

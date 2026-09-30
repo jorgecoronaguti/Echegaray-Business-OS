@@ -9,7 +9,7 @@
 // el resto sigue vivo (`dar_de_baja_parcial`). Si son todas las que quedan, es la baja del lote entero.
 
 import { useEffect, useState } from 'react'
-import { lugaresDe, rotuloUbicacion } from '../logica/parque'
+import { lugaresDe, nombrePersona, quienesTienen, rotuloUbicacion } from '../logica/parque'
 import { darDeBajaAction, darDeBajaParcialAction } from '../services/acciones'
 import type { MotivoBaja } from '../types'
 import { useHerramientas } from './Espacio'
@@ -25,10 +25,15 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
   const a = parque.activoPorId.get(id)
   const [motivo, setMotivo] = useState<MotivoBaja | null>(null)
   const [detalle, setDetalle] = useState('')
-  const lugares = lugaresDe(parque, id)
-  const lote = (a?.cantidad ?? 1) > 1 && lugares.length > 0
+  // 30/09: lo que tiene una persona NO se baja desde acá (se perdería de su legajo sin rastro): se baja
+  // desde su legajo, con `p_persona`. Acá sólo se baja lo LIBRE; si todo lo tiene alguien, no hay baja.
+  const tenidas = quienesTienen(parque, id)
+  const tenedores = [...new Set(tenidas.map((e) => e.persona_id!))]
+  const lugares = lugaresDe(parque, id).filter((e) => e.libre > 0)
+  const bloqueada = tenidas.length > 0 && lugares.length === 0
+  const lote = !bloqueada && lugares.length > 0 && ((a?.cantidad ?? 1) > 1 || tenidas.length > 0)
   const [donde, setDonde] = useState<string | null>(lugares[0]?.ubicacion_id ?? null)
-  const hayAhi = lugares.find((e) => e.ubicacion_id === donde)?.cantidad ?? 0
+  const hayAhi = lugares.find((e) => e.ubicacion_id === donde)?.libre ?? 0
   const [cuantas, setCuantas] = useState<number>(hayAhi)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -40,7 +45,7 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
   if (!a) return null
 
   async function confirmar() {
-    if (!motivo || !a) return
+    if (!motivo || !a || bloqueada) return
     setEnviando(true)
     setError(null)
     const n = Math.min(Math.max(Math.trunc(cuantas) || 0, 1), hayAhi)
@@ -75,13 +80,20 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
               de {hayAhi} en
               {lugares.length > 1 ? (
                 <select value={donde ?? ''} data-testid="baja-lugar" aria-label="En qué lugar"
-                  onChange={(e) => { setDonde(e.target.value); setCuantas(lugares.find((x) => x.ubicacion_id === e.target.value)?.cantidad ?? 1) }}
+                  onChange={(e) => { setDonde(e.target.value); setCuantas(lugares.find((x) => x.ubicacion_id === e.target.value)?.libre ?? 1) }}
                   style={{ height: 32, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 6px', fontSize: '12.5px', maxWidth: 220 }}>
-                  {lugares.map((e) => <option key={e.ubicacion_id} value={e.ubicacion_id}>{rotuloUbicacion(parque, e.ubicacion_id)} ({e.cantidad})</option>)}
+                  {lugares.map((e) => <option key={e.ubicacion_id} value={e.ubicacion_id}>{rotuloUbicacion(parque, e.ubicacion_id)} ({e.libre}{e.tenidas.length ? ' libres' : ''})</option>)}
                 </select>
               ) : <span>{rotuloUbicacion(parque, donde)}</span>}
             </div>
             <div style={{ fontSize: '12px', color: V.apagado }}>El lote tiene {a.cantidad} en total. Las que no se dan de baja siguen donde están.</div>
+          </div>
+        )}
+        {tenidas.length > 0 && (
+          <div style={{ fontSize: '12.5px', lineHeight: 1.45 }} data-testid="baja-tenidas">
+            {bloqueada ? 'No hay unidades libres. ' : ''}Lo que tiene {tenedores.map((pid, i) => (
+              <span key={pid}>{i > 0 ? (i === tenedores.length - 1 ? ' y ' : ', ') : ''}<a href={`/administracion/personas/${pid}?v=epp`} style={{ color: V.grafito, textDecoration: 'underline' }}>{nombrePersona(parque, pid)}</a></span>
+            ))} se da de baja desde su legajo.
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -103,7 +115,7 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
         <div style={{ fontSize: '12px', color: V.apagado, lineHeight: 1.45 }}>Sale del inventario vivo. No se borra, conserva su historial y no puede moverse más.</div>
         <ErrorPanel texto={error} />
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" data-testid="confirmar-baja" disabled={!motivo || enviando} onClick={confirmar} style={{ ...botonPeligro, height: 34, padding: '0 13px', opacity: motivo ? 1 : 0.45 }}>
+          <button type="button" data-testid="confirmar-baja" disabled={!motivo || enviando || bloqueada} onClick={confirmar} style={{ ...botonPeligro, height: 34, padding: '0 13px', opacity: motivo && !bloqueada ? 1 : 0.45 }}>
             {enviando ? 'Dando de baja…' : 'Dar de baja'}
           </button>
           <button type="button" onClick={cerrar} style={{ ...botonSecundarioGrande, height: 34, padding: '0 12px' }}>Cancelar</button>

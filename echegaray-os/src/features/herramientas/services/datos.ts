@@ -61,13 +61,25 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
   }))
 }
 
-/** Nombres de quienes operaron (sólo los que la sesión puede ver por RLS de `personas`). */
-async function nombresDePersonas(supabase: SupabaseClient, lecs: LecturaUso[] | null): Promise<Record<string, string>> {
-  const ids = [...new Set((lecs ?? []).map((l) => l.operador_persona_id).filter((x): x is string => !!x))]
+/**
+ * Nombres de quienes operaron y de QUIENES TIENEN algo (30/09: «quién lo tiene» es una persona, no un
+ * lugar), sólo los que la sesión puede ver por RLS de `personas`.
+ */
+async function nombresDePersonas(
+  supabase: SupabaseClient, lecs: LecturaUso[] | null, tenedores: readonly (string | null | undefined)[] = [],
+): Promise<Record<string, string>> {
+  const operan = new Set((lecs ?? []).map((l) => l.operador_persona_id).filter((x): x is string => !!x))
+  const ids = [...new Set([...operan, ...tenedores.filter((x): x is string => !!x)])]
   if (!ids.length) return {}
-  const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids)
   const out: Record<string, string> = {}
-  for (const p of (data ?? []) as { id: string; nombre_completo: string | null }[]) if (p.nombre_completo) out[p.id] = p.nombre_completo
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids.slice(i, i + 200))
+    for (const p of (data ?? []) as { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null }[]) {
+      if (!p.nombre_completo) continue
+      // Quien opera, como siempre (nombre del legajo); quien tiene algo, como lo muestra todo el OS.
+      out[p.id] = operan.has(p.id) ? p.nombre_completo : nombreDePersona(p)
+    }
+  }
   return out
 }
 
@@ -135,14 +147,21 @@ export async function leerParque(): Promise<Lectura> {
     const lecs = lecturas.error ? null : ((lecturas.data ?? []) as unknown as LecturaUso[]).map((l) => ({
       ...l, lectura: l.lectura == null ? null : Number(l.lectura),
     }))
-    const personas = await nombresDePersonas(supabase, lecs)
+    const exs = existencias.error ? undefined : ((existencias.data ?? []) as unknown as Existencia[])
+    const ajs = ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[])
+    const movs = (movimientos.data ?? []) as unknown as Movimiento[]
+    const personas = await nombresDePersonas(supabase, lecs, [
+      ...(exs ?? []).map((e) => e.persona_id),
+      ...movs.flatMap((m) => [m.persona_origen, m.persona_destino]),
+      ...ajs.map((a) => a.persona_id),
+    ])
     return {
       estado: 'ok',
       obras,
       parque: armarParque({
         activos: (activos.data ?? []) as unknown as Activo[],
         ubicaciones: (ubicaciones.data ?? []) as unknown as Ubicacion[],
-        movimientos: (movimientos.data ?? []) as unknown as Movimiento[],
+        movimientos: movs,
         incidencias: (incidencias.data ?? []) as unknown as Incidencia[],
         obras,
         nombres,
@@ -151,8 +170,8 @@ export async function leerParque(): Promise<Lectura> {
         categorias: ((categorias.data ?? []) as { nombre: string }[]).map((c) => c.nombre),
         lecturas: lecs,
         personas,
-        existencias: existencias.error ? undefined : ((existencias.data ?? []) as unknown as Existencia[]),
-        ajustes: ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[]),
+        existencias: exs,
+        ajustes: ajs,
         papeles: papeles.error ? null : ((papeles.data ?? []) as unknown as Papel[]).map((p) => ({
           ...p, dias: p.dias == null ? null : Number(p.dias),
         })),

@@ -675,7 +675,7 @@ export default async function FichaPersonaPage({
             <EppDePersona
               personaId={id}
               enLaEmpresa={persona.en_la_empresa}
-              ubicacionPersona={vestimenta.ubicacionPersona}
+              dondeRecibe={vestimenta.dondeRecibe}
               tallerId={vestimenta.tallerId}
               tiene={vestimenta.tiene}
               cerradas={vestimenta.cerradas}

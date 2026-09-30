@@ -19,7 +19,7 @@ import {
 } from '@/features/herramientas/logica/verificacion'
 import { papelesDe } from '@/features/herramientas/logica/papeles'
 import {
-  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, autorDe, lugaresDe, rotuloUbicacion, ultimoMovimiento,
+  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, autorDe, lugaresDe, nombrePersona, rotuloQuien, rotuloUbicacion, ultimoMovimiento,
 } from '@/features/herramientas/logica/parque'
 
 // M03 · UNA HERRAMIENTA — dónde está, cómo está, qué hacer. Es lo que abre el QR en el teléfono.
@@ -59,6 +59,9 @@ export default async function UnaHerramienta({ params, searchParams }: {
   ].filter(Boolean)
   const reparto = !baja && a.cantidad > 1 ? lugaresDe(p, a.id) : []
   const papeles = p.papeles ? papelesDe(p.papeles, a.id) : []
+  // DÓNDE ≠ QUIÉN (dueño 30/09): la persona que lo tiene va aparte del lugar donde está.
+  const tiene = baja ? '' : rotuloQuien(p, a)
+  const personal = a.clase === 'epp' || a.clase === 'ropa'
 
   return (
     <MarcoTelefono
@@ -85,6 +88,11 @@ export default async function UnaHerramienta({ params, searchParams }: {
         <Dato rotulo="Dónde está">
           <span style={{ fontSize: '15px', fontWeight: 500, fontStyle: a.ubicacion_id ? undefined : 'italic', color: a.ubicacion_id ? V.tinta : V.tenue }}>{rotuloUbicacion(p, a.ubicacion_id)}</span>
         </Dato>
+        {(personal || tiene) && !baja && (
+          <Dato rotulo="Quién lo tiene">
+            <span data-testid="quien-lo-tiene" style={{ fontSize: '15px', fontWeight: tiene ? 500 : 400, fontStyle: tiene ? undefined : 'italic', color: tiene ? V.tinta : V.tenue }}>{tiene || 'nadie · disponible'}</span>
+          </Dato>
+        )}
         <Dato rotulo="Estado">
           <span style={{ fontSize: '15px', fontWeight: 500, color: COLOR_TONO[TONO_ESTADO[a.estado]] }}>
             {baja ? `Baja por ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? '—'}` : ETIQUETA_ESTADO[a.estado]}
@@ -124,6 +132,11 @@ export default async function UnaHerramienta({ params, searchParams }: {
               <span>{rotuloUbicacion(p, e.ubicacion_id)}</span><span style={{ fontFamily: MONO }}>{e.cantidad}</span>
             </div>
           ))}
+          {reparto.flatMap((e) => e.tenidas.map((t) => (
+            <div key={`${e.ubicacion_id}:${t.persona_id}`} data-testid="reparto-quien" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '13px', color: V.apagado }}>
+              <span>lo tiene {nombrePersona(p, t.persona_id)}{reparto.length > 1 ? ` · en ${rotuloUbicacion(p, e.ubicacion_id)}` : ''}</span><span style={{ fontFamily: MONO }}>{t.cantidad}</span>
+            </div>
+          )))}
         </div>
       )}
 

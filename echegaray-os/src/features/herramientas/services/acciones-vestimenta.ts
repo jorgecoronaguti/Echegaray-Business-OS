@@ -58,20 +58,20 @@ export async function entregarAPersonaAction(entrada: z.input<typeof entregaSche
 
 const devolucionSchema = z.object({
   persona: uuid,
-  ubicacionPersona: uuid,
   activo: uuid,
   cantidad: z.number().int().min(1, 'La cantidad es 1 o más').max(1000),
-  destino: uuid,
 })
 
-/** Vuelve al lugar elegido (el Taller, casi siempre). Es un movimiento: queda en el historial. */
-export async function devolverDePersonaAction(entrada: z.input<typeof devolucionSchema>): Promise<Resultado<string | null>> {
+/**
+ * Devolver = sacarle la persona al ítem: queda DONDE ESTÁ (la obra o el Taller), libre. Es un movimiento
+ * con `persona_origen = ella` y `persona_destino = null`: queda en el historial (`devolver_de_persona`).
+ */
+export async function devolverDePersonaAction(entrada: z.input<typeof devolucionSchema>): Promise<Resultado<number>> {
   const p = devolucionSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const d = p.data
-  const r = await rpcHerramientas<string | null>('mover_existencias', {
-    p_items: [{ activo: d.activo, origen: d.ubicacionPersona, cantidad: d.cantidad }],
-    p_destino: d.destino, p_nota: 'devolución', p_bajar_carga: false,
+  const r = await rpcHerramientas<number>('devolver_de_persona', {
+    p_persona: d.persona, p_activo: d.activo, p_cantidad: d.cantidad, p_nota: 'devolución, desde el legajo',
   }, MIGRACION_VESTIMENTA)
   if (r.ok) refrescarLegajo(d.persona)
   return r
@@ -79,20 +79,22 @@ export async function devolverDePersonaAction(entrada: z.input<typeof devolucion
 
 const bajaSchema = z.object({
   persona: uuid,
-  ubicacionPersona: uuid,
+  /** DÓNDE está lo que tiene (la baja descuenta de ese lugar y de esa persona). */
+  donde: uuid,
   activo: uuid,
   cantidad: z.number().int().min(1, 'La cantidad es 1 o más').max(1000),
   motivo: z.enum(['descartada', 'perdida', 'robada'], { message: 'Elegí el motivo' }),
   detalle: z.string().trim().max(400).optional(),
 })
 
-/** Gastada o rota (descartada), perdida o robada. Queda en `activo_ajuste`; el ítem sigue en el catálogo. */
+/** Gastada o rota (descartada), perdida o robada: baja parcial de lo que tiene ESA persona. Queda en `activo_ajuste` con su `persona_id`. */
 export async function bajaDePersonaAction(entrada: z.input<typeof bajaSchema>): Promise<Resultado> {
   const p = bajaSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const d = p.data
   const r = await rpcHerramientas<null>('dar_de_baja_parcial', {
-    p_activo: d.activo, p_ubicacion: d.ubicacionPersona, p_cantidad: d.cantidad, p_motivo: d.motivo, p_detalle: d.detalle || null,
+    p_activo: d.activo, p_ubicacion: d.donde, p_cantidad: d.cantidad, p_motivo: d.motivo, p_detalle: d.detalle || null,
+    p_persona: d.persona,
   }, MIGRACION_VESTIMENTA)
   if (r.ok) refrescarLegajo(d.persona)
   return r

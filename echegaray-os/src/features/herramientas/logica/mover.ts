@@ -5,7 +5,7 @@
 // activa; un rodado no se mueve adentro de sí mismo.
 
 import type { Activo, ObraIndice, Ubicacion } from '../types.ts'
-import { activosEn, cantidadEn, lugaresDe, origenPara, rotuloUbicacion, vivo, type Parque } from './parque.ts'
+import { activosEn, libreEn, lugaresDe, origenPara, rotuloUbicacion, vivo, type Parque } from './parque.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export interface GrupoOrigen {
@@ -41,13 +41,14 @@ export interface ItemMover {
 /** El renglón por defecto: sale del lugar pedido si tiene unidades ahí (si no, de donde hay más), todas. */
 export function itemPorDefecto(p: Parque, a: Activo, origenPreferido?: string | null): ItemMover {
   const origen = origenPara(p, a, origenPreferido)
-  const disponible = cantidadEn(p, a.id, origen) || (a.cantidad ?? 1)
+  // Se mueve lo LIBRE: lo que tiene una persona va con ella (30/09); primero se devuelve.
+  const disponible = lugaresDe(p, a.id).length ? libreEn(p, a.id, origen) : (a.cantidad ?? 1)
   return { activo: a, origen, cantidad: disponible, disponible }
 }
 
 /** Cambia el lugar de salida: la cantidad vuelve a «todas las de ahí». */
 export function conOrigen(p: Parque, it: ItemMover, origen: string): ItemMover {
-  const disponible = cantidadEn(p, it.activo.id, origen)
+  const disponible = libreEn(p, it.activo.id, origen)
   return { ...it, origen, cantidad: disponible, disponible }
 }
 
@@ -69,7 +70,7 @@ export function eligeCantidad(it: ItemMover, lugares: number): boolean {
 
 /** Los lugares de los que puede salir un activo (más de uno = lote repartido: se elige). */
 export function lugaresDeSalida(p: Parque, a: Activo): { ubicacionId: string; rotulo: string; cantidad: number }[] {
-  return lugaresDe(p, a.id).map((e) => ({ ubicacionId: e.ubicacion_id, rotulo: rotuloUbicacion(p, e.ubicacion_id), cantidad: e.cantidad }))
+  return lugaresDe(p, a.id).filter((e) => e.libre > 0).map((e) => ({ ubicacionId: e.ubicacion_id, rotulo: rotuloUbicacion(p, e.ubicacion_id), cantidad: e.libre }))
 }
 
 /** «Desde» con unidades: cada origen con cuántos activos y cuántas unidades salen de ahí. */
@@ -137,7 +138,7 @@ export type OpcionDestino =
  */
 export function destinos(p: Parque, obrasActivas: ObraIndice[]): OpcionDestino[] {
   const fijos = p.ubicaciones
-    // A una persona se le ENTREGA EPP o ropa desde su legajo: no es un destino para mover herramientas.
+    // Una persona no es un lugar (30/09): a quien tiene algo se le ENTREGA desde su legajo.
     .filter((u): u is Ubicacion & { tipo: 'taller' | 'rodado' | 'servicio_tecnico' | 'tercero' } => u.tipo !== 'obra' && u.tipo !== 'persona' && !u.archivada)
     .filter((u) => u.tipo !== 'rodado' || (u.activo_id && p.activoPorId.get(u.activo_id)?.estado !== 'baja'))
     .map((u) => ({ tipo: 'ubicacion' as const, ubicacionId: u.id, rotulo: rotuloUbicacion(p, u.id), grupo: u.tipo }))

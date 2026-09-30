@@ -72,12 +72,26 @@ export interface Parque extends DatosParque {
   movsDe: Map<string, Movimiento[]>
   /** Incidencias de cada activo, de la más nueva a la más vieja. */
   incDe: Map<string, Incidencia[]>
-  /** Dónde están las unidades de cada activo vivo, de donde hay más a donde hay menos. */
-  existDe: Map<string, Existencia[]>
-  /** Qué hay en cada lugar. */
-  existEn: Map<string, Existencia[]>
+  /**
+   * Dónde están las unidades de cada activo vivo, UNA fila por lugar (sumando lo libre y lo que tiene
+   * alguien ahí), de donde hay más a donde hay menos.
+   */
+  existDe: Map<string, EnLugar[]>
+  /** Qué hay en cada lugar, una fila por activo. */
+  existEn: Map<string, EnLugar[]>
   /** Recuentos y bajas parciales de cada activo. */
   ajustesDe: Map<string, Ajuste[]>
+}
+
+/**
+ * Un activo en un lugar. DÓNDE es el lugar; QUIÉN LO TIENE va aparte (`tenidas`, 30/09): «la ubicación
+ * es un cliente/una obra, no una persona; eso es quien lo tiene». `cantidad` = libre + lo que tiene alguien.
+ */
+export interface EnLugar extends Existencia {
+  /** Unidades que no tiene nadie: las que se mueven, se cuentan y se entregan. */
+  libre: number
+  /** Las filas con persona en este lugar. */
+  tenidas: Existencia[]
 }
 
 function agrupar<T>(l: T[], k: (x: T) => string): Map<string, T[]> {
@@ -110,11 +124,21 @@ export function armarParque(d: DatosParque): Parque {
   const vivos = new Set(d.activos.filter((a) => a.estado !== 'baja').map((a) => a.id))
   const existencias = (d.existencias ?? d.activos
     .filter((a) => a.ubicacion_id)
-    .map((a) => ({ activo_id: a.id, ubicacion_id: a.ubicacion_id!, cantidad: a.cantidad ?? 1 })))
+    .map((a) => ({ activo_id: a.id, ubicacion_id: a.ubicacion_id!, cantidad: a.cantidad ?? 1, persona_id: null })))
     .filter((e) => vivos.has(e.activo_id))
-  const existDe = new Map<string, Existencia[]>()
-  const existEn = new Map<string, Existencia[]>()
+  const porLugar = new Map<string, EnLugar>()
   for (const e of existencias) {
+    const k = `${e.activo_id}|${e.ubicacion_id}`
+    const x = porLugar.get(k) ?? { activo_id: e.activo_id, ubicacion_id: e.ubicacion_id, cantidad: 0, persona_id: null, libre: 0, tenidas: [] }
+    x.cantidad += e.cantidad
+    if (e.persona_id) x.tenidas.push(e)
+    else x.libre += e.cantidad
+    porLugar.set(k, x)
+  }
+  const existDe = new Map<string, EnLugar[]>()
+  const existEn = new Map<string, EnLugar[]>()
+  for (const e of porLugar.values()) {
+    e.tenidas.sort((a, b) => b.cantidad - a.cantidad)
     existDe.set(e.activo_id, [...(existDe.get(e.activo_id) ?? []), e])
     existEn.set(e.ubicacion_id, [...(existEn.get(e.ubicacion_id) ?? []), e])
   }
@@ -254,14 +278,45 @@ export function activosEn(p: Parque, ubicacionId: string): Activo[] {
 }
 
 /** Dónde están las unidades de un activo, de donde hay más a donde hay menos. Vacío = baja o sin ubicación. */
-export function lugaresDe(p: Parque, activoId: string): Existencia[] {
+export function lugaresDe(p: Parque, activoId: string): EnLugar[] {
   return p.existDe.get(activoId) ?? []
 }
 
-/** Cuántas unidades de un activo hay en un lugar (0 = ninguna). */
+/** Cuántas unidades de un activo hay en un lugar, las tenga alguien o no (0 = ninguna). */
 export function cantidadEn(p: Parque, activoId: string, ubicacionId: string | null | undefined): number {
   if (!ubicacionId) return 0
   return lugaresDe(p, activoId).find((e) => e.ubicacion_id === ubicacionId)?.cantidad ?? 0
+}
+
+/** Cuántas unidades de un activo hay en un lugar SIN que las tenga nadie: las que se mueven y se cuentan. */
+export function libreEn(p: Parque, activoId: string, ubicacionId: string | null | undefined): number {
+  if (!ubicacionId) return 0
+  return lugaresDe(p, activoId).find((e) => e.ubicacion_id === ubicacionId)?.libre ?? 0
+}
+
+/** Quién tiene unidades de un activo (una fila por persona y lugar), de quien tiene más a quien tiene menos. */
+export function quienesTienen(p: Parque, activoId: string): Existencia[] {
+  return lugaresDe(p, activoId).flatMap((e) => e.tenidas).sort((a, b) => b.cantidad - a.cantidad)
+}
+
+/** El nombre de una persona que tiene algo; si la sesión no lo puede ver, «alguien». */
+export function nombrePersona(p: Parque, personaId: string | null | undefined): string {
+  return (personaId && p.personas?.[personaId]) || 'alguien'
+}
+
+/**
+ * Quién lo tiene, en palabras: «Juan Pérez» o «Juan Pérez 2 · Ana Gómez 1». Vacío = nadie (está libre
+ * donde está). Las unidades libres no se dicen acá: eso es el «Dónde».
+ */
+export function rotuloQuien(p: Parque, a: Pick<Activo, 'id'>): string {
+  const t = quienesTienen(p, a.id)
+  const porPersona = new Map<string, number>()
+  for (const e of t) porPersona.set(e.persona_id!, (porPersona.get(e.persona_id!) ?? 0) + e.cantidad)
+  if (porPersona.size === 0) return ''
+  if (porPersona.size === 1 && [...porPersona.values()][0] === 1) {
+    return nombrePersona(p, [...porPersona.keys()][0])
+  }
+  return [...porPersona].map(([id, n]) => `${nombrePersona(p, id)} ${n}`).join(' · ')
 }
 
 /** Un lote con unidades en más de un lugar. */
@@ -279,10 +334,11 @@ export function rotuloLugares(p: Parque, a: Activo): string {
   return l.map((e) => `${rotuloUbicacion(p, e.ubicacion_id)} ${e.cantidad}`).join(' · ')
 }
 
-/** De dónde sale por defecto: el lugar pedido si tiene unidades ahí; si no, donde hay más. */
+/** De dónde sale por defecto: el lugar pedido si tiene unidades libres ahí; si no, donde hay más libres. */
 export function origenPara(p: Parque, a: Activo, preferido?: string | null): string | null {
-  if (preferido && cantidadEn(p, a.id, preferido) > 0) return preferido
-  return lugaresDe(p, a.id)[0]?.ubicacion_id ?? a.ubicacion_id
+  if (preferido && libreEn(p, a.id, preferido) > 0) return preferido
+  const l = lugaresDe(p, a.id)
+  return (l.find((e) => e.libre > 0) ?? l[0])?.ubicacion_id ?? a.ubicacion_id
 }
 
 /** La ubicación que ES un rodado (la de su carga), si existe. */

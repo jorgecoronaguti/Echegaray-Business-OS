@@ -2,14 +2,14 @@
 
 import type { Activo, Clase, EstadoActivo } from '../types.ts'
 import { nombresRepetidos } from './resumen.ts'
-import { lugaresDe, rotuloLugares, rotuloUbicacion, vivo, type Parque } from './parque.ts'
+import { lugaresDe, quienesTienen, rotuloLugares, rotuloQuien, rotuloUbicacion, vivo, type Parque } from './parque.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { FORMATO_CODIGO, normalizarCodigo } from './codigo.ts'
 import { compararTalle, esPersonal } from './vestimenta.ts'
 
 export type FiltroClase = Clase | 'todo'
 export type FiltroEstado = 'todos' | EstadoActivo
-export type FiltroEspecial = 'asumido' | 'alta_desde_obra' | 'repetidos' | 'sin_etiqueta' | null
+export type FiltroEspecial = 'asumido' | 'alta_desde_obra' | 'repetidos' | 'sin_etiqueta' | 'con_alguien' | null
 
 export interface Filtros {
   clase: FiltroClase
@@ -23,7 +23,7 @@ export interface Filtros {
 
 const CLASES: FiltroClase[] = ['herramienta', 'equipo', 'rodado', 'epp', 'ropa', 'todo']
 const ESTADOS: FiltroEstado[] = ['todos', 'operativo', 'requiere_mantenimiento', 'fuera_servicio', 'reparacion_externa', 'baja']
-const ESPECIALES = ['asumido', 'alta_desde_obra', 'repetidos', 'sin_etiqueta'] as const
+const ESPECIALES = ['asumido', 'alta_desde_obra', 'repetidos', 'sin_etiqueta', 'con_alguien'] as const
 
 /** Lee los filtros de la URL. Lo que no se reconoce cae al valor por defecto, nunca rompe. */
 export function filtrosDeURL(sp: Record<string, string | string[] | undefined>): Filtros {
@@ -53,7 +53,7 @@ function lugarPasa(p: Parque, ubicacionId: string, u: string): boolean {
 }
 
 /** Los lugares de un activo: donde tiene unidades; una baja, el último donde estuvo. */
-function lugaresDeActivo(p: Parque, a: Activo): { ubicacion_id: string; cantidad: number }[] {
+function lugaresDeActivo(p: Parque, a: Activo): { ubicacion_id: string; cantidad: number; tenidas?: unknown[] }[] {
   const l = lugaresDe(p, a.id)
   if (l.length) return l
   return a.ubicacion_id ? [{ ubicacion_id: a.ubicacion_id, cantidad: a.cantidad ?? 1 }] : []
@@ -92,7 +92,10 @@ export function candidatos(p: Parque, f: Filtros): Activo[] {
     if (f.especial === 'alta_desde_obra' && !(a.alta_desde_obra && vivo(a))) return false
     if (f.especial === 'sin_etiqueta' && !(!a.etiqueta_impresa_en && vivo(a))) return false
     if (repetidos && !repetidos.has(a.id)) return false
-    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.talle, a.patente, a.numero_serie, rotuloLugares(p, a)], f.q)) return false
+    // «Lo tiene alguien» es QUIÉN, no DÓNDE (dueño 30/09): va aparte del filtro de ubicación.
+    if (f.especial === 'con_alguien' && !quienesTienen(p, a.id).length) return false
+    // Buscar por el nombre de quien lo tiene («pérez» encuentra su casco), además del lugar.
+    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.talle, a.patente, a.numero_serie, rotuloLugares(p, a), rotuloQuien(p, a)], f.q)) return false
     return true
   })
 }
@@ -196,6 +199,8 @@ export interface Totales {
    * de ubicación, el mismo que el desplegable.
    */
   porObra: { u: string; rotulo: string; activos: number }[]
+  /** Ítems con al menos una unidad en poder de alguien (QUIÉN, no DÓNDE: cuentan también en su lugar). */
+  conAlguien: number
 }
 
 /**
@@ -207,6 +212,7 @@ export function totales(p: Parque, lista: Activo[], ubicacion: string | null = n
   let unidades = 0
   const c = new Map<Totales['porTipo'][number]['tipo'], number>()
   const obras = new Map<string, number>()
+  const conAlguien = new Set<string>()
   for (const a of lista) {
     const lugares = lugaresDeActivo(p, a).filter((e) => !ubicacion || ubicacion === 'sin' || lugarPasa(p, e.ubicacion_id, ubicacion))
     if (!lugares.length) {
@@ -218,6 +224,7 @@ export function totales(p: Parque, lista: Activo[], ubicacion: string | null = n
     const tipos = new Set<Totales['porTipo'][number]['tipo']>()
     for (const e of lugares) {
       unidades += e.cantidad
+      if (e.tenidas?.length) conAlguien.add(a.id)
       const t = p.ubicacionPorId.get(e.ubicacion_id)?.tipo ?? 'sin'
       tipos.add(t)
       if (t === 'obra') obras.set(e.ubicacion_id, (obras.get(e.ubicacion_id) ?? 0) + 1)
@@ -226,5 +233,5 @@ export function totales(p: Parque, lista: Activo[], ubicacion: string | null = n
   }
   const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'persona', 'sin_stock', 'sin']
   const porObra = [...obras].map(([u, n]) => ({ u, rotulo: rotuloUbicacion(p, u), activos: n })).sort((a, b) => b.activos - a.activos || a.rotulo.localeCompare(b.rotulo, 'es'))
-  return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })), porObra }
+  return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })), porObra, conAlguien: conAlguien.size }
 }

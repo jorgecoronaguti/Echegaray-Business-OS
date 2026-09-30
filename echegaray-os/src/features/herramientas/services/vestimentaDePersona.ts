@@ -4,19 +4,27 @@
 // Lee el MISMO parque que las pantallas de Herramientas (`leerParque`): el stock que ve el legajo y el
 // que ve el Inventario no pueden ser dos cuentas distintas. Devuelve filas planas (nada de `Map`) porque
 // viajan a un componente de cliente.
+//
+// 30/09 (20260930T2100): la persona NO es un lugar. Lo que tiene es `existencia.persona_id = ella` y está
+// en la obra donde trabaja (su asignación vigente) o en el Taller; `dondeRecibe` dice dónde va a quedar
+// lo que se le entregue, con la misma regla que `_lugar_de_persona` en la base.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { leerParque } from './datos'
-import { autorDe, rotuloUbicacion, type Parque } from '../logica/parque'
+import { autorDe, lugaresDe, rotuloUbicacion, type Parque } from '../logica/parque'
+import { rotuloDeObra } from '@/shared/utils/obra'
 import {
   campoDeTalle, historialDePersona, prendas, rotuloConTalle, tenencias,
   type CampoTalle, type ClasePersonal, type TallesPersona, type TipoEvento,
 } from '../logica/vestimenta'
 
-export const MIGRACION_VESTIMENTA = '20260925T1100'
+export const MIGRACION_VESTIMENTA = '20260930T2100'
 
 export interface FilaTiene {
   activoId: string
+  /** DÓNDE está lo que tiene (la obra donde trabaja o el Taller). */
+  dondeId: string
+  donde: string
   codigo: string
   nombre: string
   talle: string | null
@@ -56,7 +64,10 @@ export interface FilaHistorial {
   nombre: string
   cantidad: number
   quien: string | null
+  /** De dónde salió (entrega) o de qué obra venía (cambio de obra). */
   lugar: string | null
+  /** Dónde quedó. */
+  donde: string | null
   nota: string | null
   respaldo: string | null
 }
@@ -64,7 +75,8 @@ export interface FilaHistorial {
 export type VestimentaDePersona =
   | {
       estado: 'ok'
-      ubicacionPersona: string | null
+      /** Dónde queda lo que se le entregue hoy: su obra vigente o el Taller. null = no se pudo saber. */
+      dondeRecibe: { ubicacionId: string | null; rotulo: string } | null
       tallerId: string | null
       tiene: FilaTiene[]
       cerradas: FilaCerrada[]
@@ -78,8 +90,7 @@ export type VestimentaDePersona =
   | { estado: 'error'; mensaje: string }
 
 function catalogoDe(p: Parque, clase: ClasePersonal): PrendaPlana[] {
-  const tipoDe = (id: string) => p.ubicacionPorId.get(id)?.tipo ?? null
-  return prendas(p.activos, p.existencias ?? [], tipoDe, clase).map((g) => ({
+  return prendas(p.activos, p.existencias ?? [], clase).map((g) => ({
     nombre: g.nombre,
     campo: campoDeTalle(g),
     talles: g.talles.map((t) => ({
@@ -87,18 +98,42 @@ function catalogoDe(p: Parque, clase: ClasePersonal): PrendaPlana[] {
       codigo: t.activo.codigo,
       talle: t.talle,
       disponible: t.disponible,
-      // De dónde puede salir: los lugares con unidades que no son una persona, de donde hay más.
-      origenes: (p.existDe.get(t.activo.id) ?? [])
-        .filter((e) => tipoDe(e.ubicacion_id) !== 'persona')
-        .map((e) => ({ ubicacionId: e.ubicacion_id, rotulo: rotuloUbicacion(p, e.ubicacion_id), cantidad: e.cantidad })),
+      // De dónde puede salir: los lugares con unidades LIBRES (que no tiene nadie), de donde hay más.
+      origenes: lugaresDe(p, t.activo.id)
+        .filter((e) => e.libre > 0)
+        .map((e) => ({ ubicacionId: e.ubicacion_id, rotulo: rotuloUbicacion(p, e.ubicacion_id), cantidad: e.libre })),
     })),
   }))
 }
 
+/** La fecha de hoy en Argentina (UTC−3), como la compara `asignacion_vigente` en la base. */
+const hoyAR = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+
+interface AsignacionFila { obra_id: string; desde: string | null; hasta: string | null; creado_en: string | null }
+
+/**
+ * Dónde queda lo que se le entrega: la obra activa de su asignación vigente (la más reciente); si no hay,
+ * el Taller. Es `_lugar_de_persona` leído desde acá (la base es la que decide al entregar).
+ */
+function dondeRecibe(p: Parque, asignaciones: readonly AsignacionFila[], hoy: string): { ubicacionId: string | null; rotulo: string } | null {
+  const vigentes = asignaciones
+    .filter((a) => (!a.desde || a.desde <= hoy) && (!a.hasta || a.hasta >= hoy) && p.obraPorId.get(a.obra_id)?.estado === 'activa')
+    .sort((x, y) => (y.desde ?? '').localeCompare(x.desde ?? '') || (y.creado_en ?? '').localeCompare(x.creado_en ?? ''))
+  const obra = vigentes[0]?.obra_id
+  if (obra) {
+    const u = p.ubicaciones.find((x) => x.obra_id === obra)
+    if (!u) return { ubicacionId: null, rotulo: rotuloDeObra(p.obraPorId.get(obra)!) }
+    if (!u.archivada) return { ubicacionId: u.id, rotulo: rotuloUbicacion(p, u.id) }
+  }
+  const taller = p.ubicaciones.find((x) => x.tipo === 'taller' && !x.archivada)
+  return taller ? { ubicacionId: taller.id, rotulo: rotuloUbicacion(p, taller.id) } : null
+}
+
 export async function leerVestimentaDePersona(supabase: SupabaseClient, personaId: string): Promise<VestimentaDePersona> {
-  const [lectura, talles] = await Promise.all([
+  const [lectura, talles, asignaciones] = await Promise.all([
     leerParque(),
     supabase.from('persona_talle').select('camisa, pantalon, calzado').eq('persona_id', personaId).maybeSingle(),
+    supabase.from('obra_asignacion').select('obra_id, desde, hasta, creado_en').eq('persona_id', personaId).limit(200),
   ])
   if (lectura.estado === 'falta_migracion') return { estado: 'falta_migracion' }
   if (lectura.estado === 'error') {
@@ -106,11 +141,11 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
     return /talle|persona_id/.test(lectura.mensaje) ? { estado: 'falta_migracion' } : lectura
   }
   const p = lectura.parque
-  const u = p.ubicaciones.find((x) => x.tipo === 'persona' && x.persona_id === personaId) ?? null
-  const ubicacionPersona = u?.id ?? null
-  const eventos = historialDePersona(ubicacionPersona, p.movimientos, p.ajustes ?? [])
-  const tiene = tenencias(ubicacionPersona, p.activos, p.existencias ?? [], eventos).map((t): FilaTiene => ({
+  const eventos = historialDePersona(personaId, p.movimientos, p.ajustes ?? [])
+  const tiene = tenencias(personaId, p.activos, p.existencias ?? [], eventos).map((t): FilaTiene => ({
     activoId: t.activo.id,
+    dondeId: t.dondeId,
+    donde: rotuloUbicacion(p, t.dondeId),
     codigo: t.activo.codigo,
     nombre: t.activo.nombre,
     talle: t.activo.talle ?? null,
@@ -134,6 +169,7 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
       fecha: e.fecha, tipo: e.tipo, nombre: a ? rotuloConTalle(a) : 'ítem desconocido', cantidad: e.cantidad,
       quien: autorDe(p, { usuario_id: e.usuarioId, usuario_texto: null }),
       lugar: e.otroLugar ? rotuloUbicacion(p, e.otroLugar) : null,
+      donde: e.donde ? rotuloUbicacion(p, e.donde) : null,
       nota: e.nota,
       respaldo: enlaceDrive(e.respaldo),
     }
@@ -142,7 +178,8 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
   if (talles.error && !sinTabla) return { estado: 'error', mensaje: talles.error.message }
   return {
     estado: 'ok',
-    ubicacionPersona,
+    // Una asignación que no se pudo leer (RLS) no inventa lugar: la base decide al entregar.
+    dondeRecibe: asignaciones.error ? null : dondeRecibe(p, (asignaciones.data ?? []) as AsignacionFila[], hoyAR()),
     tallerId: p.ubicaciones.find((x) => x.tipo === 'taller' && !x.archivada)?.id ?? null,
     tiene,
     cerradas,

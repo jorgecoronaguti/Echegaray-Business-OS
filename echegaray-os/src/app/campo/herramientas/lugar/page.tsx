@@ -10,9 +10,9 @@ import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBas
 import { ListaDelLugar, type ItemLugar } from '@/features/herramientas/components/campo/ListaDelLugar'
 import { V } from '@/features/herramientas/components/estilo'
 import { diaMes } from '@/features/herramientas/components/formato'
-import { rotuloConTalle } from '@/features/herramientas/logica/vestimenta'
+import { rotuloConTalle, tenedoresEn } from '@/features/herramientas/logica/vestimenta'
 import { conLugar, resolverLugar } from '@/features/herramientas/logica/lugar'
-import { ETIQUETA_ESTADO, activosEn, cantidadEn, conProblema, llegoEn, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
+import { ETIQUETA_ESTADO, activosEn, cantidadEn, conProblema, llegoEn, nombrePersona, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
 
 // M05 · QUÉ HAY EN ESTA OBRA (o en el Taller) — ver por ubicación, marcar qué mover, y entrar al
 // «Recuento del lugar» («Control físico»): contar todo contra lo esperado.
@@ -39,6 +39,8 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
       lleva: u ? activosEn(p, u.id).length : 0,
     }
   })
+  // Quién tiene qué en esta obra: cada persona con lo suyo (dueño 30/09). Lo libre es la lista de arriba.
+  const tenedores = lugar.ubicacionId ? tenedoresEn(lugar.ubicacionId, p.activos, p.existencias ?? [], (id) => nombrePersona(p, id)) : []
   const ultimoRec = recuentosDelLugar(p.recuentos, lugar.ubicacionId ?? '')[0] ?? null
   const abiertoRec = lugar.ubicacionId ? recuentoAbierto(p.recuentos, lugar.ubicacionId) : null
   return (
@@ -54,6 +56,17 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
           ultima testid="ir-recuento" />
       )}
       <ListaDelLugar items={items} en={lugar.clave} />
+      {tenedores.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tenedores-del-lugar">
+          <div style={{ fontSize: '13px', color: V.apagado, padding: '16px 0 4px' }}>Lo tiene cada persona · {tenedores.length}</div>
+          {tenedores.map((t, i) => (
+            <div key={t.personaId} data-testid="tenedor" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 0', borderBottom: i < tenedores.length - 1 ? `1px solid ${V.linea}` : undefined }}>
+              <span style={{ fontSize: '15px', fontWeight: 500 }}>{nombrePersona(p, t.personaId)} <span style={{ color: V.tenue, fontWeight: 400, fontSize: '13px' }}>{t.unidades}</span></span>
+              <span style={{ fontSize: '13px', color: V.tintaSuave }}>{t.items.map((x) => `${rotuloConTalle(x.activo)}${x.cantidad > 1 ? ` × ${x.cantidad}` : ''}`).join(' · ')}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </MarcoTelefono>
   )
 }

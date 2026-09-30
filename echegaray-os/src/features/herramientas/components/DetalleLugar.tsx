@@ -17,8 +17,9 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { ACCION, rotuloQueHay, rotuloVerificar, textoMoverDelLugar, verificablesDelLugar, verificablesDelParque } from '../logica/acciones-lugar'
 import {
-  ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, autorDe, cantidadEn, conProblema, diasDesde, llegoEn, rotuloUbicacion,
+  ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, autorDe, cantidadEn, conProblema, diasDesde, llegoEn, nombrePersona, rotuloUbicacion,
 } from '../logica/parque'
+import { rotuloConTalle, tenedoresEn } from '../logica/vestimenta'
 import type { TipoUbicacion } from '../types'
 import { encimaDelProveedor, esLugarImprimible } from '../logica/servicioTecnico'
 import { textoVerificacion, verificacionDe } from '../logica/verificacion'
@@ -70,6 +71,8 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
   const marcar = (id: string) => setSel((s) => (s.includes(id) ? s.filter((y) => y !== id) : [...s, id]))
   const recuentos = recuentosDelLugar(parque.recuentos, u.id)
   const abiertoRec = recuentoAbierto(parque.recuentos, u.id)
+  // QUIÉN TIENE QUÉ ACÁ (dueño 30/09): la persona no es un lugar; lo que tiene está en la obra donde trabaja.
+  const tenedores = tenedoresEn(u.id, parque.activos, parque.existencias ?? [], (id) => nombrePersona(parque, id))
 
   return (
     <>
@@ -195,6 +198,26 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
         {lista.length} de {aca.length}{aca.some((a) => a.clase === 'rodado') ? ' · el rodado va primero' : ''}.
         {u.tipo === 'obra' && aca.length > 0 && ` Si la obra deja de estar activa, la base manda ${aca.length === 1 ? 'éste' : `los ${aca.length}`} al Taller.`}
       </div>
+
+      {tenedores.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 6, borderTop: `1px solid ${V.linea}` }} data-testid="tenedores-del-lugar">
+          <div style={{ ...eyebrow, paddingTop: 8, paddingBottom: 4 }}>
+            Lo tiene cada persona <span style={{ color: V.tenue, fontWeight: 400 }}>{tenedores.length}</span>
+          </div>
+          {tenedores.map((t, i) => (
+            <div key={t.personaId} data-testid="tenedor" className="grid grid-cols-1 gap-y-1 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-x-4"
+              style={{ padding: '10px 0', borderBottom: i < tenedores.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13px' }}>
+              <Link href={`/administracion/personas/${t.personaId}?v=epp`} prefetch={false}
+                style={{ fontWeight: 500, color: V.tinta, textDecoration: 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3 }}>
+                {nombrePersona(parque, t.personaId)} <span style={{ color: V.tenue, fontWeight: 400 }}>{t.unidades}</span>
+              </Link>
+              <div style={{ color: V.tintaSuave }}>
+                {t.items.map((x) => `${rotuloConTalle(x.activo)}${x.cantidad > 1 ? ` × ${x.cantidad}` : ''}`).join(' · ')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {recuentos.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 6, borderTop: `1px solid ${V.linea}` }} data-testid="recuentos-del-lugar">

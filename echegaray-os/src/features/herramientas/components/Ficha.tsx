@@ -18,7 +18,7 @@ import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
 } from '../logica/verificacion'
 import {
-  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, lugaresDe, rotuloLugares, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
+  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, lugaresDe, rotuloLugares, rotuloQuien, nombrePersona, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
 } from '../logica/parque'
 import { NOMBRE_PAPEL, enlaceDrive, estadoDePapel, papelesDe, type Papel } from '../logica/papeles'
 import { ajustarExistenciaAction, cambiarEstadoAction } from '../services/acciones'
@@ -81,6 +81,10 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
             <span style={{ fontFamily: MONO }}>{a.codigo}</span>
             {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${a.estado === 'baja' ? rotuloUbicacion(parque, a.ubicacion_id) : rotuloLugares(parque, a)}` : (a.clase === 'epp' || a.clase === 'ropa') ? 'sin stock' : <span style={vacio}>sin ubicación cargada</span>}
           </div>
+          {/* QUIÉN LO TIENE va aparte de DÓNDE (dueño 30/09): la persona no es un lugar. */}
+          {a.estado !== 'baja' && rotuloQuien(parque, a) && (
+            <div style={{ fontSize: '12.5px', color: V.apagado }} data-testid="ficha-quien">lo tiene <span style={{ color: V.tinta, fontWeight: 500 }}>{rotuloQuien(parque, a)}</span></div>
+          )}
         </div>
         {/* «Editar datos» y la × van en la misma fila, una al lado de la otra: con la × flotando
             encima se tapaban (dueño, 22/09). */}
@@ -321,12 +325,13 @@ function Reparto({ id }: { id: string }) {
   async function guardar(ubicacion: string) {
     const n = Math.trunc(Number(valor))
     if (!Number.isFinite(n) || n < 1) return setError('Es un número de 1 o más. Para dejar el lugar en 0: moverlas o darlas de baja.')
+    // El recuento corrige lo LIBRE del lugar; lo que tiene una persona se devuelve o se da de baja desde su legajo.
     setEnviando(true)
     setError(null)
     const r = await ajustarExistenciaAction({ activo: id, ubicacion, cantidad: n, detalle: 'recuento desde la ficha' })
     setEnviando(false)
     if (!r.ok) return setError(r.error)
-    avisar(`${a.nombre}: en ${rotuloUbicacion(parque, ubicacion)} quedaron ${n}.`)
+    avisar(`${a.nombre}: en ${rotuloUbicacion(parque, ubicacion)} quedaron ${n} libres.`)
     setEditando(null)
     refrescar()
   }
@@ -348,14 +353,26 @@ function Reparto({ id }: { id: string }) {
           ) : (
             <>
               <b style={{ fontWeight: 600 }}>{e.cantidad}</b>
-              <button type="button" onClick={() => { setEditando(e.ubicacion_id); setValor(String(e.cantidad)); setError(null) }}
-                style={{ fontSize: '12px', color: V.apagado, textDecoration: 'underline', textDecorationColor: V.linea }} data-testid="recuento-corregir">
-                corregir
-              </button>
+              {e.libre > 0 ? (
+                <button type="button" onClick={() => { setEditando(e.ubicacion_id); setValor(String(e.libre)); setError(null) }}
+                  style={{ fontSize: '12px', color: V.apagado, textDecoration: 'underline', textDecorationColor: V.linea }} data-testid="recuento-corregir">
+                  {e.tenidas.length ? `corregir ${e.libre} libres` : 'corregir'}
+                </button>
+              ) : <span style={{ width: 48 }} />}
             </>
           )}
         </div>
       ))}
+      {/* Quién tiene unidades de este lote, y dónde (la obra donde trabaja). Un clic lleva a su legajo. */}
+      {lugares.flatMap((e) => e.tenidas.map((t) => (
+        <div key={`${e.ubicacion_id}:${t.persona_id}`} data-testid="reparto-quien" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '12.5px', minHeight: 28, color: V.apagado }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            lo tiene <a href={`/administracion/personas/${t.persona_id}?v=epp`} style={{ color: V.tinta, textDecoration: 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3 }}>{nombrePersona(parque, t.persona_id)}</a>
+            {lugares.length > 1 && <> · en {rotuloUbicacion(parque, e.ubicacion_id)}</>}
+          </span>
+          <b style={{ fontWeight: 500, color: V.tintaSuave }}>{t.cantidad}</b>
+        </div>
+      )))}
       {error && <div role="alert" style={{ fontSize: '12.5px', color: V.neg }}>{error}</div>}
     </div>
   )
