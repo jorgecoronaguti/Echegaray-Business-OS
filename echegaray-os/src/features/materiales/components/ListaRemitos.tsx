@@ -28,7 +28,7 @@ export function ListaRemitos({ remitos, cara }: { remitos: Remito[]; cara: 'escr
         <ul>
           {remitos.map((r, i) => (
             <li key={r.id} style={{ borderBottom: i === remitos.length - 1 ? undefined : `1px solid ${C.divisor}` }}>
-              <Link href={`/campo/material/remitos/${r.id}`} data-testid="remito-fila" style={{ display: 'block', minHeight: 56, padding: '8px 14px' }}>
+              <Link href={`/campo/material/remitos/${r.id}`} prefetch={false} data-testid="remito-fila" style={{ display: 'block', minHeight: 56, padding: '8px 14px' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                   <span style={{ ...mono, fontSize: 14, color: C.ink }}>{numeroRemito(r.numero)}</span>
                   <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>{diaMes(fecha(r.emitido_en))}</span>

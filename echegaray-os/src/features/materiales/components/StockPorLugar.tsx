@@ -46,7 +46,7 @@ export function StockPorLugar({ lugares, existencias, puedeOperar, cara, alMover
             <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{l.rotulo}</h2>
             {puedeOperar && (alMover
               ? <button type="button" onClick={() => alMover(l.id)} data-testid="sobra" className="inline-flex min-h-[28px] items-center px-1.5 text-[12px] font-semibold text-ink hover:underline">Sobra → Taller u otra obra</button>
-              : <Link href={`/campo/material/mover?desde=${l.id}`} data-testid="sobra" className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-semibold text-ink">Sobra → Taller u otra obra</Link>)}
+              : <Link href={`/campo/material/mover?desde=${l.id}`} prefetch={false} data-testid="sobra" className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-semibold text-ink">Sobra → Taller u otra obra</Link>)}
           </div>
           <ul>
             {desgloseDeLugar(existencias, l.id).map((d) => (
