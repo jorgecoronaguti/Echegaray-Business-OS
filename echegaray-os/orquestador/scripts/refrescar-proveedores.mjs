@@ -17,12 +17,16 @@ import { loadConfig } from '../lib/config.mjs'
 import { tomarSnapshot } from '../lib/sheet-snapshot.mjs'
 import { closePool } from '../lib/db.mjs'
 import { ALERTA, ALERTA_HEREDADA } from '../lib/glifos.mjs'
+import { frenoDeRetiro } from '../lib/flujo-caja-pasos.mjs'
 
 const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
 async function main() {
+  // Lanza `proveedores-materiales-pestana.mjs`, que está retirado: ni siquiera se toma el snapshot.
+  const retiro = frenoDeRetiro('proveedores-materiales-pestana.mjs')
+  if (retiro) throw new Error(retiro)
   try {
     const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
     await tomarSnapshot({ google, fileId: ID, pestana: 'Proveedores', tool: 'refrescar-proveedores' })

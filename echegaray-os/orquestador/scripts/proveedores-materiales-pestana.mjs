@@ -69,6 +69,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { frenoDeRetiro } from '../lib/flujo-caja-pasos.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 // "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
@@ -1184,6 +1185,9 @@ export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, p
 }
 
 async function main() {
+  // RETIRADO (PASOS_RETIRADOS, 14/08): lo primero, antes de abrir Google. Ver `frenoDeRetiro`.
+  const retiro = frenoDeRetiro('proveedores-materiales-pestana.mjs')
+  if (retiro) throw new Error(retiro)
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
   // ═══ NINGÚN GENERADOR PISA UNA TABLA DINÁMICA QUE NO CREÓ ═══

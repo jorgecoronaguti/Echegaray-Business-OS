@@ -694,6 +694,36 @@ export const PASOS_RETIRADOS = Object.freeze([
 export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.script === script) }
 
 /**
+ * EL FRENO DE UN SCRIPT RETIRADO CUANDO ALGUIEN LO LANZA A MANO — la frase que lo corta, o null.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (30/09/2026) ═══
+ *
+ * `PASOS_RETIRADOS` sólo frena al PIPELINE: el script retirado sigue en el árbol y cualquiera puede
+ * correrlo con `node`. `proveedores-materiales-pestana.mjs` está retirado desde el 14/08 y desde el
+ * 09/09 (`0f86ca036`) `SECCIONES_PROVEEDORES` dejó de declarar las tres secciones que él escribía;
+ * el script no se tocó —un retiro no es un borrado—, así que al lanzarlo hoy termina en
+ * `sección desconocida: "faltanEnCompras"` DESPUÉS de haber leído medio archivo. Falla cerrado, pero
+ * por accidente y con un mensaje que manda a arreglar el lado equivocado: «reponé el título ancla»
+ * revivía justo la capa que el dueño firmó borrar (la que apilaba una corrida encima de otra).
+ *
+ * Ahora el script consulta esta función ANTES de tocar Google y dice lo que es cierto: está
+ * retirado, desde cuándo, por qué y qué se mide para que vuelva. No hay bandera para saltearlo:
+ * volver es sacarlo de `PASOS_RETIRADOS` con la evidencia de `vuelve`, en un commit.
+ *
+ * @param {string} script nombre del archivo, p. ej. 'proveedores-materiales-pestana.mjs'
+ * @returns {string|null}
+ */
+export function frenoDeRetiro(script) {
+  const p = PASOS_RETIRADOS.find((x) => x.script === script)
+  if (!p) return null
+  return `${script} está RETIRADO desde el ${p.desde} y no se corre a mano: ${p.motivo} `
+    + `Para que vuelva hay que cumplir y medir: ${p.vuelve} `
+    + 'Mientras tanto la pestaña "Proveedores" la rehacen los pasos vivos del pipeline (ver PASOS en '
+    + 'orquestador/lib/flujo-caja-pasos.mjs) y "Materiales" la rehace materiales-pestana.mjs. '
+    + 'NO se escribió nada.'
+}
+
+/**
  * QUÉ PESTAÑAS QUEDARON SIN GENERADOR PORQUE EL SUYO SE RETIRÓ — deducido, no tipeado.
  *
  * ═══ EL DEFECTO QUE ESTO CIERRA (auditoría del 10/09/2026) ═══

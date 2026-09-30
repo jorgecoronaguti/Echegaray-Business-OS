@@ -299,3 +299,103 @@ test('cada columna tiene lugar para lo más ancho que le toca', () => {
   cabe(5, 'REFACTURACIÓN — el costo sigue')           // "Qué es", en la F
   cabe(6, '0006-00003002 → 0004-00003445')            // la cadena anula → reemplaza, en la G
 })
+
+// ═══ EL 30/09/2026: UN SCRIPT RETIRADO PIDIÓ SECCIONES QUE LA LISTA YA NO TIENE ═══
+//
+// `proveedores-materiales-pestana.mjs` (retirado el 14/08) siguió llamando `nSeccion('faltanEnCompras')`
+// y `nSeccion('control')` después de que `0f86ca036` (09/09) las sacó de SECCIONES_PROVEEDORES, y
+// buscaba una frontera «NOTAS DE CRÉDITO» que el diseño vigente ya no escribe (fila 131 = «4 · RESPALDO
+// FISCAL»). Nadie lo vio porque el pipeline no lo corre y su test se había borrado. Estos tests miden
+// las dos cosas: (1) ningún script que corre pide una clave que no está en su lista, y (2) el que
+// quedó retirado NO puede arrancar a mano, y lo dice ANTES de abrir Google.
+import { readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import { frenoDeRetiro, estaRetirado, PASOS, PASOS_RETIRADOS } from './flujo-caja-pasos.mjs'
+
+const AQUI = path.dirname(fileURLToPath(import.meta.url))
+const RAIZ = path.join(AQUI, '..')
+
+/** Cada `nSeccion('clave'[, LISTA])` literal de un fuente, con la lista que usa. Sin comentarios. */
+function clavesPedidas(fuente) {
+  const sinComentarios = String(fuente).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const out = []
+  for (const m of sinComentarios.matchAll(/\bnSeccion\(\s*'([^']+)'\s*(?:,\s*([A-Za-z_]+)\s*)?\)/g)) {
+    out.push({ clave: m[1], lista: m[2] ?? 'SECCIONES_PROVEEDORES' })
+  }
+  return out
+}
+const LISTAS = { SECCIONES_PROVEEDORES, SECCIONES_MATERIALES }
+const desconocidas = (fuente) => clavesPedidas(fuente)
+  .filter(({ clave, lista }) => !(LISTAS[lista] ?? []).includes(clave))
+
+test('el explorador de claves ve el defecto de hoy: una clave fuera de su lista se reporta', () => {
+  const roto = "const b6 = push([`${nSeccion('faltanEnCompras')} · X`])\n"
+    + "const b3 = push([`${nSeccion('familiaMes', SECCIONES_MATERIALES)} · Y`])\n"
+    + "const b9 = push([`${nSeccion('familiaMes')} · Z`])   // familiaMes NO es de Proveedores\n"
+    + "// nSeccion('comentada') no cuenta\n"
+  assert.deepEqual(desconocidas(roto).map((d) => d.clave), ['faltanEnCompras', 'familiaMes'])
+  assert.deepEqual(desconocidas("nSeccion('respaldoFiscal') + nSeccion('obra', SECCIONES_MATERIALES)"), [])
+})
+
+test('todo script o lib que CORRE pide sólo secciones que existen en su lista', () => {
+  const dirs = [path.join(RAIZ, 'scripts'), path.join(RAIZ, 'lib')]
+  const archivos = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs'))
+    .map((f) => ({ f, ruta: path.join(d, f) })))
+  let revisados = 0
+  for (const { f, ruta } of archivos) {
+    if (f === 'proveedores-frontera.mjs' || estaRetirado(f)) continue   // los retirados: ver el test de abajo
+    const malas = desconocidas(readFileSync(ruta, 'utf8'))
+    if (clavesPedidas(readFileSync(ruta, 'utf8')).length) revisados++
+    assert.deepEqual(malas, [], `${f} pide secciones que no están en la lista: ${malas.map((d) => d.clave).join(', ')} `
+      + `(hay: ${SECCIONES_PROVEEDORES.join(', ')} · ${SECCIONES_MATERIALES.join(', ')})`)
+  }
+  assert.ok(revisados >= 3, `el explorador debe encontrar a los que sí usan nSeccion (encontró ${revisados})`)
+})
+
+test('un script retirado que pide claves ya inexistentes NO PUEDE ARRANCAR: se frena antes de abrir Google', () => {
+  const RETIRADO = 'proveedores-materiales-pestana.mjs'
+  const ruta = path.join(RAIZ, 'scripts', RETIRADO)
+  const fuente = readFileSync(ruta, 'utf8')
+  // Es la condición del defecto: sigue pidiendo claves que no existen. Si algún día se arregla de
+  // verdad (vuelve a PASOS declarando SUS secciones), este `if` se apaga solo y el test de arriba
+  // pasa a exigirle lo mismo que a cualquiera.
+  if (!estaRetirado(RETIRADO)) {
+    assert.deepEqual(desconocidas(fuente), [], `${RETIRADO} volvió a correr y sigue pidiendo secciones que no existen`)
+    return
+  }
+  const iFreno = fuente.indexOf(`frenoDeRetiro('${RETIRADO}')`)
+  const iMain = fuente.indexOf('async function main()')
+  const iGoogle = fuente.indexOf('makeGoogleClient({', iMain)
+  assert.ok(iFreno > iMain, 'main() tiene que consultar frenoDeRetiro')
+  assert.ok(iFreno < iGoogle, 'y tiene que hacerlo ANTES de crear el cliente de Google, no después de leer medio archivo')
+  assert.match(fuente.slice(iFreno, iGoogle), /throw new Error\(retiro\)/, 'y cortar la corrida, no sólo imprimir')
+})
+
+test('frenoDeRetiro: dice desde cuándo, por qué y qué se mide para volver; los pasos vivos no se frenan', () => {
+  for (const p of PASOS_RETIRADOS) {
+    const m = frenoDeRetiro(p.script)
+    assert.match(m, /RETIRADO/)
+    assert.ok(m.includes(p.desde) && m.includes(p.vuelve.slice(0, 40)), `${p.script}: el mensaje tiene que traer la fecha y el criterio de vuelta`)
+    assert.match(m, /NO se escribió nada/)
+  }
+  assert.equal(frenoDeRetiro('proveedores-respaldo-fiscal.mjs'), null)
+  assert.equal(frenoDeRetiro('materiales-pestana.mjs'), null)
+  for (const [s] of PASOS) assert.equal(frenoDeRetiro(s), null, `${s} está en PASOS y también retirado`)
+})
+
+test('el lanzador manual de proveedores también se frena ante el retirado que invoca', () => {
+  const f = readFileSync(path.join(RAIZ, 'scripts', 'refrescar-proveedores.mjs'), 'utf8')
+  const iFreno = f.indexOf("frenoDeRetiro('proveedores-materiales-pestana.mjs')")
+  assert.ok(iFreno > 0, 'refrescar-proveedores lanza el script retirado: tiene que frenarse antes')
+  assert.ok(iFreno < f.indexOf('await tomarSnapshot('), 'y antes de tocar Google (el snapshot)')
+})
+
+test('el orden de las secciones y lo que la pestaña real muestra en la frontera coinciden: la sección 4 es el respaldo fiscal', () => {
+  // La pestaña viva tiene en la fila 131 «4 · RESPALDO FISCAL — …» y NO «NOTAS DE CRÉDITO». El número
+  // sale de la lista, y el que escribe ese bloque es `proveedores-respaldo-fiscal.mjs`.
+  assert.equal(SECCIONES_PROVEEDORES[nSeccion(PRIMERA_GENERADA) - 1], 'respaldoFiscal')
+  assert.equal(normalizarTitulo('4 · RESPALDO FISCAL — contra el libro de IVA de ARCA'),
+    normalizarTitulo('RESPALDO FISCAL — contra el libro de IVA de ARCA'))
+  assert.throws(() => buscarFrontera([['4 · RESPALDO FISCAL — contra el libro de IVA de ARCA']], 'NOTAS DE CRÉDITO'), /no encontré/)
+})
