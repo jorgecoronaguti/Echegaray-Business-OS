@@ -155,8 +155,22 @@ export interface PresentismoDeLinea {
   aRevisar: string[]
   basico: number | null
   categoria: string | null
+  /**
+   * Restituido a mano (30/09/2026): había causas de pérdida y Administración las perdonó. El estado es `aplica`
+   * —cobra, 0425 en el blanco— pero se dice quién y qué fechas cubre, para poder deshacerlo.
+   */
+  restituido?: RestitucionDePresentismo | null
   /** Sólo con `estado === 'no_aplica'`: por qué. La celda lo dice textual («no aplica · mensual»). */
   motivoNoAplica?: MotivoNoAplica
+}
+
+/** Lo que Administración perdonó: quién, cuándo, por qué, y QUÉ FECHAS (no el resto de la quincena). */
+export interface RestitucionDePresentismo {
+  por: string
+  en: string
+  motivo: string | null
+  /** Las fechas ISO de las causas que había al restituir. Una causa con otra fecha no está cubierta. */
+  fechas: string[]
 }
 
 /** Lo que la cadena de pago sabe de la persona ANTES de conocer sus horas finales. */
@@ -172,6 +186,8 @@ export interface EntradaDePresentismo {
   modalidad: ModalidadDeLiquidacion
   esJefe: boolean
   cerrada: boolean
+  /** La restitución manual de esta persona en esta quincena, si la hay (`liquidacion_presentismo_restitucion`). */
+  restitucion?: RestitucionDePresentismo | null
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
@@ -297,7 +313,15 @@ export function presentismoDeLinea(e: EntradaDePresentismo, horas: number | null
   if (base == null || importe == null) return { ...comun, estado: 'sin_horas', importe: null, base: null }
   // UNA SOLA CAUSA BASTA, Y EL DÍA SIN MOTIVO ES UNA DE ELLAS (21/09/2026): `causasDePerdida` ya las trae
   // todas, así que acá no hay un segundo criterio que pueda discrepar del que dibuja la pantalla.
-  if (causas.length > 0) return { ...comun, estado: 'perdido', importe, base }
+  if (causas.length > 0) {
+    // LO MANUAL GANA SOBRE LO CALCULADO, PERO SÓLO SOBRE LO QUE SE PERDONÓ: si toda causa de hoy está entre las fechas
+    // restituidas, cumple; una tardanza cargada después (otra fecha) vuelve a hacerlo perder.
+    const r = e.restitucion
+    if (r && perdido.every((f) => r.fechas.includes(f))) {
+      return { ...comun, perdido: [], causas: [], aRevisar: [], estado: 'aplica', importe, base, restituido: r }
+    }
+    return { ...comun, estado: 'perdido', importe, base }
+  }
   return { ...comun, estado: 'aplica', importe, base }
 }
 

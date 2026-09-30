@@ -45,6 +45,7 @@ import {
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
+import { leerRestituciones } from './presentismoRestitucionService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import { estadoDelCuadro } from './estadoDelCuadro.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
@@ -361,12 +362,17 @@ export async function getLiquidacionDeLaQuincena(
   // LAS FALTAS SALEN DE LAS MISMAS PRESENCIAS (dueño, 16/09/2026). Una falta injustificada pierde el
   // presentismo igual que una tardanza; una licencia reconocida no. Lo decide `presentismo.ts`.
   const ausencias = ausenciasPorPersona(presencias.data)
+  // LO QUE LA ADMINISTRACIÓN PERDONÓ A MANO (30/09/2026): entra al cálculo por `restitucion`, no se pinta encima.
+  const lecturaRestituciones = await leerRestituciones(supabase, q.desde, q.hasta)
+  anotar('las restituciones de presentismo', lecturaRestituciones.error)
+  const restituciones = lecturaRestituciones.porPersona
   const presentismoDe = (grupo: string, l: { personaId: string; esJefe: boolean; modalidad: ModalidadDeLiquidacion }): EntradaDePresentismo | null =>
     grupo !== 'obreros' ? null : {
       categoria: categoriaDe.get(l.personaId) ?? null,
       basico: pisoDe.get(l.personaId) ?? null,
       tardanzas: tardanzas.get(l.personaId) ?? [],
       ausencias: ausencias.get(l.personaId) ?? [],
+      restitucion: restituciones.get(l.personaId) ?? null,
       quincenaDesde: q.desde,
       modalidad: l.modalidad,
       esJefe: l.esJefe,

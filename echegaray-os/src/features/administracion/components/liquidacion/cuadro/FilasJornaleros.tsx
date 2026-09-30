@@ -78,7 +78,7 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
       <CeldaPagado campo="pagadoEfectivo" fila={fila} edicion={edicion} />
       <CeldaSaldo fila={fila} lado="efectivo" />
       {/* RESTO DEL CÁLCULO. */}
-      <CeldaPresentismo fila={fila} />
+      <CeldaPresentismo fila={fila} quincena={quincena} />
       {/* EL REDONDEO SIGUE SIENDO DEL DUEÑO: los billetes que entrega en mano. No entra en ninguna cuenta. */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={efectivoDelRedondeo(fila)}

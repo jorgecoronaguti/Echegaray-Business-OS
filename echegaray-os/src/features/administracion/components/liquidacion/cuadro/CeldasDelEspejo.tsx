@@ -22,6 +22,7 @@ import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
 import { fechasCortas, type PresentismoDeLinea } from '../../../services/presentismo'
 import { motivosDePerdida } from './presentismoEnElPanel'
+import { BotonRestituir, MarcaDeRestituido, type VentanaRestitucion } from './BotonRestituirPresentismo'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
@@ -37,9 +38,13 @@ import { motivosDePerdida } from './presentismoEnElPanel'
  * una marca lo hizo perder; «sin categoría» apagado cuando el legajo no dice qué básico usar (0 y sin
  * pendiente); «—» fuera del modelo (Oficina, finales, quincena anterior al 16/09).
  */
-export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaPresentismo({ fila, quincena }: { fila: FilaDelEspejo; quincena?: { desde: string; hasta: string } }) {
   const p = fila.linea.presentismo
   const testid = `presentismo-${fila.personaId}`
+  // EL BOTÓN SÓLO EXISTE DONDE SE PUEDE ESCRIBIR (30/09/2026): quincena abierta y con ventana. La cerrada es la foto
+  // de lo que se pagó; la puerta real es la RLS, esto sólo evita ofrecer lo que la base negaría.
+  const ventana: VentanaRestitucion | null = quincena && !fila.cerrada
+    ? { personaId: fila.personaId, nombre: fila.nombre, desde: quincena.desde, hasta: quincena.hasta } : null
   // NO APLICA · MENSUAL (dueño, 17/09/2026). Se dice textual: «—» se lee igual que «todavía no rige».
   if (p?.estado === 'no_aplica' || fila.linea.modalidad === 'mensual') {
     return (
@@ -78,14 +83,17 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
     const recuperable = p.aRevisar.length > 0
       ? ` · sin motivo cargado: ${fechasCortas(p.aRevisar)}. Cargá el motivo y, si lo justifica, lo recupera.`
       : ''
+    const titulo = `${cuenta} · PERDIDO: ${motivosDePerdida(p)} · el 0426 lo anula en el recibo en blanco; el negro no se toca${recuperable}`
+    if (ventana) return <BotonRestituir v={ventana} perdido={p.perdido} titulo={`${titulo} · Apretá para restituir el presentismo.`} testid={testid} />
     return (
       <div data-testid={testid} data-presentismo="perdido" data-sin-motivo={recuperable ? '1' : undefined}
-        title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · el 0426 lo anula en el recibo en blanco; el negro no se toca${recuperable}`}
+        title={titulo}
         style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.warn, fontWeight: 500 }}>
         perdido {fechasCortas(p.perdido)}
       </div>
     )
   }
+  if (p.restituido) return <MarcaDeRestituido r={p.restituido} v={ventana} cuenta={cuenta} testid={testid} />
   return (
     <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Cumple: se cobra en el recibo en blanco (0425).`}
       style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>{pesos(p.importe)}</div>
