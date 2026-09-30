@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   norm, debitadoDe, instrumentoDe, clave, planSync, filaRegistro, verificarEncabezado, aFechaAR,
-  sinComprobante, COL, comprobantesQueCubre,
+  sinComprobante, COL, comprobantesQueCubre, deducirComprobantes,
 } from './cheques-emitidos-sync.mjs'
 
 const ORIGEN_ECHEQ = 'Santander Empresas · pantalla ECHEQs Emitidos (PDF 30/07/2026 09:06)'
@@ -201,4 +201,60 @@ test('comprobantesQueCubre: si las pendientes del CUIT suman el cheque al centav
   // Un peso de diferencia no se adivina.
   assert.equal(comprobantesQueCubre({ contraparte_cuit: '30711355223', importe: 279084.72 }, pend), null)
   assert.equal(comprobantesQueCubre({ contraparte_cuit: null, importe: 279083.72 }, pend), null)
+})
+
+// ── 30/09/2026 · eCheq 389 y 390 de SURI: varios cheques que juntos cancelan una factura YA pagada ──
+const SURI = '30642815977'
+const ch = (numero, importe, extra = {}) => ({ numero, importe, contraparte: 'SURI S.A.', contraparte_cuit: SURI, estado: 'Emitido', fecha_pago: null, corte: '2026-09-30', origen: ORIGEN_ECHEQ, cuenta: 'CC - 00000913836', ...extra })
+// La fila 1031 de compra_sheet: el CUIT viene con guiones y el del cheque sin ellos — son el mismo.
+const suri1031 = { cuit: '30-64281597-7', comprobante: '0027-00026284', estado: 'Pagado', tipo_pago: 'Echeq', fecha_caja: '2026-09-30', saldo_pendiente: 0, monto_pagado: 1821532.26 }
+
+test('389 + 390 de SURI: juntos cancelan la FA ya Pagado por Echeq el 30/09 → ambos con el mismo N°', () => {
+  const r = deducirComprobantes([ch('389', 821532.26), ch('390', 1000000)], { pagadas: [suri1031] })
+  assert.deepEqual(r, ['0027-00026284', '0027-00026284'])
+})
+
+test('varias facturas pagadas ese día por Echeq → «A + B»; una de otro día o de otro medio no entra', () => {
+  const pagadas = [
+    { ...suri1031, comprobante: 'A', monto_pagado: 1000 },
+    { ...suri1031, comprobante: 'B', monto_pagado: 500 },
+    { ...suri1031, comprobante: 'C', monto_pagado: 77, fecha_caja: '2026-09-29' },
+    { ...suri1031, comprobante: 'D', monto_pagado: 88, tipo_pago: 'Transferencia' },
+  ]
+  assert.deepEqual(deducirComprobantes([ch('1', 900), ch('2', 600)], { pagadas }), ['A + B', 'A + B'])
+})
+
+test('(a) varios cheques del CUIT y corte que juntos suman lo PENDIENTE también deducen', () => {
+  const pendientes = [{ cuit: SURI, comprobante: 'X-1', saldo_pendiente: 300 }, { cuit: SURI, comprobante: 'X-2', saldo_pendiente: 700 }]
+  assert.deepEqual(deducirComprobantes([ch('1', 400), ch('2', 600)], { pendientes }), ['X-1 + X-2', 'X-1 + X-2'])
+})
+
+test('un cheque que no suma → null, no se adivina (cincuenta centavos de más tampoco)', () => {
+  const pagadas = [suri1031]
+  assert.deepEqual(deducirComprobantes([ch('389', 821532.26), ch('390', 1000000.5)], { pagadas }), [null, null])
+  assert.deepEqual(deducirComprobantes([ch('389', 821532.26)], { pagadas }), [null], 'uno solo no alcanza')
+  assert.deepEqual(deducirComprobantes([ch('389', 1821532.26, { contraparte_cuit: null })], { pagadas }), [null], 'sin CUIT no hay cruce')
+})
+
+test('cortes distintos son grupos distintos: no se suman cheques de corridas diferentes', () => {
+  assert.deepEqual(deducirComprobantes([ch('389', 821532.26), ch('390', 1000000, { corte: '2026-09-29' })], { pagadas: [suri1031] }), [null, null])
+})
+
+test('ambiguo: pendientes y pagadas cierran con facturas DISTINTAS → no se deduce', () => {
+  const pendientes = [{ cuit: SURI, comprobante: 'PEND-1', saldo_pendiente: 1821532.26 }]
+  assert.deepEqual(deducirComprobantes([ch('389', 821532.26), ch('390', 1000000)], { pendientes, pagadas: [suri1031] }), [null, null])
+})
+
+test('una factura de la lista sin N° de comprobante → no se deduce una lista a medias', () => {
+  assert.deepEqual(deducirComprobantes([ch('1', 1821532.26)], { pagadas: [{ ...suri1031, comprobante: '' }] }), [null])
+})
+
+test('comprobantesQueCubre es el mismo motor con un grupo de uno', () => {
+  assert.equal(comprobantesQueCubre(ch('1', 1821532.26), [], [suri1031]), '0027-00026284')
+})
+
+test('fecha_pago NULL → la celda de fecha del registro queda VACÍA (nunca «null»)', () => {
+  const f = filaRegistro({ ...ch('390', 1000000), instrumento: 'ECHEQ', debitado: 'No' })
+  assert.equal(f[COL.pago], '')
+  assert.ok(f.every((v) => v !== null && v !== 'null' && v !== undefined))
 })

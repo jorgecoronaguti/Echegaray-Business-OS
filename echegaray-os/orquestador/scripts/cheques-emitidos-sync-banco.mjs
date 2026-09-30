@@ -57,7 +57,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { planSync, filaRegistro, verificarEncabezado, sinComprobante, comprobantesQueCubre, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
+import { planSync, filaRegistro, verificarEncabezado, sinComprobante, deducirComprobantes, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
 import { conciliarDebitosDeCheques } from '../lib/cheques-debito-banco.mjs'
 import { fusionarDebitado, huerfanosDeDebito, anotarHuerfanos, numerosQueElBancoDesmiente } from '../lib/cheques-debitado-fusion.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -193,7 +193,7 @@ async function main() {
   p.updates = updates
   console.log(`\n${p.updates.length} DEBITADO a corregir · ${p.agregar.length} a agregar · ${p.iguales} ya correcto(s) · ${p.muertos.length} muerto(s) · ${p.soloEnPestana.length} sólo en la pestaña`)
   p.updates.forEach((u) => console.log(`  fila${u.fila} ${u.instrumento} ${u.numero}: ${u.de} → ${u.a}  [${u.fuentes.join('+')}]${u.evidencia ? ` — ${u.evidencia}` : ''}`))
-  p.agregar.forEach((c) => console.log(`  + ${c.instrumento} ${norm(c.numero)} ${String(c.contraparte ?? '').slice(0, 28)} ${$(c.importe)} ${c.estado} · paga ${c.fecha_pago}`))
+  p.agregar.forEach((c) => console.log(`  + ${c.instrumento} ${norm(c.numero)} ${String(c.contraparte ?? '').slice(0, 28)} ${$(c.importe)} ${c.estado} · paga ${c.fecha_pago ?? 'sin fecha'}${c.comprobante ? ` · comprobante ${c.comprobante}` : ''}`))
   p.muertos.forEach((c) => console.log(`  (muerto, no se agrega) ${norm(c.numero)} ${c.contraparte ?? ''} ${c.estado}`))
   p.sinInstrumento.forEach((c) => console.log(`  ⚠ ${norm(c.numero)} ${c.contraparte ?? ''}: no puedo afirmar si es FISICO o ECHEQ — no lo agrego (origen: ${c.origen})`))
   if (p.soloEnPestana.length) {
@@ -247,31 +247,42 @@ async function main() {
     console.log(`\nℹ ${sinRef.length} débito(s) de cheque sin referencia en el extracto: el banco no mandó el número, no se pueden atribuir.`)
   }
 
-  avisarSinComprobante(p)
+  // EL N° DE COMPROBANTE SE DEDUCE (dueño, 23/09/2026: «es el total de lo pendiente, tenés que tener la
+  // habilidad de saber eso»; ampliado 30/09): los cheques que se agregan, agrupados por CUIT y corte,
+  // cancelan (a) lo pendiente del CUIT o (b) lo que la app ya marcó Pagado por Echeq ese día. Se calcula
+  // ANTES del aviso y del --dry: si no, el aviso reclama un número que ya se sabe. Vale también para los
+  // que ya estaban en el registro sin número y sin debitar (ésos, sólo contra lo pendiente: no tienen corte).
+  const { rows: pendientes } = await query(
+    `select cuit, comprobante, saldo_pendiente::float8 as saldo_pendiente from public.compra_sheet
+      where coalesce(saldo_pendiente, 0) > 0 and not coalesce(anulada, false) and cuit is not null`)
+  const { rows: pagadas } = await query(
+    `select cuit, comprobante, estado, tipo_pago, fecha_caja::text as fecha_caja, monto_pagado::float8 as monto_pagado
+       from public.compra_sheet
+      where not coalesce(anulada, false) and cuit is not null and estado ilike 'pagad%' and tipo_pago ilike '%cheq%'
+        and fecha_caja is not null`)
+  const nrosNuevos = deducirComprobantes(p.agregar, { pendientes, pagadas })
+  p.agregar.forEach((c, i) => { c.comprobante = nrosNuevos[i] })
+  const regSinNro = registro.filter((r) => !String(r.nroComp ?? '').trim() && String(r.debitado ?? '').trim().toUpperCase() !== 'SI')
+  const nrosReg = deducirComprobantes(regSinNro.map((r) => ({ contraparte_cuit: r.cuit, importe: r.monto })), { pendientes })
+  const deducidos = [
+    ...p.agregar.filter((c) => c.comprobante).map((c) => `${c.instrumento} ${norm(c.numero)} → ${c.comprobante}`),
+    ...regSinNro.flatMap((r, i) => (nrosReg[i] ? [`fila ${r.fila} ${r.tipo} ${norm(r.numero)} → ${nrosReg[i]}`] : [])),
+  ]
+  if (deducidos.length) console.log(`\nN° de comprobante deducido de Compras (los cheques del CUIT y corte cancelan lo pendiente o lo pagado por Echeq ese día):\n  ${deducidos.join('\n  ')}`)
+
+  avisarSinComprobante({ ...p, agregar: p.agregar.filter((c) => !c.comprobante) })
+  avisarSinFechaDePago(p.agregar)
 
   if (DRY) { console.log('\n(--dry) no escribí nada.'); return }
   const data = p.updates.map((u) => ({ range: `${PESTANA}!K${u.fila}`, values: [[u.a]] }))
-  // EL N° DE COMPROBANTE SE DEDUCE cuando las facturas pendientes del CUIT suman el cheque al centavo
-  // (dueño, 23/09/2026: «es el total de lo pendiente, tenés que tener la habilidad de saber eso»). Vale
-  // para los que entran ahora y para los que ya estaban en el registro sin número y sin debitar.
-  const { rows: pendientes } = await query(
-    `select cuit, comprobante, saldo_pendiente from public.compra_sheet
-      where coalesce(saldo_pendiente, 0) > 0 and not coalesce(anulada, false) and cuit is not null`)
-  const deducidos = []
   const filasNuevas = p.agregar.map((c) => {
     const f = filaRegistro(c)
-    const nro = comprobantesQueCubre(c, pendientes)
-    if (nro) { f[COL.nroComp] = nro; deducidos.push(`${c.instrumento} ${norm(c.numero)} → ${nro}`) }
+    if (c.comprobante) f[COL.nroComp] = c.comprobante
     return f
   })
-  for (const r of registro) {
-    if (String(r.nroComp ?? '').trim() || String(r.debitado ?? '').trim().toUpperCase() === 'SI') continue
-    const nro = comprobantesQueCubre({ contraparte_cuit: r.cuit, importe: r.monto }, pendientes)
-    if (!nro) continue
-    data.push({ range: `${PESTANA}!${String.fromCharCode(65 + COL.nroComp)}${r.fila}`, values: [[nro]] })
-    deducidos.push(`fila ${r.fila} ${r.tipo} ${norm(r.numero)} → ${nro}`)
-  }
-  if (deducidos.length) console.log(`\nN° de comprobante deducido de Compras (las pendientes del CUIT suman el cheque):\n  ${deducidos.join('\n  ')}`)
+  regSinNro.forEach((r, i) => {
+    if (nrosReg[i]) data.push({ range: `${PESTANA}!${String.fromCharCode(65 + COL.nroComp)}${r.fila}`, values: [[nrosReg[i]]] })
+  })
   if (p.agregar.length) data.push({ range: `${PESTANA}!A${ultima + 1}`, values: filasNuevas })
   if (!data.length) { console.log('\nnada que sincronizar: el registro ya coincide con la base.'); return }
   // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
@@ -314,6 +325,18 @@ async function main() {
 }
 
 /**
+ * El PDF del banco no siempre trae la fecha de pago (eCheq 389/390 de SURI, 30/09): la celda queda VACÍA
+ * —nunca «null»— y se pide en una línea. No repite los comprobantes: eso ya lo dice la sección de deducidos.
+ */
+function avisarSinFechaDePago(agregar) {
+  const sin = agregar.filter((c) => !c.fecha_pago)
+  if (!sin.length) return
+  const col = String.fromCharCode(65 + COL.pago)
+  console.log(`\n⚠ ${sin.length} cheque(s) entran SIN fecha de pago (el banco no la trae): ${sin.map((c) => `${c.instrumento} ${norm(c.numero)}`).join(', ')}`
+    + ` — completala en la columna ${col} de "${PESTANA}".`)
+}
+
+/**
  * EL AVISO QUE TIENE QUE LLEGAR EN EL MOMENTO DE LA CARGA, NO EN LA CONCILIACIÓN.
  *
  * Un cheque sin N° de comprobante no se puede cruzar contra Compras nunca más, y eso no es un detalle
@@ -329,7 +352,7 @@ function avisarSinComprobante(p) {
   const { yaEnElRegistro, seEstanAgregando } = sinComprobante(p)
   if (seEstanAgregando.length) {
     console.log(`\n⚠ ${seEstanAgregando.length} cheque(s) entran SIN N° de comprobante — el banco no lo informa, lo tenés vos:`)
-    for (const c of seEstanAgregando) console.log(`    ${c.instrumento} ${norm(c.numero)}  ${String(c.contraparte ?? '').slice(0, 28).padEnd(29)} ${$(c.importe)}  paga ${c.fecha_pago}`)
+    for (const c of seEstanAgregando) console.log(`    ${c.instrumento} ${norm(c.numero)}  ${String(c.contraparte ?? '').slice(0, 28).padEnd(29)} ${$(c.importe)}  paga ${c.fecha_pago ?? 'sin fecha'}`)
     console.log('    Cargales el N° en la columna H de "Cheques Emitidos". Sin él no se pueden cruzar contra Compras')
     console.log('    y el piso proyectado de caja no va a poder afirmar si esa plata ya está contemplada.')
   }

@@ -185,18 +185,65 @@ export function filaRegistro(c) {
 // tenía dos facturas pendientes que sumaban exactamente eso. Si las facturas pendientes del mismo CUIT
 // suman el importe del cheque al centavo, el cheque las paga a todas y el N° es la lista de ellas. Si no
 // cierra al centavo, no se adivina: queda vacío y se avisa, como antes.
+//
+// 30/09/2026 — LOS DOS CASOS QUE ESTA REGLA NO CUBRÍA (eCheq 389 y 390 de SURI, $821.532,26 + $1.000.000):
+//  (a) VARIOS CHEQUES del mismo CUIT y corte que JUNTOS cancelan la(s) factura(s): ningún cheque suelto
+//      suma lo pendiente, el grupo sí.
+//  (b) LA FACTURA YA QUEDÓ PAGADA por Echeq en esa fecha: el pago se registró por la puerta de la app
+//      (compra_pago_registrar) antes de importar los cheques, así que ya no hay saldo pendiente que
+//      sumar. La prueba es la misma al revés: las filas Pagado · Echeq · fecha_caja = corte suman el grupo.
+// Si las dos lecturas cierran con listas de facturas DISTINTAS, es ambiguo: no se deduce, se avisa.
+const cuitDe = (v) => String(v ?? '').replace(/\D/g, '')
+const diaDe = (v) => (v instanceof Date ? v.toISOString() : String(v ?? '')).slice(0, 10)
+const cerca = (a, b) => Math.abs(a - b) <= 0.01
+/** «A + B» si TODAS las filas tienen comprobante; null si alguna no lo tiene (no se adivina una lista a medias). */
+function listaDe(filas) {
+  const nros = filas.map((p) => String(p.comprobante ?? '').trim())
+  return nros.every(Boolean) ? nros.join(' + ') : null
+}
+
 /**
- * @param {{contraparte_cuit?:string, importe:number}} cheque
- * @param {Array<{cuit?:string, comprobante?:string, saldo_pendiente?:number}>} pendientes filas de compra_sheet con saldo
- * @returns {string|null} «0006-00008111 + 0006-00008199», o null
+ * ÚNICA función de deducción. Agrupa los cheques por CUIT + corte y devuelve, alineado con la entrada,
+ * el texto de comprobantes que cubre cada uno (todos los del grupo reciben el mismo) o null.
+ *
+ * @param {Array<{contraparte_cuit?:string, importe:number, corte?:string, fecha_pago?:string}>} cheques los que se están agregando
+ * @param {{pendientes?:Array<{cuit?:string, comprobante?:string, saldo_pendiente?:number}>,
+ *          pagadas?:Array<{cuit?:string, comprobante?:string, estado?:string, tipo_pago?:string, fecha_caja?:string, monto_pagado?:number}>}} fuentes
+ *   pendientes: filas de compra_sheet con saldo · pagadas: filas de compra_sheet Pagado por Echeq
+ * @returns {Array<string|null>} «0006-00008111 + 0006-00008199», o null
  */
-export function comprobantesQueCubre(cheque, pendientes = []) {
-  const cuit = String(cheque?.contraparte_cuit ?? '').replace(/\D/g, '')
-  if (!cuit) return null
-  const mias = pendientes.filter((p) => String(p?.cuit ?? '').replace(/\D/g, '') === cuit && Number(p?.saldo_pendiente) > 0)
-  if (!mias.length) return null
-  const suma = mias.reduce((s, p) => s + Number(p.saldo_pendiente), 0)
-  if (Math.abs(suma - Number(cheque.importe)) > 0.01) return null
-  const nros = mias.map((p) => String(p.comprobante ?? '').trim()).filter(Boolean)
-  return nros.length === mias.length ? nros.join(' + ') : null
+export function deducirComprobantes(cheques = [], { pendientes = [], pagadas = [] } = {}) {
+  const out = cheques.map(() => null)
+  const grupos = new Map()
+  cheques.forEach((c, i) => {
+    const cuit = cuitDe(c?.contraparte_cuit)
+    if (!cuit) return
+    const k = `${cuit}|${diaDe(c.corte)}`
+    grupos.set(k, [...(grupos.get(k) ?? []), i])
+  })
+  for (const [k, idx] of grupos) {
+    const cuit = k.split('|')[0]
+    const total = idx.reduce((s, i) => s + Number(cheques[i].importe), 0)
+    const fechas = new Set(idx.map((i) => diaDe(cheques[i].fecha_pago) || diaDe(cheques[i].corte)).filter(Boolean))
+
+    const pend = pendientes.filter((p) => cuitDe(p?.cuit) === cuit && Number(p?.saldo_pendiente) > 0)
+    const pag = pagadas.filter((p) => cuitDe(p?.cuit) === cuit && /^pagad/i.test(String(p?.estado ?? '').trim())
+      && /e-?cheq/i.test(String(p?.tipo_pago ?? '')) && fechas.has(diaDe(p?.fecha_caja)) && Number(p?.monto_pagado) > 0)
+
+    const lecturas = []
+    if (pend.length && cerca(pend.reduce((s, p) => s + Number(p.saldo_pendiente), 0), total)) lecturas.push(listaDe(pend))
+    if (pag.length && cerca(pag.reduce((s, p) => s + Number(p.monto_pagado), 0), total)) lecturas.push(listaDe(pag))
+    if (!lecturas.length || !lecturas.every(Boolean) || new Set(lecturas).size !== 1) continue
+    for (const i of idx) out[i] = lecturas[0]
+  }
+  return out
+}
+
+/**
+ * Un cheque suelto: las pendientes del CUIT suman su importe al centavo (o las pagadas por Echeq ese día).
+ * Es `deducirComprobantes` con un grupo de uno — no hay otra lógica.
+ * @returns {string|null}
+ */
+export function comprobantesQueCubre(cheque, pendientes = [], pagadas = []) {
+  return deducirComprobantes([cheque], { pendientes, pagadas })[0]
 }
