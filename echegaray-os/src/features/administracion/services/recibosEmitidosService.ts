@@ -42,7 +42,7 @@ export async function getRecibosEmitidos(
   if (!p.puedeVer) return { puedeVer: false, recibos: [], error: null }
   const { data, error } = await supabase
     .from('recibo_liquidacion_emitido')
-    .select('id, codigo, persona_id, nombre, categoria, quincena_desde, quincena_hasta, horas, banco, efectivo, total, renglones, emitido_en, emitido_por, es_ultimo, estado, enviado_en, trazo, firmado_en, firmado_desde, papel_path, papel_subido_en, archivado_en, observacion')
+    .select('id, codigo, persona_id, nombre, categoria, quincena_desde, quincena_hasta, horas, banco, efectivo, total, renglones, emitido_en, emitido_por, es_ultimo, estado, enviado_en, trazo, firmado_en, firmado_desde, papel_path, papel_subido_en, papel_sin_foto_en, papel_sin_foto_por, archivado_en, observacion')
     .eq('persona_id', p.personaId)
     .order('quincena_desde', { ascending: false })
     .order('emitido_en', { ascending: false })
@@ -60,7 +60,7 @@ export async function getRecibosEmitidos(
   // QUIÉN LO EMITIÓ, CON NOMBRE. Un uuid recortado no le dice nada a nadie, y sólo se piden los emisores
   // que aparecen en lo que se va a dibujar. Sin nombre cargado queda `null` y la pantalla escribe «sin
   // identificar», que es más honesto que un uuid con pinta de nombre.
-  const ids = [...new Set(filas.map((f) => f.emitido_por).filter((v): v is string => typeof v === 'string'))]
+  const ids = [...new Set(filas.flatMap((f) => [f.emitido_por, f.papel_sin_foto_por]).filter((v): v is string => typeof v === 'string'))]
   const nombres = ids.length > 0 ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   const recibos = filas.map((f): ReciboEnElLegajo => ({
     id: String(f.id),
@@ -75,6 +75,8 @@ export async function getRecibosEmitidos(
     papelPath: texto(f.papel_path),
     papelUrl: null,
     papelSubidoEn: texto(f.papel_subido_en),
+    papelSinFotoEn: texto(f.papel_sin_foto_en),
+    papelSinFotoPor: typeof f.papel_sin_foto_por === 'string' ? nombres.get(f.papel_sin_foto_por) ?? 'sin identificar' : null,
     archivadoEn: texto(f.archivado_en),
     observacion: texto(f.observacion),
     personaId: String(f.persona_id),

@@ -87,6 +87,47 @@ export async function enviarReciboAFirmar(reciboId: string): Promise<Resultado> 
   return { ok: true, id: id.data, mensaje: 'El recibo ya está en el teléfono de la persona, para que lo firme.' }
 }
 
+// ── «FIRMÓ EN PAPEL» — DOS CAMINOS, UN SOLO RESULTADO: `firmado_papel` ───────────────────────────
+// Dueño, 30/09: «¿qué pasa cuando ya se firma de manera personal?». Sin foto: el papel queda en la oficina y
+// se anota quién lo marcó y cuándo. Con foto: ya está subida al bucket y la base verifica que exista.
+export async function marcarReciboFirmadoEnPapel(reciboId: string): Promise<Resultado> {
+  const id = idSchema.safeParse(reciboId)
+  if (!id.success) return { ok: false, error: id.error.issues[0].message }
+  const { supabase, error: cerrado } = await puertaDeSueldos()
+  if (cerrado) return { ok: false, error: cerrado }
+
+  const { error } = await supabase.rpc('marcar_recibo_firmado_en_papel', { p_recibo: id.data })
+  if (error) return { ok: false, error: porQueNo(error, 'marcar el recibo firmado en papel') }
+
+  const leido = await leerEstado(supabase, id.data)
+  if ('falla' in leido) return { ok: false, error: leido.falla }
+  if (leido.estado !== 'firmado_papel') {
+    return { ok: false, error: `La base respondió que sí pero el recibo quedó «${leido.estado}». No lo doy por firmado.` }
+  }
+  await refrescarLegajo(supabase, id.data)
+  return { ok: true, id: id.data, mensaje: 'Anotado: firmó en papel. El papel queda archivado en la oficina.' }
+}
+
+/** La foto la sube el navegador directo al bucket (una Server Action tiene techo de 1 MB); acá se anota. */
+const rutaDelPapel = z.string().max(300).regex(/^[0-9a-f-]{36}\/recibo\/[A-Za-z0-9._-]+$/i, 'La ruta de la foto no es válida.')
+
+export async function subirPapelDelReciboFirmado(entrada: { recibo: string; ruta: string }): Promise<Resultado> {
+  const id = idSchema.safeParse(entrada.recibo)
+  if (!id.success) return { ok: false, error: id.error.issues[0].message }
+  const ruta = rutaDelPapel.safeParse(entrada.ruta)
+  if (!ruta.success) return { ok: false, error: ruta.error.issues[0].message }
+  const { supabase, error: cerrado } = await puertaDeSueldos()
+  if (cerrado) return { ok: false, error: cerrado }
+
+  const { error } = await supabase.rpc('subir_papel_recibo_liquidacion', { p_recibo: id.data, p_path: ruta.data })
+  if (error) return { ok: false, error: porQueNo(error, 'cargar la foto del papel') }
+
+  const { data } = await supabase.from('recibo_liquidacion').select('papel_subido_en').eq('id', id.data).maybeSingle()
+  if (!data?.papel_subido_en) return { ok: false, error: 'La base respondió que sí pero la foto no quedó anotada. No la doy por cargada.' }
+  await refrescarLegajo(supabase, id.data)
+  return { ok: true, id: id.data, mensaje: 'Foto del papel firmado cargada.' }
+}
+
 // ── D13 · ARCHIVAR EL FIRMADO ────────────────────────────────────────────────────────────────────
 // «El firmado reemplaza al emitido en el legajo. El emitido queda como versión anterior: no se borra» —
 // eso último no hace falta programarlo: ninguna emisión se borra nunca, y `es_ultimo` marca cuál rige.
