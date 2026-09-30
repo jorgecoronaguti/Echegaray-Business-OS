@@ -6,8 +6,8 @@
 // pantalla. La ficha abierta también va en la URL (`?activo=AMO-007`): es la que abre `/h/<código>`.
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
-import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { aplicarBusqueda, cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
@@ -121,7 +121,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             })}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BuscadorInventario parque={parque} valor={filtros.q} onBuscar={(q) => ir({ q })} onElegir={(codigo) => ir({}, codigo)} />
+            <BuscadorInventario parque={parque} valor={filtros.q} onBuscar={(q) => ir(aplicarBusqueda(filtros, q))} onElegir={(codigo, q) => ir(aplicarBusqueda(filtros, q), codigo)} />
             <select aria-label="Ubicación" value={filtros.ubicacion ?? ''} onChange={(e) => ir({ ubicacion: e.target.value || null })} style={selectFiltro} data-testid="filtro-ubicacion">
               <option value="">Ubicación: todas</option>
               <option value="sin">Sin ubicación cargada</option>
@@ -255,11 +255,14 @@ function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
   parque: Parque
   valor: string
   onBuscar: (q: string) => void
-  onElegir: (codigo: string) => void
+  onElegir: (codigo: string, q: string) => void
 }) {
   const [texto, setTexto] = useState(valor)
   const [abierto, setAbierto] = useState(false)
-  const [marcado, setMarcado] = useState(0)
+  // -1 = nada resaltado: Enter aplica la búsqueda a la tabla; con una sugerencia resaltada (flechas o
+  // mouse) abre ese activo.
+  const [marcado, setMarcado] = useState(-1)
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Si la URL cambia desde afuera (el buscador del menú, «ver todo»), el campo la sigue. Mientras se
   // tipea, la URL recibe el texto recortado: no se le borra a nadie el espacio que acaba de escribir.
   const [previo, setPrevio] = useState(valor)
@@ -270,14 +273,18 @@ function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
   useEffect(() => {
     const limpio = texto.trim()
     if (limpio === valor) return
-    const t = setTimeout(() => onBuscar(limpio), 200)
-    return () => clearTimeout(t)
+    espera.current = setTimeout(() => onBuscar(limpio), 200)
+    return () => { if (espera.current) clearTimeout(espera.current) }
   }, [texto]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Las opciones salen del parque que ya está en pantalla: aparecen con cada tecla, sin ir a la base.
   const opciones = useMemo(() => sugerencias(parque, texto), [parque, texto])
   const visible = abierto && texto.trim().length > 0
-  const elegir = (a: Activo) => { setAbierto(false); onElegir(a.codigo) }
+  // Lo que se aplica a mano (Enter, clic) cancela el retardo de tipeo: si no, a los 200 ms volvería a
+  // escribir la URL con los filtros viejos y cerraría la ficha recién abierta.
+  const cancelar = () => { if (espera.current) clearTimeout(espera.current) }
+  const elegir = (a: Activo) => { cancelar(); setAbierto(false); onElegir(a.codigo, texto.trim()) }
+  const aplicar = () => { cancelar(); setAbierto(false); onBuscar(texto.trim()) }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -289,14 +296,14 @@ function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
           type="search" value={texto} placeholder="Buscar herramienta o código"
           aria-label="Buscar herramienta" data-testid="buscar-inventario" role="combobox"
           aria-expanded={visible} aria-controls="sugerencias-inventario" aria-autocomplete="list" autoComplete="off"
-          onChange={(e) => { setTexto(e.target.value); setAbierto(true); setMarcado(0) }}
+          onChange={(e) => { setTexto(e.target.value); setAbierto(true); setMarcado(-1) }}
           onFocus={() => setAbierto(true)}
           onBlur={() => setTimeout(() => setAbierto(false), 150)}
           onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); if (visible && opciones[marcado]) elegir(opciones[marcado]); else aplicar(); return }
             if (!visible || opciones.length === 0) return
             if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(m + 1, opciones.length - 1)) }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(m - 1, 0)) }
-            else if (e.key === 'Enter') { e.preventDefault(); elegir(opciones[marcado]) }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(m - 1, -1)) }
             else if (e.key === 'Escape') setAbierto(false)
           }}
           style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', fontSize: '12.5px', color: V.tinta, background: 'transparent' }}

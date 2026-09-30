@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarParque } from './parque.ts'
-import { candidatos, categorias, destinoDeBusqueda, sugerencias, totales, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
+import { aplicarBusqueda, candidatos, categorias, destinoDeBusqueda, sugerencias, totales, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
 import { faltaMigracion } from './falta-migracion.ts'
 import { activo, ubicacion } from './fixture.test-util.ts'
 
@@ -96,4 +96,31 @@ test('el buscador de la barra abre la ficha cuando lo tipeado es un código, y s
   assert.equal(destinoDeBusqueda('amoladora'), '/herramientas/inventario?clase=todo&q=amoladora')
   assert.equal(destinoDeBusqueda('ecs-7741-qx'), '/herramientas/inventario?clase=todo&q=ecs-7741-qx')
   assert.equal(destinoDeBusqueda('   '), '/herramientas/inventario')
+})
+
+test('buscar «casco» desde la solapa Herramientas encuentra los EPP (dueño 30/09)', () => {
+  const p = armarParque({
+    ubicaciones: [ubicacion({ id: 'u-t', tipo: 'taller', nombre: 'Taller' })],
+    obras: [],
+    activos: [
+      activo({ id: 'c7', codigo: 'CAS-007', nombre: 'Casco amarillo', clase: 'epp', ubicacion_id: 'u-t' }),
+      activo({ id: 'c8', codigo: 'CAS-008', nombre: 'Casco de seguridad', clase: 'epp' }),
+      activo({ id: 'h', codigo: 'HER-0001', nombre: 'Pala', ubicacion_id: 'u-t' }),
+    ],
+    movimientos: [], incidencias: [], nombres: {},
+  })
+  const enHerramientas = filtrosDeURL({})
+  // El defecto: la solapa activa filtraba aunque las sugerencias ya mostraban los cascos.
+  assert.equal(filtrar(p, { ...enHerramientas, q: 'casco' }).length, 0)
+  const f = { ...enHerramientas, ...aplicarBusqueda(enHerramientas, ' CASCO ') }
+  assert.equal(f.clase, 'todo')
+  assert.equal(f.q, 'CASCO')
+  assert.deepEqual(filtrar(p, f).map((a) => a.codigo), ['CAS-007', 'CAS-008'])
+  assert.equal(cuentaPorEstado(candidatos(p, f)).todos, 2)
+  // Sin acentos, por código y por ubicación.
+  assert.deepEqual(filtrar(p, { ...f, q: 'cas-007' }).map((a) => a.codigo), ['CAS-007'])
+  assert.deepEqual(filtrar(p, { ...f, q: 'TALLER' }).map((a) => a.codigo), ['CAS-007', 'HER-0001'])
+  // Vaciar el campo no rompe ni cambia de solapa; en «Todo» ya no hay salto.
+  assert.deepEqual(aplicarBusqueda(enHerramientas, '  '), { q: '' })
+  assert.deepEqual(aplicarBusqueda({ clase: 'todo' }, 'casco'), { q: 'casco' })
 })

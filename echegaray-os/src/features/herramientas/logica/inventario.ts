@@ -97,6 +97,21 @@ export function candidatos(p: Parque, f: Filtros): Activo[] {
   })
 }
 
+/**
+ * QUÉ CAMBIA EN LOS FILTROS CUANDO SE BUSCA DESDE EL BUSCADOR DEL INVENTARIO.
+ *
+ * Dueño, 30/09: «pongo el nombre exacto y no aparece; pongo Enter y no aparece nada». Las sugerencias
+ * buscan en todo el inventario pero la tabla filtraba también por la solapa activa: con «Herramientas»
+ * puesta, «casco» (8 EPP) daba 0 filas. Quien busca no sabe en qué solapa vive lo que busca: con texto,
+ * la búsqueda pasa a «Todo» (que ya incluye EPP y ropa cuando hay `q`). Las cuentas de cada solapa
+ * siguen mostrando cuántos hay en cada clase, así que se puede acotar después. Vaciar el campo no
+ * devuelve la solapa anterior: no la recordamos, y volver a «Todo» sin filtro es lo que se ve.
+ */
+export function aplicarBusqueda(f: Pick<Filtros, 'clase'>, q: string): Partial<Filtros> {
+  const t = q.trim()
+  return t && f.clase !== 'todo' ? { q: t, clase: 'todo' } : { q: t }
+}
+
 /** La lista final: con el estado aplicado, las bajas al final (se muestran atenuadas). */
 export function filtrar(p: Parque, f: Filtros): Activo[] {
   return candidatos(p, f)
