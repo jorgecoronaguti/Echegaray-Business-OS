@@ -34,6 +34,7 @@
 // vista de pendientes, no de un bucle por proveedor.
 
 import { createClient } from '@/lib/supabase/server'
+import Link from 'next/link'
 import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
@@ -61,12 +62,18 @@ import {
 } from '@/features/administracion/services/proveedoresService'
 import { estadoDePapeles } from '@/features/administracion/services/papelesProveedor'
 import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
-import { cotejoDeDeuda, detalleDeProveedor, totalesDeuda } from '@/features/administracion/services/deudaProveedores'
+import { cotejoDeDeuda, detalleDeProveedor, hoyISO, totalesDeuda } from '@/features/administracion/services/deudaProveedores'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
   editarProveedor, marcarNoEsProveedor, vincularNombre,
 } from '@/features/administracion/services/proveedoresActions'
+import { getComprasRecientes } from '@/features/administracion/services/usoProveedoresService'
+import {
+  agruparUso, aplicarChipsUso, leerChips, leerColumna, leerPagina, leerSentido, nombreAProveedor,
+  ordenarProveedores, paginar, sentidoPorDefecto, ventanas, type Columna, type DatosUso,
+} from '@/features/administracion/services/usoProveedores'
+import { opcionesChips } from '@/features/administracion/services/chipsCartera'
 import type { Proveedor } from '@/features/administracion/types'
 
 export const dynamic = 'force-dynamic'
@@ -82,6 +89,12 @@ type Busqueda = {
   deuda?: string
   /** La clave del proveedor cuyo detalle de deuda está abierto. Uuid del maestro, o `txt:<NOMBRE>`. */
   d?: string
+  /** Chips de uso combinables, separados por coma: `usados,mes,90d,inactivo` (ver `usoProveedores.ts`). */
+  f?: string
+  /** Columna y sentido del orden. Sin ellos manda «comprobantes 12 m, de más a menos». */
+  orden?: string; dir?: string
+  /** Cuántas páginas de 50 se muestran («Mostrar más»). */
+  pag?: string
 }
 
 const ACTIVOS: FiltroActivo[] = ['activos', 'archivados', 'todos']
@@ -90,7 +103,7 @@ const RUTA = '/administracion/proveedores'
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   const v = { ...base, ...cambios }
   const params = new URLSearchParams()
-  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit', 'rubro', 'deuda', 'd'] as const) {
+  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit', 'rubro', 'deuda', 'd', 'f', 'orden', 'dir', 'pag'] as const) {
     if (v[k]) params.set(k, v[k] as string)
   }
   const qs = params.toString()
@@ -114,10 +127,14 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const soloSinCuit = maestro && sp.cuit === 'falta'
   const soloSub = maestro && sp.tipo === 'sub'
   const supabase = await createClient()
+  const hoy = hoyISO()
+  const chipsUso = leerChips(sp.f)
+  const columna = leerColumna(sp.orden)
+  const sentido = leerSentido(columna, sp.dir)
 
   const [
     listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados,
-    nTodos, papelesLeidos, deudas, documentos, deuda,
+    nTodos, papelesLeidos, deudas, documentos, deuda, recientes,
   ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
@@ -159,6 +176,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     // «A QUIÉN LE DEBO», SÓLO EN SU VISTA. Son cuatro consultas sobre las ~42 filas con saldo vivo,
     // y ninguna por fila: cargarlas también en el maestro pagaría el viaje para nadie.
     esDeuda ? getDeuda(supabase) : null,
+    // LAS COMPRAS DE LOS ÚLTIMOS 12 MESES, en el mismo viaje: de acá salen «más usados», «compré este
+    // mes», «últimos 90 días» y las columnas de 12 m. La vista de la cartera no sirve (es histórica,
+    // sin ventana): el porqué está en `usoProveedores.ts`.
+    maestro ? getComprasRecientes(supabase, ventanas(hoy).hace12m) : null,
   ])
 
   if (listado.error) {
@@ -187,7 +208,31 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     if (!coincideDeuda(p, deudas ?? new Map(), sp.deuda as FiltroDeuda | undefined)) return false
     return true
   })
-  const lista = porFiltro.filter((p) => coincideProveedor(p, sp.q))
+
+  // ═══ CHIPS DE USO → TEXTO → ORDEN → PÁGINA, en ese orden y sobre el TOTAL ═══
+  //
+  // El buscador corta sobre toda la cartera ya acotada, nunca sobre la página que se ve: con 100
+  // proveedores y 50 visibles, buscar uno del lugar 80 tiene que encontrarlo. Paginar va al final.
+  //
+  // `uso = null` si falló cualquiera de las dos lecturas que lo arman: los chips de uso se callan y
+  // las columnas dicen «sin leer» en vez de publicar un ranking hecho con la mitad de los datos.
+  const datos: DatosUso = {
+    uso: recientes?.data && resolucion?.data
+      ? agruparUso(recientes.data, nombreAProveedor(resolucion.data), hoy)
+      : null,
+    comprado, deudas: deudas ?? null, hoy,
+  }
+  const porChips = aplicarChipsUso(porFiltro, chipsUso, datos)
+  const ordenada = ordenarProveedores(porChips.filter((p) => coincideProveedor(p, sp.q)), columna, sentido, datos)
+  const { visibles: lista, restan } = paginar(ordenada, leerPagina(sp.pag))
+  // Cualquier cambio de filtro u orden vuelve a la primera página; sólo «Mostrar más» la avanza.
+  const limpio = { p: undefined, editcuit: undefined, pag: undefined } as const
+  const hrefOrden = (c: Columna) => armarHref(sp, {
+    ...limpio, orden: c,
+    // Segundo clic en la misma columna invierte; el primero va al sentido natural de esa columna.
+    dir: c === columna ? (sentido === 'asc' ? 'desc' : 'asc') : sentidoPorDefecto(c),
+  })
+  const hayFiltros = chipsUso.length > 0 || soloSinCuit || soloSub || activo !== 'activos' || !!sp.deuda || !!sp.rubro || !!sp.q
 
   // `null` = NO SE PUDO CONTAR, y entonces el recorte no dibuja número. Un 0 ahí diría «no hay
   // ninguno archivado», que es una afirmación sobre la cartera que un error de lectura no habilita.
@@ -287,7 +332,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
               accion: RUTA,
               q: sp.q,
               placeholder: maestro ? 'Buscar proveedor' : 'Buscar nombre',
-              oculto: { activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n },
+              oculto: {
+                activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n,
+                f: sp.f, orden: sp.orden, dir: sp.dir,
+              },
               testid: 'buscar-proveedor',
             }}
         // LA MISMA FILA DE SECCIONES QUE DIBUJA LA PESTAÑA COMPRAS, de `seccionesDeCompras.ts`
@@ -340,9 +388,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       rotulo="Filtros"
                       resumen={[
                         soloSinCuit ? 'Sin CUIT' : soloSub ? 'Subcontratistas' : activo === 'activos' ? 'Activos' : activo === 'archivados' ? 'Archivados' : 'Todos',
+                        chipsUso.length ? `${chipsUso.length} de uso` : null,
                         sp.rubro || null,
                         sp.deuda === 'con' ? 'con deuda' : sp.deuda === 'sin' ? 'sin deuda' : null,
-                        `${lista.length}/${porFiltro.length}`,
+                        `${ordenada.length}/${porFiltro.length}`,
                       ].filter(Boolean).join(' · ')}
                       testid="filtros-proveedores-plegados"
                     >
@@ -351,7 +400,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       q={sp.q}
                       placeholder="Nombre, razón social o CUIT"
                       testid="filtros-proveedores"
-                      extra={{ activo: activo === 'activos' ? undefined : activo, cuit: sp.cuit, tipo: sp.tipo }}
+                      extra={{ activo: activo === 'activos' ? undefined : activo, cuit: sp.cuit, tipo: sp.tipo, f: sp.f, orden: sp.orden, dir: sp.dir }}
                     >
                       <SelectFiltro
                         label="Rubro" name="rubro" valor={sp.rubro} testid="fp-rubro"
@@ -364,49 +413,23 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           { valor: 'con', etiqueta: 'Con deuda' }, { valor: 'sin', etiqueta: 'Sin deuda' }]}
                       />
                     </BarraFiltros>
+                    </PlegadoEnTelefono>
+                    {/* LOS CHIPS VAN FUERA DEL PLEGADO: son el camino corto del dueño y en el teléfono
+                        tienen que verse sin abrir nada. Una fila con scroll de costado, no cinco
+                        renglones de pastillas. «Ver todo» limpia de un clic. */}
                     <FiltrosSuaves
                       testid="filtro-activo"
-                      conteo={{ n: lista.length, total: porFiltro.length }}
-                      opciones={[
-                        ...ACTIVOS.map((a) => ({
-                          clave: a,
-                          etiqueta: a === 'activos' ? 'Activos' : a === 'archivados' ? 'Archivados' : 'Todos',
-                          href: armarHref(sp, { activo: a === 'activos' ? undefined : a, cuit: undefined, p: undefined, editcuit: undefined }),
-                          activo: a === activo && !soloSinCuit,
-                          cuenta: POBLACION[a],
-                        })),
-                        {
-                          clave: 'sin-cuit', etiqueta: 'Sin CUIT',
-                          href: armarHref(sp, { cuit: soloSinCuit ? undefined : 'falta', p: undefined, editcuit: undefined }),
-                          activo: soloSinCuit,
-                          // LA POBLACIÓN DEL CORTE, no la de la página: es el conteo de la base
-                          // sobre los activos, el mismo que alimentaba la banda que se retiró.
-                          cuenta: sinCuit.error ? null : sinCuit.data,
-                        },
-                        // El ÚNICO recorte por tipo que la base puede probar: los que tienen un
-                        // paquete en `subcontrato`. Si esa lectura falló, el filtro no se ofrece —
-                        // recortaría por un conjunto vacío y mostraría una cartera sin nadie.
-                        ...(subs
-                          ? [{
-                              clave: 'sub', etiqueta: 'Subcontratistas',
-                              href: armarHref(sp, { tipo: soloSub ? undefined : 'sub', p: undefined, editcuit: undefined }),
-                              activo: soloSub,
-                              // ÉSTE SE CUENTA SOBRE EL CORTE QUE SE ESTÁ MIRANDO, y no fijo sobre
-                              // los activos como «Sin CUIT». No es una inconsistencia: «Sin CUIT»
-                              // es trabajo pendiente de la empresa y tiene que ser estable, y
-                              // «Subcontratistas» es una faceta de esta lista — su número es
-                              // exactamente lo que el clic va a dejar en pantalla.
-                              //
-                              // «Es subcontratista» no es una columna de `proveedores`: es tener un
-                              // paquete en `subcontrato`, tabla filtrada por obra. Por eso el
-                              // conteo se hace en memoria sobre la lista ya leída, y por eso la
-                              // ausencia del chip nunca se escribe como «no es subcontratista».
-                              cuenta: todos.filter((p) => subs.has(p.id)).length,
-                            }]
-                          : []),
-                      ]}
+                      desplazable
+                      conteo={{ n: ordenada.length, total: porFiltro.length }}
+                      verTodoHref={hayFiltros ? armarHref({ vista: sp.vista, orden: sp.orden, dir: sp.dir }) : undefined}
+                      opciones={opcionesChips({
+                        todos, datos, chips: chipsUso, soloSub, soloSinCuit, conDeuda: sp.deuda === 'con',
+                        archivados: activo === 'archivados', subs, deudas: deudas ?? null,
+                        nSinCuit: sinCuit.error ? null : sinCuit.data,
+                        nArchivados: POBLACION.archivados,
+                        href: (c) => armarHref(sp, { ...limpio, ...c }),
+                      })}
                     />
-                    </PlegadoEnTelefono>
 
                     {(resolucion?.error || subcontratistas?.error) && (
                       <p style={{ marginBottom: 10, fontSize: '12px', color: V.warn }} data-testid="cartera-sin-derivados">
@@ -424,7 +447,11 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       // (`?p=`), que sigue existiendo para el alta y por URL.
                       hrefDe={(id) => `/administracion/proveedores/${id}`}
                       hrefCuitDe={(id) => armarHref(sp, { p: id, editcuit: id })}
-                      limpiarHref={armarHref(sp, { q: undefined, cuit: undefined, tipo: undefined, activo: undefined })}
+                      limpiarHref={armarHref(sp, { ...limpio, q: undefined, cuit: undefined, tipo: undefined, activo: undefined, f: undefined, deuda: undefined, rubro: undefined })}
+                      uso={datos.uso}
+                      orden={columna}
+                      sentido={sentido}
+                      hrefOrden={hrefOrden}
                       comprado={comprado}
                       subcontratistas={subs}
                       // LA MISMA LECTURA QUE YA PAGABA EL FILTRO «Con deuda / Sin deuda»: hasta hoy
@@ -433,12 +460,27 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       deudas={deudas ?? null}
                     />
 
+                    {restan > 0 && (
+                      <div style={{ padding: '12px 2px' }}>
+                        <Link
+                          href={armarHref(sp, { pag: String(leerPagina(sp.pag) + 1) })}
+                          prefetch={false}
+                          data-testid="mostrar-mas-proveedores"
+                          className="underline"
+                          style={{ fontSize: '12.5px', color: V.tinta, fontWeight: 500 }}
+                        >
+                          Mostrar más ({restan} más)
+                        </Link>
+                      </div>
+                    )}
+
                     <NotaBloque testid="nota-proveedores">
                       Lo que identifica a un proveedor es el CUIT, no el nombre: «Corralón Progreso»,
                       «CORRALON PROGRESO» y «Corralon Progreso SRL» son tres textos y un proveedor.
-                      Sin CUIT no cruza con ARCA ni con el banco. Lo comprado y sus comprobantes son
-                      históricos: cuentan todo lo cargado, no el año en curso — el «Comprado 2026»
-                      del Flujo de Caja cuenta otra ventana y da otro número.
+                      Sin CUIT no cruza con ARCA ni con el banco. «Total 12 m» y «Comprob. 12 m» cuentan los
+                      últimos doce meses corridos desde hoy; el histórico entero está al pasar el
+                      cursor por cada cifra. No son el «Comprado 2026» del Flujo de Caja, que cuenta
+                      el año calendario y da otro número.
                     </NotaBloque>
                   </>
                 )

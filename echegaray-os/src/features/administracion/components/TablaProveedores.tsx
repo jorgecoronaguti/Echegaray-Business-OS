@@ -75,7 +75,8 @@ import { IconoProblema, IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
-import { textoComprobantes, type CompradoProveedor, type DeudaProveedor } from '../services/proveedoresService'
+import { type CompradoProveedor, type DeudaProveedor } from '../services/proveedoresService'
+import type { Columna, Sentido, UsoProveedor } from '../services/usoProveedores'
 import { rubroDe, type Proveedor } from '../types'
 
 /**
@@ -112,8 +113,34 @@ const SOLO_MUY_ANCHO = 'max-[1319px]:hidden'
 const SIN_FECHA
   = 'Este proveedor tiene compras vinculadas, pero ninguna con fecha cargada en costos_obra.'
 
+/**
+ * EL RÓTULO QUE ORDENA (dueño, 30/09/2026: «no me sirve una tabla gigante que no pueda ir filtrando
+ * rápidamente»). Es un enlace y no un botón por lo mismo que los chips: el orden viaja en la URL, se
+ * comparte y vuelve con el botón de atrás. La flecha sólo aparece en la columna que manda.
+ */
+function RotuloOrden({ columna, orden, sentido, hrefOrden, derecha, titulo, children }: {
+  columna: Columna; orden: Columna; sentido: Sentido; hrefOrden: (c: Columna) => string
+  derecha?: boolean; titulo?: string; children: string
+}) {
+  const activa = columna === orden
+  return (
+    <Link
+      href={hrefOrden(columna)}
+      prefetch={false}
+      title={titulo}
+      data-testid={`ordenar-${columna}`}
+      aria-sort={activa ? (sentido === 'asc' ? 'ascending' : 'descending') : undefined}
+      className="min-w-0 hover:underline"
+      style={{ textAlign: derecha ? 'right' : undefined, whiteSpace: 'nowrap' }}
+    >
+      <RotuloCol derecha={derecha}>{children}{activa ? (sentido === 'asc' ? ' ↑' : ' ↓') : ''}</RotuloCol>
+    </Link>
+  )
+}
+
 export function TablaProveedores({
   proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, deudas, limpiarHref,
+  uso, orden, sentido, hrefOrden,
 }: {
   proveedores: Proveedor[]
   seleccionado?: string
@@ -131,27 +158,45 @@ export function TablaProveedores({
    */
   deudas: Map<string, DeudaProveedor> | null
   limpiarHref: string
+  /**
+   * Las compras de los últimos 12 meses por proveedor (de `costos_obra`, ver `usoProveedores.ts`).
+   * `null` = no se pudieron leer: las columnas de uso dicen «sin leer», nunca un 0.
+   */
+  uso: Map<string, UsoProveedor> | null
+  orden: Columna
+  sentido: Sentido
+  hrefOrden: (c: Columna) => string
 }) {
+  const ord = { orden, sentido, hrefOrden }
   return (
     <div data-testid="tabla-proveedores">
       <div className={`grid ${COLS} max-md:!hidden`} style={{ ...ENCABEZADO, gap: GAP }}>
-        <RotuloCol>Proveedor</RotuloCol>
+        <RotuloOrden columna="nombre" {...ord}>Proveedor</RotuloOrden>
         <RotuloCol>CUIT</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Tipo</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprado</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloOrden columna="total" {...ord} derecha titulo="Lo comprado en los últimos 12 meses. El histórico entero está al pasar el cursor por cada importe.">Total 12 m</RotuloOrden>
+        </span>
         {/* ADEUDADO — «son muchos clicks hasta llegar a ver algo y esta muy oculto» (dueño,
             22/09/2026). El recorte «Con deuda / Sin deuda» de esta misma pantalla ya recortaba por
             este dato sin decir NUNCA cuánto: se podía filtrar por quién debe y no ver el número. */}
-        <span className={`grid ${SOLO_MUY_ANCHO}`}><RotuloCol derecha>Adeudado</RotuloCol></span>
+        <span className={`grid ${SOLO_MUY_ANCHO}`}>
+          <RotuloOrden columna="saldo" {...ord} derecha titulo="Saldo pendiente: lo que se le debe hoy">Saldo pendiente</RotuloOrden>
+        </span>
         {/* LA VENTANA VA EN EL RÓTULO, no en una nota al pie: el Sheet cuenta 811 comprobantes de
             2026 y esta columna cuenta todo lo que hay en `costos_obra`. Sin la palabra «histórico»
             los dos números se leen como el mismo. El porqué está en `textoComprobantes`. */}
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprobantes · histórico</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Última compra</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloOrden columna="comprobantes" {...ord} derecha titulo="Comprobantes de los últimos 12 meses">Comprob. 12 m</RotuloOrden>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloOrden columna="ultima" {...ord} titulo="Fecha de la última compra (histórica, sin ventana)">Última compra</RotuloOrden>
+        </span>
       </div>
 
       {proveedores.map((p) => {
         const c = comprado?.get(p.id)
+        const u = uso?.get(p.id)
         const debe = deudas?.get(p.id)
         const esSub = subcontratistas?.has(p.id) ?? false
         const rubro = rubroDe(p)
@@ -247,13 +292,16 @@ export function TablaProveedores({
 
             <span
               className={`font-mono tabular-nums ${SOLO_ANCHO}`}
-              style={{ fontSize: '12px', textAlign: 'right', color: c ? V.tinta : V.cuentaApagada }}
+              style={{ fontSize: '12px', textAlign: 'right', color: u ? V.tinta : V.cuentaApagada }}
+              data-testid="total-12m-proveedor"
+              title={c ? `Histórico: ${pesos(c.total) ?? '—'}` : undefined}
             >
-              {/* NO PUDE LEERLO ≠ NO SE LE COMPRÓ. Y ninguno de los dos es $ 0. */}
+              {/* NO PUDE LEERLO ≠ NO SE LE COMPRÓ. Y ninguno de los dos es $ 0. La ventana es de 12
+                  meses (la que ordena y filtra); el histórico entero queda en el `title`. */}
               {/* PESOS COMPLETOS, no la escala en millones: el mockup escribe `$ 64.180.000`
                   (`22v2:316`). A esta escala la abreviatura «$ 64,2 M» esconde justo el orden de
                   magnitud que separa a un proveedor de $ 900.000 de uno de $ 90.000.000. */}
-              {c ? (pesos(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
+              {!uso ? 'sin leer' : u ? (pesos(u.total12) ?? '—') : 'sin compras'}
             </span>
 
             {/* ADEUDADO — LO QUE SE LE DEBE HOY, no lo que se le compró alguna vez. Son dos
@@ -292,10 +340,12 @@ export function TablaProveedores({
                 podrían decir cosas distintas sobre el mismo proveedor. */}
             <span
               className={`font-mono tabular-nums ${SOLO_ANCHO}`}
-              style={{ fontSize: '12px', textAlign: 'right', color: c?.comprobantes ? V.tinta : V.cuentaApagada }}
+              style={{ fontSize: '12px', textAlign: 'right', color: u ? V.tinta : V.cuentaApagada }}
               data-testid="comprobantes-proveedor"
+              title={c ? `Histórico: ${c.comprobantes}` : undefined}
             >
-              {textoComprobantes(c, comprado !== null)}
+              {/* «—» es cero medido en 12 meses; «sin leer», que no se pudo mirar. Nunca un 0. */}
+              {!uso ? 'sin leer' : (u?.comprobantes12 ?? '—')}
             </span>
 
             {/* ÚLTIMA COMPRA — LA FECHA, Y DOS AUSENCIAS QUE NO SE DICEN IGUAL. Sin ningún nombre
@@ -315,8 +365,10 @@ export function TablaProveedores({
             {/* EL SEGUNDO RENGLÓN DEL TELÉFONO: las mismas palabras y las mismas ausencias que las
                 columnas TIPO y ADEUDADO, que desde `md` son las que se ven. */}
             <span className="col-span-full hidden min-w-0 items-baseline gap-2 pl-6 max-md:flex" style={{ fontSize: '12.5px' }} data-testid="segundo-renglon-proveedor">
-              <span className="min-w-0 truncate" style={{ color: esSub || rubro.declarado ? V.tintaSuave : V.tenue }}>
-                {esSub ? 'Subcontratista' : subcontratistas ? rubro.texto : 'sin leer'}
+              {/* EN EL TELÉFONO LA TABLA ES NOMBRE · SALDO · ÚLTIMA COMPRA (pedido 30/09): lo que se
+                  ordena y se filtra tiene que verse. El tipo sigue en escritorio y en la ficha. */}
+              <span className="min-w-0 truncate font-mono tabular-nums" style={{ color: V.tenue }} data-testid="ultima-compra-telefono">
+                {c ? (fechaCortaConAnio(c.ultima) ?? 'sin fecha') : comprado ? 'sin compras' : 'sin leer'}
               </span>
               <span
                 className="ml-auto shrink-0 font-mono tabular-nums"
