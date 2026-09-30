@@ -304,8 +304,17 @@ export const RUTAS_DE_TODOS = [
   '/marca', '/recuperar', '/callback', '/contrasena-nueva',
 ] as const
 
-/** Dentro de lo de todos, lo que sólo Dirección usa (abrir la sesión de otro para mirar). */
-export const RUTAS_SOLO_DIRECCION = ['/mi-cuenta/entrar-como'] as const
+/** Dentro de lo de todos, lo que sólo Dirección usa (abrir la sesión de otro para mirar; el registro de
+ * la app). Administración NO entra: hasta el 30/09 `veEconomia` respondía antes y la dejaba pasar. */
+export const RUTAS_SOLO_DIRECCION = ['/mi-cuenta/entrar-como', '/mi-cuenta/registro'] as const
+
+/** EL REGISTRO DE LA APP ES DEL DUEÑO (30/09/2026: «q este solo en mi usuario»). No de Dirección: de
+ * UNA cuenta, jorge@ecsas.com.ar. La puerta de ruta deja pasar a Dirección; la pantalla y el menú
+ * preguntan por esta cuenta. */
+export const CUENTA_DEL_REGISTRO = '4677f284-d873-4531-9c8f-cc3dab56ffd0'
+export function puedeVerRegistro(uid: string | null | undefined): boolean {
+  return uid === CUENTA_DEL_REGISTRO
+}
 
 /** Operario (`campo`): lo suyo — Hoy, su trabajo, sus horas, Mi información — y Herramientas. Las
  * `/integraciones/*` son direcciones viejas de Herramientas y Material que quedan en avisos del bot. */
@@ -329,11 +338,11 @@ function dentroDe(pathname: string, rutas: readonly string[]): boolean {
 }
 
 export function puedeVerRuta(rol: Rol | null | undefined, ruta: string): boolean {
-  if (veEconomia(rol)) return true
   // SE COMPARA EL PATH, SIN QUERY NI ANCLA (24/09/2026): la navegación pregunta con el href entero
   // («/administracion/proveedores?vista=deuda») y así una sección cerrada se le dibujaba al jefe.
   const pathname = ruta.split(/[?#]/)[0]
-  if (dentroDe(pathname, RUTAS_SOLO_DIRECCION)) return false
+  if (dentroDe(pathname, RUTAS_SOLO_DIRECCION)) return rol === 'direccion'
+  if (veEconomia(rol)) return true
   if (rol === 'jefe_obra') {
     if (cerradaAlJefe(pathname)) return false
     // `/administracion` a secas es la entrada del área: el middleware la manda a Personal.

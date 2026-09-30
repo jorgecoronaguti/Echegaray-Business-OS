@@ -10,7 +10,7 @@
 //   2. lo que NO abre nunca, incluida una ruta inventada: una pantalla nueva nace cerrada.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { puedeUsarApi, puedeVerRuta } from './areas.ts'
+import { CUENTA_DEL_REGISTRO, puedeUsarApi, puedeVerRegistro, puedeVerRuta } from './areas.ts'
 import type { Rol } from './index.ts'
 
 const ADMIN: Rol[] = ['direccion', 'administracion']
@@ -28,9 +28,22 @@ const GESTION = [
 ]
 
 test('Administración abre todo, incluida una ruta nueva', () => {
-  for (const rol of ADMIN) for (const r of [...GESTION, '/obras', '/obras/hoy', '/hoy', '/mi-cuenta/entrar-como']) {
+  for (const rol of ADMIN) for (const r of [...GESTION, '/obras', '/obras/hoy', '/hoy']) {
     assert.equal(puedeVerRuta(rol, r), true, `${rol} no pudo abrir ${r}`)
   }
+})
+
+// LO DEL MENÚ DE DIRECCIÓN NO SE CRUZA (dueño, 30/09/2026: «revisa q para los distintos niveles de
+// usuario no estes permitiendo cosas cruzadas desde ese menu»). Hasta ese día `veEconomia` respondía
+// antes que la lista de Dirección y Administración pasaba la puerta de «Entrar como».
+test('«Entrar como» y el registro de la app: sólo Dirección pasa la puerta; el registro, sólo la cuenta del dueño', () => {
+  for (const r of ['/mi-cuenta/entrar-como', '/mi-cuenta/registro', '/mi-cuenta/registro?vista=persona']) {
+    assert.equal(puedeVerRuta('direccion', r), true, `Dirección no abrió ${r}`)
+    for (const rol of ['administracion', 'jefe_obra', 'campo'] as Rol[]) assert.equal(puedeVerRuta(rol, r), false, `${rol} abrió ${r}`)
+  }
+  assert.equal(puedeVerRegistro(CUENTA_DEL_REGISTRO), true)
+  assert.equal(puedeVerRegistro('00000000-0000-0000-0000-000000000000'), false)
+  assert.equal(puedeVerRegistro(null), false)
 })
 
 test('el jefe de obra NO abre nada de gestión (lista blanca: lo nuevo nace cerrado)', () => {

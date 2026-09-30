@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual, getPerfilReal } from '@/features/auth/services/authService'
 import { estadoVerComo } from '@/features/auth/services/verComo'
 import { ROL_LABEL } from '@/features/auth/types'
-import { puedeVerRuta } from '@/features/auth/types/areas'
+import { puedeVerRegistro, puedeVerRuta } from '@/features/auth/types/areas'
 import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
@@ -80,7 +80,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 }
 
 async function HeaderConUsuario() {
-  const { nombre, email, rolLabel, rol, verComo } = await loadUsuario()
+  const { nombre, email, rolLabel, rol, verComo, uid } = await loadUsuario()
   const barra = barraTelefonoDe(rol)
   return (
     <>
@@ -101,6 +101,9 @@ async function HeaderConUsuario() {
       // «VER COMO» (dueño, 22/09/2026). Va con el rol REAL, no con el mirado: preguntando por el
       // mirado, un Dirección que se puso los ojos de `campo` perdería el menú desde el que salir.
       verComo={verComo}
+      // EL REGISTRO DE LA APP (30/09/2026): de UNA cuenta, la del dueño, y sin la lente puesta. En
+      // «entrar como» la sesión es la de la otra persona: el uid no coincide y el ítem no existe.
+      verRegistro={puedeVerRegistro(uid) && !verComo.mirando}
       salir={<LogoutButton />}
     />
     {/* LA BARRA DEL TELÉFONO PARA QUIEN ADMINISTRA (dueño, 23/09/2026): Campo · Admin. · Obras ·
@@ -114,7 +117,7 @@ async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
-    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null } }
+    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null }, uid: null }
     // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
     const perfil = await getPerfilActual(supabase, user.id)
     // El real sale del MISMO memo por request: no es un viaje más a Postgres.
@@ -122,6 +125,7 @@ async function loadUsuario() {
     const lente = await estadoVerComo(real.data)
     return {
       verComo: { puede: lente.puede, mirando: lente.mirando },
+      uid: user.id as string | null,
       // El nombre es sólo para las iniciales del avatar: si el perfil no lo tiene, `iniciales()`
       // se cae al correo. Nunca se dibuja entero en el header.
       nombre: perfil.data?.nombre ?? null,
@@ -132,6 +136,6 @@ async function loadUsuario() {
   } catch {
     // Sin perfil legible se cae al nivel MENOS privilegiado (`solapasDeNav(null)` → sólo Obras), nunca al
     // más. Un error de lectura no puede ser una puerta a la economía de la empresa.
-    return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null } }
+    return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null }, uid: null }
   }
 }

@@ -61,6 +61,7 @@ export function AppHeader({
   miObraTelefono = false,
   solapasSoloEscritorio = false,
   verComo,
+  verRegistro = false,
   salir,
 }: {
   /** Las solapas de nivel 1 que este rol ve. Tres para Administración, una para Obras. */
@@ -79,6 +80,7 @@ export function AppHeader({
   solapasSoloEscritorio?: boolean
   /** «Ver como»: si esta persona puede encender la lente, y con qué ojos está mirando ahora. */
   verComo: VerComo
+  verRegistro?: boolean
   salir: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -222,7 +224,7 @@ export function AppHeader({
             </>
           )}
           {email ? (
-            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} miObraTelefono={miObraTelefono} verComo={verComo} salir={salir} />
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} miObraTelefono={miObraTelefono} verComo={verComo} verRegistro={verRegistro} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -266,6 +268,7 @@ function MenuUsuario({
   cargaAsistencia,
   miObraTelefono = false,
   verComo,
+  verRegistro = false,
   salir,
 }: {
   nombre?: string | null
@@ -275,6 +278,7 @@ function MenuUsuario({
   cargaAsistencia: boolean
   miObraTelefono?: boolean
   verComo: VerComo
+  verRegistro?: boolean
   salir: React.ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -378,6 +382,20 @@ function MenuUsuario({
               >
                 Entrar como…
               </Link>
+              {/* EL REGISTRO DE LA APP (dueño, 30/09/2026: «q este solo en mi usuario y q aparezca ahi»).
+                  Lo decide `puedeVerRegistro` en el layout; la pantalla vuelve a preguntar. */}
+              {verRegistro && (
+                <Link
+                  prefetch={false}
+                  href="/mi-cuenta/registro"
+                  role="menuitem"
+                  data-testid="ir-registro-app"
+                  onClick={() => setAbierto(false)}
+                  className="flex min-h-[36px] items-center rounded-md px-1.5 text-[13px] font-medium text-ink hover:bg-surface-quiet"
+                >
+                  Registro de la app
+                </Link>
+              )}
             </div>
           )}
           {/* ═══ EL ATAJO DEL TELÉFONO (08/09/2026) ═══
