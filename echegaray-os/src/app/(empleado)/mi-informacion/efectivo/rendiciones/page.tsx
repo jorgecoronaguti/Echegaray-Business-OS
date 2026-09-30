@@ -16,12 +16,12 @@ import { Caja, FilaTicket, Pie, Primario, SinPublicar } from '@/features/efectiv
 
 export const dynamic = 'force-dynamic'
 
-type Params = Promise<{ desde?: string; obra?: string; filtro?: string; enviado?: string }>
+type Params = Promise<{ desde?: string; obra?: string; por?: string; filtro?: string; enviado?: string }>
 
 export default async function RendicionesPage({ searchParams }: { searchParams: Params }) {
   const sp = await searchParams
   const ctx = await contextoEfectivo(sp)
-  const volver = { href: ctx.volverA, label: 'Mi efectivo' }
+  const volver = { href: ctx.volverA, label: ctx.porOtro ? 'Efectivo' : 'Mi efectivo' }
 
   if (!ctx.personaId) {
     return (

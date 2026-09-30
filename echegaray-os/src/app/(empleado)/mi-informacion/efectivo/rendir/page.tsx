@@ -18,7 +18,7 @@ import { CamaraTicket } from '@/features/efectivo/campo/components/CamaraTicket'
 
 export const dynamic = 'force-dynamic'
 
-type Params = Promise<{ desde?: string; obra?: string; entrega?: string }>
+type Params = Promise<{ desde?: string; obra?: string; por?: string; entrega?: string }>
 
 export default async function RendirPage({ searchParams }: { searchParams: Params }) {
   const sp = await searchParams
@@ -26,7 +26,7 @@ export default async function RendirPage({ searchParams }: { searchParams: Param
 
   if (!ctx.personaId) {
     return (
-      <PantallaEmpleado titulo="Rendir un gasto" volver={{ href: ctx.volverA, label: 'Mi efectivo' }}>
+      <PantallaEmpleado titulo="Rendir un gasto" volver={{ href: ctx.volverA, label: ctx.porOtro ? 'Efectivo' : 'Mi efectivo' }}>
         <SinVinculo que="el efectivo que te entregaron" disponible={ctx.vinculoDisponible} />
       </PantallaEmpleado>
     )
@@ -54,8 +54,11 @@ export default async function RendirPage({ searchParams }: { searchParams: Param
   }
 
   const vivas = abiertas(lectura.dato)
+  // A nombre de otra persona el texto dice de QUIÉN es la plata: «te queda» sería falso y el que carga el ticket
+  // tiene que saber a qué saldo le está bajando.
+  const de = ctx.porOtro ? vivas[0]?.persona ?? 'la persona' : null
   return (
-    <PantallaEmpleado titulo="Rendir un gasto" sub="¿De qué entrega salió la plata?" volver={{ href: ctx.volverA, label: 'Mi efectivo' }}>
+    <PantallaEmpleado titulo={de ? `Rendir por ${de}` : 'Rendir un gasto'} sub="¿De qué entrega salió la plata?" volver={{ href: ctx.volverA, label: 'Mi efectivo' }}>
       {vivas.length === 0 ? <SinEfectivo esperandoFirma={false} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="rendir-elegir-entrega">
           {vivas.map((e) => (
@@ -63,7 +66,7 @@ export default async function RendirPage({ searchParams }: { searchParams: Param
               <span style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
                 <span>{destino(e)}</span>
                 <span style={{ fontSize: 12.5, color: C.muted }}>
-                  {e.codigo} · te queda <span style={mono}>{pesos(e.en_su_poder)}</span>
+                  {e.codigo} · {de ? 'le queda' : 'te queda'} <span style={mono}>{pesos(e.en_su_poder)}</span>
                 </span>
               </span>
             </FilaAcceso>

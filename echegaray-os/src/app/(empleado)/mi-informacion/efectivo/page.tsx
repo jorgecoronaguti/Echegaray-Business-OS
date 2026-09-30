@@ -26,7 +26,7 @@ import { SinEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/component
 
 export const dynamic = 'force-dynamic'
 
-type Params = Promise<{ desde?: string; obra?: string }>
+type Params = Promise<{ desde?: string; obra?: string; por?: string }>
 
 export default async function MiEfectivoPage({ searchParams }: { searchParams: Params }) {
   const ctx = await contextoEfectivo(await searchParams)
