@@ -9,7 +9,7 @@
 //   · lo que ya tiene un problema reportado, para no volver a descubrirlo;
 //   · lo que entró y salió en los últimos 30 días, para reconstruir un faltante.
 
-import { activosEn, autorDe, cantidadEn, diasDesde, ETIQUETA_ESTADO, rotuloUbicacion, type Parque } from './parque.ts'
+import { activosEn, autorDe, cantidadEn, diasDesde, ETIQUETA_ESTADO, personaDelMovimiento, quienTieneEn, rotuloUbicacion, type Parque } from './parque.ts'
 import type { Activo, Movimiento } from '../types.ts'
 
 export interface FilaControl {
@@ -18,7 +18,8 @@ export interface FilaControl {
   cantidad: number
   llego: string | null
   dias: number | null
-  trajo: string | null
+  /** Quién lo tiene acá (asignación en `activo_existencia`); '' si nadie. NO es quién lo movió. */
+  tiene: string
 }
 
 export interface MovimientoControl {
@@ -47,7 +48,7 @@ export function controlDeUbicacion(p: Parque, ubicacionId: string, hoy: Date = n
       cantidad: cantidadEn(p, a.id, ubicacionId),
       llego: llegada?.fecha_hora ?? null,
       dias: llegada ? diasDesde(llegada.fecha_hora, hoy) : null,
-      trajo: llegada ? autorDe(p, llegada) : null,
+      tiene: quienTieneEn(p, a.id, ubicacionId),
     }
   })
   const orden = new Map((p.categorias ?? []).map((c, i) => [c, i]))
@@ -72,7 +73,8 @@ export function controlDeUbicacion(p: Parque, ubicacionId: string, hoy: Date = n
         activo: p.activoPorId.get(m.activo_id)!,
         sentido: entro ? 'entró' as const : 'salió' as const,
         otroLado: otro ? rotuloUbicacion(p, otro) : 'alta',
-        quien: autorDe(p, m),
+        // EPP y ropa: la persona a quien se entregó (o que devolvió) manda sobre quien tipeó el movimiento.
+        quien: personaDelMovimiento(p, m) ?? autorDe(p, m),
         nota: m.nota && m.nota !== 'alta' ? m.nota : null,
       }
     })

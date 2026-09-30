@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { leerParque } from './datos'
-import { autorDe, lugaresDe, rotuloUbicacion, type Parque } from '../logica/parque'
+import { MOTIVO_BAJA, autorDe, lugaresDe, rotuloUbicacion, type Parque } from '../logica/parque'
 import { rotuloDeObra } from '@/shared/utils/obra'
 import {
   campoDeTalle, historialDePersona, prendas, rotuloConTalle, tenencias,
@@ -27,6 +27,8 @@ export interface FilaTiene {
   donde: string
   codigo: string
   nombre: string
+  marca: string | null
+  modelo: string | null
   talle: string | null
   clase: ClasePersonal
   cantidad: number
@@ -69,6 +71,8 @@ export interface FilaHistorial {
   /** Dónde quedó. */
   donde: string | null
   nota: string | null
+  /** Baja: por qué («pérdida», «descarte», «robo»). null en lo que no es baja. */
+  motivo: string | null
   respaldo: string | null
 }
 
@@ -148,6 +152,8 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
     donde: rotuloUbicacion(p, t.dondeId),
     codigo: t.activo.codigo,
     nombre: t.activo.nombre,
+    marca: t.activo.marca ?? null,
+    modelo: t.activo.modelo ?? null,
     talle: t.activo.talle ?? null,
     clase: t.activo.clase as ClasePersonal,
     cantidad: t.cantidad,
@@ -171,6 +177,7 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
       lugar: e.otroLugar ? rotuloUbicacion(p, e.otroLugar) : null,
       donde: e.donde ? rotuloUbicacion(p, e.donde) : null,
       nota: e.nota,
+      motivo: e.motivo ? (MOTIVO_BAJA[e.motivo] ?? e.motivo) : null,
       respaldo: enlaceDrive(e.respaldo),
     }
   })

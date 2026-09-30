@@ -93,7 +93,7 @@ function Planilla({ parque, u }: { parque: Parque; u: NonNullable<ReturnType<Par
                 <th style={{ ...rotulo, width: 44, textAlign: 'right' }}>Cant.</th>
                 <th style={{ ...rotulo, width: 120 }}>Estado</th>
                 <th style={{ ...rotulo, width: 110 }}>Llegó</th>
-                <th style={{ ...rotulo, width: 110 }}>La trajo</th>
+                <th style={{ ...rotulo, width: 110 }}>Quién lo tiene</th>
                 <th style={{ ...rotulo, width: 44, textAlign: 'center' }}>Está</th>
                 <th style={{ ...rotulo, width: 44, textAlign: 'center' }}>Falta</th>
                 <th style={{ ...rotulo, width: 170 }}>Observación</th>
@@ -182,7 +182,7 @@ function FilaImpresa({ f, nota, onNota }: { f: FilaControl; nota: string; onNota
       <td style={{ ...celda, textAlign: 'right' }}>{f.cantidad}</td>
       <td style={{ ...celda, color: a.estado === 'operativo' ? V.tintaSuave : V.warn }}>{textoEstado(a)}</td>
       <td style={celda}>{f.llego ? `${diaMes(f.llego)} · ${f.dias} d` : 'sin registro'}</td>
-      <td style={celda}>{f.trajo ?? ''}</td>
+      <td style={celda}>{f.tiene}</td>
       <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
       <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
       <td style={{ ...celda, padding: '3px 4px' }}>

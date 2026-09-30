@@ -17,7 +17,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { ACCION, rotuloQueHay, rotuloVerificar, textoMoverDelLugar, verificablesDelLugar, verificablesDelParque } from '../logica/acciones-lugar'
 import {
-  ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, autorDe, cantidadEn, conProblema, diasDesde, llegoEn, nombrePersona, rotuloUbicacion,
+  ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, cantidadEn, conProblema, diasDesde, llegoEn, nombrePersona, quienTieneEn, rotuloUbicacion,
 } from '../logica/parque'
 import { rotuloConTalle, tenedoresEn } from '../logica/vestimenta'
 import type { TipoUbicacion } from '../types'
@@ -157,14 +157,13 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="activos-del-lugar">
         <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 18, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
-          <div /><div>Activo</div><div>Categoría</div><div>Estado</div><div>Llegó</div><div style={{ textAlign: 'right' }}>Quién lo trajo</div>
+          <div /><div>Activo</div><div>Categoría</div><div>Estado</div><div>Llegó</div><div style={{ textAlign: 'right' }}>Quién lo tiene</div>
         </div>
         {lista.length === 0 && <div style={{ fontSize: '13px', color: V.tenue, padding: '14px 0' }}>{aca.length ? 'Nada con este filtro.' : 'No hay nada acá.'}</div>}
         {lista.map((a, i) => {
           const llego = llegoEn(parque, a, u.id)
           const aqui = cantidadEn(parque, a.id, u.id)
-          const mov = parque.movsDe.get(a.id)?.find((m) => m.destino_id === u.id)
-          const quien = mov ? autorDe(parque, mov) : null
+          const quien = quienTieneEn(parque, a.id, u.id)
           const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
           const carga = a.clase === 'rodado' ? parque.ubicaciones.find((x) => x.activo_id === a.id) : null
           const lleva = carga ? activosEn(parque, carga.id).length : 0
@@ -188,7 +187,7 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
               </div>
               <div style={llego ? { color: V.tintaSuave } : vacio}>{llego ? diaMes(llego) : 'sin registro'}</div>
               <div style={{ textAlign: 'right', ...(quien || lleva ? { color: V.apagado } : vacio) }}>
-                {a.clase === 'rodado' ? `lleva ${lleva}` : quien ?? 'sin registro'}
+                {a.clase === 'rodado' ? `lleva ${lleva}` : quien}
               </div>
             </div>
           )

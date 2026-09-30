@@ -158,6 +158,8 @@ export interface EventoPersona {
   /** Dónde quedó después del evento. */
   donde: string | null
   nota: string | null
+  /** Baja de ajuste: el motivo crudo (perdida, descartada, robada…). null en los demás eventos. */
+  motivo: string | null
   /** El papel en Drive que la respalda (la constancia firmada), si hay. */
   respaldo: string | null
 }
@@ -177,7 +179,7 @@ export function historialDePersona(
     const llega = m.persona_destino === personaId
     const sale = m.persona_origen === personaId
     if (!llega && !sale) continue
-    const base = { fecha: m.fecha_hora, activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, donde: m.destino_id, nota: m.nota, respaldo: m.respaldo_drive_file_id ?? null }
+    const base = { fecha: m.fecha_hora, activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, donde: m.destino_id, nota: m.nota, respaldo: m.respaldo_drive_file_id ?? null, motivo: null }
     if (llega && sale) {
       if (m.origen_id !== m.destino_id) out.push({ ...base, tipo: 'traslado', otroLugar: m.origen_id })
     } else if (llega) {
@@ -189,7 +191,7 @@ export function historialDePersona(
   for (const a of ajustes) {
     if (a.persona_id !== personaId) continue
     const tipo: TipoEvento = a.motivo === 'egreso' ? 'egreso' : a.motivo !== 'recuento' ? 'baja' : a.antes === 0 || /^ya la ten/i.test(a.detalle ?? '') ? 'ya_la_tenia' : 'recuento'
-    out.push({ fecha: a.creado_en, tipo, activoId: a.activo_id, cantidad: Math.abs(a.despues - a.antes), usuarioId: a.usuario_id, otroLugar: null, donde: a.ubicacion_id, nota: a.detalle, respaldo: null })
+    out.push({ fecha: a.creado_en, tipo, activoId: a.activo_id, cantidad: Math.abs(a.despues - a.antes), usuarioId: a.usuario_id, otroLugar: null, donde: a.ubicacion_id, nota: a.detalle, respaldo: null, motivo: tipo === 'baja' ? a.motivo : null })
   }
   return out.sort((x, y) => (x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0))
 }

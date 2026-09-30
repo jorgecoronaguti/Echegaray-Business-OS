@@ -215,6 +215,16 @@ export function autorDe(p: Parque, m: Pick<Movimiento, 'usuario_id' | 'usuario_t
   return m.usuario_texto?.trim() || null
 }
 
+/**
+ * La PERSONA de un movimiento de EPP o ropa: a quien se le entregó (`persona_destino`) o quien devolvió
+ * (`persona_origen`). Es distinta de `autorDe`, que es quien apretó el botón. null = movimiento de una
+ * herramienta o equipo, que no se asigna a nadie.
+ */
+export function personaDelMovimiento(p: Parque, m: Pick<Movimiento, 'persona_origen' | 'persona_destino'>): string | null {
+  const id = m.persona_destino ?? m.persona_origen
+  return id ? nombrePersona(p, id) : null
+}
+
 export function quienLaMovio(p: Parque, activoId: string): string | null {
   const m = ultimoMovimiento(p, activoId)
   return m ? autorDe(p, m) : null
@@ -309,13 +319,20 @@ export function nombrePersona(p: Parque, personaId: string | null | undefined): 
  * donde está). Las unidades libres no se dicen acá: eso es el «Dónde».
  */
 export function rotuloQuien(p: Parque, a: Pick<Activo, 'id'>): string {
-  const t = quienesTienen(p, a.id)
+  return rotuloTenedores(p, quienesTienen(p, a.id))
+}
+
+/** Quién lo tiene ACÁ (en un lugar concreto): la lectura de una obra o del Taller. Vacío = nadie. */
+export function quienTieneEn(p: Parque, activoId: string, ubicacionId: string | null | undefined): string {
+  if (!ubicacionId) return ''
+  return rotuloTenedores(p, lugaresDe(p, activoId).find((e) => e.ubicacion_id === ubicacionId)?.tenidas ?? [])
+}
+
+function rotuloTenedores(p: Parque, tenidas: readonly Existencia[]): string {
   const porPersona = new Map<string, number>()
-  for (const e of t) porPersona.set(e.persona_id!, (porPersona.get(e.persona_id!) ?? 0) + e.cantidad)
+  for (const e of tenidas) porPersona.set(e.persona_id!, (porPersona.get(e.persona_id!) ?? 0) + e.cantidad)
   if (porPersona.size === 0) return ''
-  if (porPersona.size === 1 && [...porPersona.values()][0] === 1) {
-    return nombrePersona(p, [...porPersona.keys()][0])
-  }
+  if (porPersona.size === 1 && [...porPersona.values()][0] === 1) return nombrePersona(p, [...porPersona.keys()][0])
   return [...porPersona].map(([id, n]) => `${nombrePersona(p, id)} ${n}`).join(' · ')
 }
 

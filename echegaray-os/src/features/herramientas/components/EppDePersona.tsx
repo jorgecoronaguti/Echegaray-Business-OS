@@ -33,6 +33,7 @@ import {
   bajaDePersonaAction, devolverDePersonaAction, entregarAPersonaAction, guardarTallesAction,
 } from '../services/acciones-vestimenta'
 import { diaMesAnio } from './formato'
+import { PanelConstancia, type Trabajador } from './ConstanciaEpp'
 
 const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 const rotulo = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase' as const }
@@ -56,6 +57,8 @@ export interface PropsEpp {
   historial: FilaHistorial[]
   talles: TallesPersona | null
   tallesSinBase: boolean
+  /** Para la constancia SRT 299/11: el papel lleva nombre, DNI y CUIL del trabajador. */
+  trabajador: Trabajador
 }
 
 const TOQUE_TELEFONO = 'max-md:[&_button]:!min-h-11 max-md:[&_input]:!min-h-11 max-md:[&_select]:!min-h-11 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:items-center'
@@ -66,10 +69,22 @@ export function EppDePersona(p: PropsEpp) {
     // baja», «Cargar talles», «ver stock» y «constancia» medían 16–30 px. En escritorio no cambia nada.
     <div className={`flex min-w-0 flex-col gap-8 ${TOQUE_TELEFONO}`} data-testid="bloque-epp-ropa">
       <Talles personaId={p.personaId} talles={p.talles} sinBase={p.tallesSinBase} />
+      {p.enLaEmpresa && p.tiene.length > 0 && <Constancia trabajador={p.trabajador} tiene={p.tiene} />}
       {(['epp', 'ropa'] as const).map((c) => (
         <Seccion key={c} clase={c} {...p} filas={p.tiene.filter((t) => t.clase === c)} />
       ))}
       <Historial filas={p.historial} />
+    </div>
+  )
+}
+
+// ── CONSTANCIA (Res. SRT 299/11) ────────────────────────────────────────────────────────────────
+function Constancia({ trabajador, tiene }: { trabajador: Trabajador; tiene: FilaTiene[] }) {
+  const [abierta, setAbierta] = useState(false)
+  if (abierta) return <PanelConstancia trabajador={trabajador} tiene={tiene} alCerrar={() => setAbierta(false)} />
+  return (
+    <div>
+      <button type="button" onClick={() => setAbierta(true)} style={secundario} data-testid="abrir-constancia">Constancia de entrega</button>
     </div>
   )
 }
@@ -414,7 +429,7 @@ function Historial({ filas }: { filas: FilaHistorial[] }) {
       {filas.slice(0, 40).map((h, i) => (
         <div key={i} className="grid grid-cols-[88px_minmax(0,1fr)] gap-x-4 sm:grid-cols-[88px_104px_minmax(0,1fr)_40px_minmax(0,1fr)]" style={{ fontSize: '12.5px', color: V.apagado, padding: '4px 0' }}>
           <span style={{ fontFamily: MONO, fontSize: '11.5px' }}>{diaMesAnio(h.fecha)}</span>
-          <span style={{ color: h.tipo === 'baja' ? V.warn : V.tintaSuave }}>{ETIQUETA_EVENTO[h.tipo]}</span>
+          <span style={{ color: h.tipo === 'baja' ? V.warn : V.tintaSuave }}>{ETIQUETA_EVENTO[h.tipo]}{h.motivo ? ` · ${h.motivo}` : ''}</span>
           <span className="col-start-2 sm:col-start-auto" style={{ color: V.tinta }}>{h.nombre}</span>
           <span className="col-start-2 sm:col-start-auto" style={{ fontVariantNumeric: 'tabular-nums' }}>× {h.cantidad}</span>
           <span className="col-start-2 sm:col-start-auto">
