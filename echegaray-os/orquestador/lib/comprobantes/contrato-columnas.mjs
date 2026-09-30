@@ -29,15 +29,17 @@
 //   · ARRAYFORMULA vive UNA sola vez, en la fila 4, y derrama sola hacia abajo. Estamparla en la
 //     fila nueva la duplicaría; escribirle un valor encima la MATA para toda la columna.
 //
-// ═══ Y LA TERCERA CATEGORÍA, LA INCÓMODA: LA FÓRMULA QUE EL CARGADOR PISA ═══
+// ═══ Y LA TERCERA CATEGORÍA, LA INCÓMODA: LA FÓRMULA QUE UNA PERSONA PISA (30/09/2026) ═══
 //
-// `T` (Monto Pagado) y `X` (Estado) son fórmula en la plantilla Y el cargador les escribe un valor
-// encima. Eso no está declarado en ningún lado y es exactamente lo que el dueño reportó el 25/08.
-// Acá se declara con nombre (`pisaElCargador`) para que sea visible y para que el test la congele:
-// una pisada nueva que nadie declaró rompe el test. La decisión de si esas dos pisadas se sacan es
-// del dueño —cambia lo que llega al Cash Flow—, y hasta que la tome el comportamiento no se toca.
-// Lo que sí cambia: `GRUPOS_FORMULA` se deriva EXCLUYENDO las pisadas, porque estampar la fórmula
-// después de escribir el valor borraría el valor recién escrito.
+// `Monto Pagado` y `Estado` son fórmula en la plantilla. Hasta el 29/09 el CARGADOR les escribía un
+// valor encima: 40 filas de las últimas dos semanas quedaron con la fórmula muerta
+// y con «Pagado» o el monto pegados, y dos filas quedaron incoherentes con su Modalidad. El dueño lo
+// resolvió el 30/09: «respetar las fórmulas». El cargador NO las escribe: se estampan como cualquier
+// fórmula por fila, y `F = Pago` ya hace que rindan `Pagado` y el total.
+//
+// Lo que sigue siendo cierto es que un PAGO REGISTRADO POR UNA PERSONA en la app (parcial, cheque, otra
+// fecha) necesita pisar esas dos celdas: eso se declara con `pisaLaPersona` y sólo lo lee la puerta de
+// la app (`pagos-de-compra.mjs` → `ESCRIBIBLES`). El cargador, `derivar` y `letrasIndebidas` la ignoran.
 //
 // ═══ DESDE EL 14/09/2026 EL CONTRATO SE DECLARA POR RÓTULO, NO POR LETRA ═══
 //
@@ -101,13 +103,13 @@ export const DECLARACION = Object.freeze([
   { rotulo: 'Fecha prevista de pago (día)', naturaleza: N.FORMULA_FILA, clave: 'prevDia' },
   { rotulo: 'Fecha prevista de pago (mes)', naturaleza: N.FORMULA_FILA, clave: 'prevMes' },
   { rotulo: 'Total o Parcial', naturaleza: N.CARGADOR, rol: 'totalParcial', clave: 'totalParcial' },
-  // T ES FÓRMULA (`=IF(F="pago";O;0)`) Y EL CARGADOR LA PISA. Ver `pisaElCargador`.
-  { rotulo: 'Monto Pagado', naturaleza: N.FORMULA_FILA, pisaElCargador: true, rol: 'pagado', clave: 'pagado' },
+  // ES FÓRMULA (`=IF(F="pago";P;0)`): el cargador NO la escribe; sólo la puerta de pagos de la app. Ver `pisaLaPersona`.
+  { rotulo: 'Monto Pagado', naturaleza: N.FORMULA_FILA, pisaLaPersona: true, rol: 'pagado', clave: 'pagado' },
   { rotulo: 'Monto Parcial 1', naturaleza: N.FORMULA_FILA, clave: 'parcial1' },
   { rotulo: 'Fecha prevista de pago 2', naturaleza: N.PERSONA, clave: 'prevFecha2' },
   { rotulo: 'Monto Parcial 2', naturaleza: N.PERSONA, clave: 'parcial2' },
-  // X TAMBIÉN ES FÓRMULA Y TAMBIÉN LA PISA.
-  { rotulo: 'Estado', naturaleza: N.FORMULA_FILA, pisaElCargador: true, rol: 'estado', clave: 'estado' },
+  // TAMBIÉN ES FÓRMULA: mismo criterio.
+  { rotulo: 'Estado', naturaleza: N.FORMULA_FILA, pisaLaPersona: true, rol: 'estado', clave: 'estado' },
   { rotulo: 'Tipo de Costo', naturaleza: N.PERSONA, clave: 'tipoCosto' },
   { rotulo: 'Estado pago', naturaleza: N.FORMULA_FILA, clave: 'estadoPago' },
   { rotulo: 'Estado Carga', naturaleza: N.PERSONA, clave: 'estadoCarga' },
@@ -200,14 +202,13 @@ export function tramosContiguos(letras = []) {
 /**
  * TODO LO QUE SE DERIVA DEL CONTRATO RESUELTO. Se deriva, no se mantiene a mano.
  *
- * `COLUMNAS_A_ESTAMPAR` EXCLUYE las que el cargador pisa a propósito (`pisaElCargador`): el cargador
- * escribe primero los valores y estampa las fórmulas después, así que meter `T` o `X` acá borraría el
- * monto pagado y el estado recién escritos.
+ * `COLUMNAS_A_ESTAMPAR` son TODAS las fórmulas por fila, sin excepción: el cargador no escribe valores
+ * sobre ninguna (desde el 30/09 tampoco sobre Monto Pagado ni Estado).
  */
 export function derivar(contrato) {
   const deNaturaleza = (n) => contrato.filter((c) => c.naturaleza === n).map((c) => c.letra)
-  const estampar = contrato.filter((c) => c.naturaleza === N.FORMULA_FILA && !c.pisaElCargador).map((c) => c.letra)
-  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR || c.pisaElCargador).map((c) => c.letra)
+  const estampar = contrato.filter((c) => c.naturaleza === N.FORMULA_FILA).map((c) => c.letra)
+  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR).map((c) => c.letra)
   return Object.freeze({
     COLUMNAS_A_ESTAMPAR: Object.freeze(estampar),
     GRUPOS_FORMULA: Object.freeze(tramosContiguos(estampar).map((t) => Object.freeze(t))),
@@ -249,7 +250,7 @@ export function letrasPorNaturaleza(naturaleza, contrato = CONTRATO) {
  * @returns {{letra:string, motivo:string}[]} vacío si todas se pueden escribir
  */
 export function letrasIndebidas(letras = [], contrato = CONTRATO) {
-  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR || c.pisaElCargador).map((c) => c.letra)
+  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR).map((c) => c.letra)
   const mal = []
   for (const l of letras) {
     const L = String(l ?? '').toUpperCase()

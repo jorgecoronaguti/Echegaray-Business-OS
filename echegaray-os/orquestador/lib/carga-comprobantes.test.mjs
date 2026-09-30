@@ -82,8 +82,9 @@ test('valoresInput escribe sólo lo del comprobante, con el pago deducido de la 
   assert.equal(v[COL.neto], 28479.30)
   assert.equal(v[COL.iva], 5981)
   assert.equal(v[COL.modalidad], 'Pago')
-  assert.equal(v[COL.estado], 'Pagado')
-  assert.equal(v[COL.pagado], 28479.30 + 5981) // contado ⇒ pagado = total
+  // U (Monto Pagado) e Y (Estado) son fórmula por fila: el cargador NO las escribe (30/09).
+  assert.equal(v[COL.estado], undefined)
+  assert.equal(v[COL.pagado], undefined)
   assert.equal(v[COL.total], undefined) // O es fórmula, no se escribe
   assert.equal(v[COL.obra], undefined) // J la completa el dueño
   assert.equal(v[COL.rubroCaja], undefined) // AC es ARRAYFORMULA
@@ -92,7 +93,7 @@ test('valoresInput escribe sólo lo del comprobante, con el pago deducido de la 
 test('cuenta corriente entra pendiente y sin pago', () => {
   const v = valoresInput({ fecha: '5/1/2026', proveedor: 'Robles Jose Maria', neto: 471540.39, iva: 0, condicion: 'Cuenta Corriente' })
   assert.equal(v[COL.modalidad], 'Cuenta Corriente')
-  assert.equal(v[COL.estado], 'Pendiente')
+  assert.equal(v[COL.estado], undefined) // Y es fórmula: la rinde el Sheet
   assert.equal(v[COL.pagado], undefined) // no se pagó todavía
 })
 
@@ -104,15 +105,16 @@ test('cuando hay total, M se deriva como Total − IVA y absorbe la percepción'
   const v = valoresInput({ fecha: '5/1/2026', proveedor: 'Robles Jose Maria', neto: 100000, iva: 21000, total: 124500, condicion: 'Contado' })
   assert.equal(v[COL.neto], 103500) // 124.500 − 21.000 = M absorbe los 3.500 de percepción
   assert.equal(v[COL.iva], 21000) // N = IVA discriminado, intacto
-  // O es fórmula (=M+N) ⇒ 103.500 + 21.000 = 124.500 = total real. Contado ⇒ pagado = ese total.
-  assert.equal(v[COL.pagado], 124500)
+  // O es fórmula (=M+N) ⇒ 103.500 + 21.000 = 124.500 = total real. Contado ⇒ Modalidad Pago y U la rinde su fórmula.
+  assert.equal(v[COL.modalidad], 'Pago')
+  assert.equal(v[COL.pagado], undefined)
   assert.equal(v[COL.total], undefined) // O nunca se escribe
 })
 
 test('sin total declarado, M usa el neto crudo de la foto (comportamiento previo intacto)', () => {
   const v = valoresInput({ fecha: '5/1/2026', proveedor: 'Combustibles Barcelo', neto: '$28.479,30', iva: '$5.981', condicion: 'Contado' })
   assert.equal(v[COL.neto], 28479.30)
-  assert.equal(v[COL.pagado], 28479.30 + 5981)
+  assert.equal(v[COL.pagado], undefined)
 })
 
 // discrepanciaNeto avisa cuando el neto crudo no cierra con el total: hay una percepción/impuesto

@@ -27,7 +27,7 @@ import { conMarcaDeOrigen, dimensionesInferidas } from './comprobantes/marca-ori
 export const COL = Object.freeze(colDelCargador(CONTRATO))
 
 /** Columnas que se llenan desde la foto/condición. El resto se estampa, se deriva o lo pone el dueño. */
-export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo', 'numero', 'concepto', 'neto', 'iva', 'formaPago', 'totalParcial', 'pagado', 'estado']
+export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo', 'numero', 'concepto', 'neto', 'iva', 'formaPago', 'totalParcial']
 
 /** Grupos contiguos de columnas con fórmula POR FILA, para copiarlas con PASTE_FORMULA de la fila
  *  modelo a las nuevas. Las ARRAYFORMULA NO están: bajan solas desde la fila 4.
@@ -318,8 +318,6 @@ export function valoresInput(c, col = COL) {
   // DERIVA de él; sólo si no hay total se usa el neto crudo de la foto. Así un "neto gravado" que no
   // incluye la percepción no rompe el total (era la causa de las cargas MAL hechas).
   const neto = totalDeclarado != null ? redondear2(totalDeclarado - (iva ?? 0)) : aNumero(c.neto)
-  const total = totalDeclarado ?? (neto != null ? redondear2(neto + (iva ?? 0)) : null)
-  const estado = c.estado ?? pago.estado
   const out = {}
   // Una clave sin columna en esta pestaña (la «Obra» antes de insertarse) no se escribe en ningún lado.
   const set = (k, v) => { if (v != null && v !== '' && col[k]) out[col[k]] = v }
@@ -341,7 +339,9 @@ export function valoresInput(c, col = COL) {
   // es estricto y una celda en rojo es peor que una vacía. Ver `tipoPagoValido`.
   set('formaPago', tipoPagoValido(c.formaPago))
   set('totalParcial', c.totalParcial ?? pago.totalParcial)
-  set('estado', estado)
+  // ESTADO (Y) Y MONTO PAGADO (U) SON FÓRMULA Y EL CARGADOR NO LAS ESCRIBE (30/09/2026). Con `F = Pago`
+  // la fórmula rinde sola el total y «Pagado»; con Cuenta Corriente rinde 0 y «Pendiente». Escribirlas
+  // mató la fórmula en 40 filas y dejó dos incoherentes con su Modalidad (1037: Pago con «Pendiente»).
   // IMPUTACIÓN: sólo se escribe lo que venga explícito (la anotación del dueño en el comprobante).
   // Nunca se infiere una obra o una unidad de negocio: si no está, la completa él y AC/AE clasifican.
   set('unidad', c.unidad)
@@ -349,14 +349,6 @@ export function valoresInput(c, col = COL) {
   set('detalle', c.detalle)
   // La obra codificada de la columna «Obra»: sólo cuando viene decidida (segura o contestada).
   set('obraFila', c.obraFila)
-  // Si quedó pagada al contado, lo pagado es el total; en cuenta corriente pendiente, no hay pago aún.
-  //
-  // EL CERO NO SE ESCRIBE, Y NO ES UN CAPRICHO: `T` es la fórmula `=IF(F="pago";O;0)`, que para una
-  // fila sin pago YA devuelve 0. Pegarle un 0 encima no cambia lo que se lee y sí mata la fórmula: a
-  // partir de ahí `U` (`=T-O`) deja de moverse y la fila miente en silencio si alguien la marca pagada
-  // después. Medido el 25/08 sobre Compras: 37 celdas de Q, 7 de U y 2 de R pisadas por el cargador.
-  // `total` falsy incluye el 0 a propósito — es exactamente el caso que la fórmula ya cubre.
-  if (estado === 'Pagado' && total) set('pagado', total)
   return out
 }
 

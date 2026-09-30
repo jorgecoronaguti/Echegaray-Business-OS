@@ -250,7 +250,8 @@ test('la columna K NO recibe lo que el modelo eligió si esa obra lo usó UNA so
     detalles: { 'LA ESTRELLA': ['Aberturas', 'Rodrigo Echegaray'] },
     detallesFirmes: { 'LA ESTRELLA': ['Aberturas'] },
   }
-  const lectura = { emisor: 'ALUMETAL', total: '100', obra: 'LA ESTRELLA', detalle_obra: 'Rodrigo Echegaray' }
+  // Con anotación manuscrita: sin ella el modelo no imputa obra (30/09) y no habría K que filtrar.
+  const lectura = { emisor: 'ALUMETAL', total: '100', obra: 'LA ESTRELLA', anotacion_manuscrita: 'La Estrella', detalle_obra: 'Rodrigo Echegaray' }
   assert.equal(armarItem({ lectura, listas }).comprobante.detalleObra, null)
   assert.equal(armarItem({ lectura: { ...lectura, detalle_obra: 'Aberturas' }, listas }).comprobante.detalleObra, 'Aberturas')
 })

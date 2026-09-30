@@ -124,7 +124,17 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   // SE VALIDA IGUAL, y por eso esto no afloja nada: sólo entra si el valor está EXACTO en el
   // desplegable estricto (`imputacionDelModelo`). Un valor inventado por el modelo no llega a una
   // celda; queda como si no hubiera contestado y se pregunta con el menú.
-  const delModelo = imputacionDelModelo(crudo, listas)
+  //
+  // ═══ SIN ANOTACIÓN NO HAY OBRA NI UNIDAD DEL MODELO (30/09/2026) ═══
+  //
+  // El modelo sólo puede APOYAR lo que la persona escribió a mano en el papel; no puede imputar solo.
+  // El 30/09 la póliza de Zurich (fila 1036) salió con «Vehiculos / Maquinas» en la columna J sin
+  // ninguna anotación: el modelo «entendió» que un seguro de automotores es de los vehículos. Puede
+  // serlo o no —es una decisión de imputación, del dueño— y una obra elegida por parecido es un dato
+  // inventado con la forma de uno real. Sin anotación transcripta el modelo no propone obra ni unidad:
+  // las columnas I/J quedan vacías y las completa la persona o se pregunta con el menú.
+  const hayAnotacion = String(comprobante.anotacion ?? '').trim() !== ''
+  const delModelo = hayAnotacion ? imputacionDelModelo(crudo, listas) : {}
   if (!imp.obra && delModelo.obra) {
     imp = { ...imp, obra: delModelo.obra }
     obraVia = 'manuscrita'

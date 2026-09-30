@@ -3,11 +3,15 @@
 //
 // ═══ QUÉ CONTESTA ═══
 //
-// `contrato-columnas.mjs` congela una MEDICIÓN del 25/08/2026: doce columnas son fórmula por fila,
-// diez son ARRAYFORMULA. Ese test protege el contrato de que alguien lo edite, pero no prueba nada
-// sobre la pestaña de hoy — es exactamente el control validado contra la misma información que
-// produce. Este script es el otro lado: abre el Sheet real y dice, celda por celda, cuáles de esas
-// fórmulas siguen vivas y cuáles tienen un número pegado encima.
+// `contrato-columnas.mjs` declara, POR RÓTULO, qué columnas de Compras son fórmula por fila y cuáles
+// ARRAYFORMULA. Ese test protege el contrato de que alguien lo edite, pero no prueba nada sobre la
+// pestaña de hoy — es exactamente el control validado contra la misma información que produce. Este
+// script es el otro lado: abre el Sheet real y dice, celda por celda, cuáles de esas fórmulas siguen
+// vivas y cuáles tienen un número pegado encima.
+//
+// 30/09/2026: las letras salen de la fila de rótulos VIVA (`contratoContra(Compras!A3:BZ3)`), no de
+// una tabla fija. Con la tabla fija del 25/08, tras insertar «Obra» en L, el script comparaba «Tipo
+// pago» (Q) contra la fórmula de Fecha prevista y habría pegado fórmulas en la columna equivocada.
 //
 //   node orquestador/scripts/reparar-formulas-compras.mjs                  ← audita, no escribe nada
 //   node orquestador/scripts/reparar-formulas-compras.mjs --detalle        ← + la lista fila por fila
@@ -35,13 +39,16 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { accessTokenFor } from '../lib/google-oauth.mjs'
 import { congelado, motivoDeLevantamiento } from '../lib/congelador-sheets.mjs'
-import { CONTRATO, NATURALEZA, indiceDe, letraDe } from '../lib/comprobantes/contrato-columnas.mjs'
-import { EVALUADORES, VEREDICTO, esqueletoDeFormula, veredictoDeCelda } from '../lib/comprobantes/formulas-compras.mjs'
-import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { NATURALEZA, contratoContra, indiceDe } from '../lib/comprobantes/contrato-columnas.mjs'
+import {
+  EVALUADORES, VEREDICTO, esqueletoDeFormula, filaPorClave, formulaVigente, veredictoDeCelda,
+} from '../lib/comprobantes/formulas-compras.mjs'
+import { rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID_FLUJO = process.env.ORQ_SHEET_FLUJO ?? '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const CUENTA = process.env.ORQ_GOOGLE_IMPERSONATE ?? 'jorge@ecsas.com.ar'
-const RANGO = process.env.ORQ_COMPRAS_RANGO ?? rangoFilas('Compras', 4, 1000)
+// Rango ABIERTO: la pestaña ya pasa de la fila 1000 y un tope fijo dejaba las últimas fuera del control.
+const RANGO = process.env.ORQ_COMPRAS_RANGO ?? rangoFilas('Compras', 4)
 const PRIMERA_FILA = Number(RANGO.match(/[A-Z]+(\d+):/)?.[1] ?? 4)
 
 const args = new Set(process.argv.slice(2))
@@ -49,15 +56,7 @@ const REPARAR = args.has('--reparar')
 const CONFIRMADO = args.has('--si')
 const DETALLE = args.has('--detalle')
 
-const LETRAS_FORMULA = CONTRATO.filter((c) => c.naturaleza === NATURALEZA.FORMULA_FILA).map((c) => c.letra)
 const $ = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-/** La fila cruda de la API como objeto por letra, para que los evaluadores lean `fila.T` y no `r[19]`. */
-function filaPorLetra(fila) {
-  const o = {}
-  for (let i = 0; i < fila.length; i++) o[letraDe(i)] = fila[i]
-  return o
-}
 
 async function leer(g, render) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${ID_FLUJO}/values:batchGet`
@@ -66,13 +65,24 @@ async function leer(g, render) {
 }
 
 const g = makeGoogleClient({ config: loadConfig(), scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
+// El contrato contra la fila de rótulos VIVA. Si un rótulo cambió o falta, lanza y no se audita nada.
+const encabezado = (await g.apiGetSheets(
+  `https://sheets.googleapis.com/v4/spreadsheets/${ID_FLUJO}/values:batchGet`
+  + `?ranges=${encodeURIComponent(rangoEncabezado('Compras'))}&valueRenderOption=FORMULA&majorDimension=ROWS`,
+)).valueRanges[0].values?.[0] ?? []
+const contrato = contratoContra(encabezado)
+// Alguna fórmula por fila no tiene `clave` (la 1.ª «Orden de pago (OS)»): se identifica por su letra.
+const COLUMNAS = contrato
+  .filter((c) => c.naturaleza === NATURALEZA.FORMULA_FILA)
+  .map((c) => ({ ...c, clave: c.clave ?? `col${c.letra}` }))
+const colDe = Object.fromEntries(COLUMNAS.map((c) => [c.clave, c]))
+const iE = indiceDe(contrato.find((c) => c.clave === 'proveedor').letra)
 const formulas = await leer(g, 'FORMULA')
 const valores = await leer(g, 'UNFORMATTED_VALUE')
 
-const iE = indiceDe('E')
-const conteo = Object.fromEntries(LETRAS_FORMULA.map((l) => [l, { viva: 0, no_op: 0, humano: 0, sin_replica: 0, vacia: 0 }]))
-const noOps = []       // [{letra, fila}] — lo único reparable
-const humanos = []     // [{letra, fila, actual, esperado}] — decisión del dueño
+const conteo = Object.fromEntries(COLUMNAS.map((c) => [c.clave, { viva: 0, no_op: 0, humano: 0, sin_replica: 0, vacia: 0 }]))
+const noOps = []       // [{clave, letra, fila}] — lo único reparable
+const humanos = []     // [{clave, letra, fila, actual, esperado}] — decisión del dueño
 let filasConDatos = 0
 let modelo = null      // la última fila cuyas fórmulas están todas vivas: de ahí sale el guard
 
@@ -82,38 +92,38 @@ for (let i = 0; i < formulas.length; i++) {
   const fila = PRIMERA_FILA + i
   if (!String(rf[iE] ?? '').trim()) continue
   filasConDatos++
-  const porLetra = filaPorLetra(rv)
+  const porClave = filaPorClave(rv, contrato)
 
-  if (LETRAS_FORMULA.every((l) => String(rf[indiceDe(l)] ?? '').startsWith('='))) {
-    modelo = { fila, formulas: Object.fromEntries(LETRAS_FORMULA.map((l) => [l, String(rf[indiceDe(l)])])) }
+  if (COLUMNAS.every((c) => String(rf[indiceDe(c.letra)] ?? '').startsWith('='))) {
+    modelo = { fila, formulas: Object.fromEntries(COLUMNAS.map((c) => [c.clave, String(rf[indiceDe(c.letra)])])) }
   }
 
-  for (const letra of LETRAS_FORMULA) {
-    const v = veredictoDeCelda(letra, rf[indiceDe(letra)], porLetra)
-    if (v.veredicto === VEREDICTO.YA_ES_FORMULA) conteo[letra].viva++
-    else if (v.veredicto === VEREDICTO.VACIA) conteo[letra].vacia++
-    else if (v.veredicto === VEREDICTO.NO_OP) { conteo[letra].no_op++; noOps.push({ letra, fila }) }
+  for (const { clave, letra } of COLUMNAS) {
+    const v = veredictoDeCelda(clave, rf[indiceDe(letra)], porClave)
+    if (v.veredicto === VEREDICTO.YA_ES_FORMULA) conteo[clave].viva++
+    else if (v.veredicto === VEREDICTO.VACIA) conteo[clave].vacia++
+    else if (v.veredicto === VEREDICTO.NO_OP) { conteo[clave].no_op++; noOps.push({ clave, letra, fila }) }
     // SIN_EVALUADOR no es «dato humano»: es «no tengo con qué decidir». Contarlos juntos sería
     // publicar 1.953 decisiones pendientes donde hay 489 — el resto son celdas sobre las que este
     // control, honestamente, no dice nada.
-    else if (v.veredicto === VEREDICTO.SIN_EVALUADOR) conteo[letra].sin_replica++
-    else { conteo[letra].humano++; humanos.push({ letra, fila, ...v }) }
+    else if (v.veredicto === VEREDICTO.SIN_EVALUADOR) conteo[clave].sin_replica++
+    else { conteo[clave].humano++; humanos.push({ clave, letra, fila, ...v }) }
   }
 }
 
 console.log(`Pestaña Compras · ${RANGO} · ${filasConDatos} filas con proveedor\n`)
-console.log('col   fórmula viva   valor = fórmula   cambia el número   sin réplica   vacía')
-for (const letra of LETRAS_FORMULA) {
-  const c = conteo[letra]
+console.log('col   clave         fórmula viva   valor = fórmula   cambia el número   sin réplica   vacía')
+for (const { clave, letra } of COLUMNAS) {
+  const c = conteo[clave]
   console.log(
-    `  ${letra.padEnd(3)} ${String(c.viva).padStart(11)} ${String(c.no_op).padStart(17)} `
+    `  ${letra.padEnd(3)} ${clave.padEnd(13)} ${String(c.viva).padStart(11)} ${String(c.no_op).padStart(17)} `
     + `${String(c.humano).padStart(18)} ${String(c.sin_replica).padStart(13)} ${String(c.vacia).padStart(7)}`,
   )
 }
 
 console.log(`\nReparable sin mover un peso: ${noOps.length} celdas.`)
 console.log(`Cambiaría el número (dato de una persona — no se toca solo): ${humanos.length} celdas.`)
-const sinRep = LETRAS_FORMULA.reduce((a, l) => a + conteo[l].sin_replica, 0)
+const sinRep = COLUMNAS.reduce((a, c) => a + conteo[c.clave].sin_replica, 0)
 console.log(`Sin réplica en JS (este control no dice nada sobre ellas): ${sinRep} celdas.`)
 
 if (DETALLE) {
@@ -121,7 +131,7 @@ if (DETALLE) {
   for (const h of humanos.slice(0, 200)) {
     const a = typeof h.actual === 'number' ? $(h.actual) : `"${h.actual}"`
     const e = typeof h.esperado === 'number' ? $(h.esperado) : `"${h.esperado}"`
-    console.log(`  ${h.letra}${h.fila}: hoy ${a} · la fórmula daría ${e}`)
+    console.log(`  ${h.letra}${h.fila} (${h.clave}): hoy ${a} · la fórmula daría ${e}`)
   }
   if (humanos.length > 200) console.log(`  … y ${humanos.length - 200} más`)
 }
@@ -137,12 +147,12 @@ if (!modelo) {
   console.error('\n✖ No hay ninguna fila con TODAS sus fórmulas vivas: sin fila modelo no se copia nada.')
   process.exit(1)
 }
-const desincronizadas = Object.entries(EVALUADORES)
-  .filter(([l]) => modelo.formulas[l])
-  .filter(([l, ev]) => esqueletoDeFormula(modelo.formulas[l]) !== esqueletoDeFormula(ev.formula))
+const desincronizadas = Object.keys(EVALUADORES)
+  .filter((k) => modelo.formulas[k])
+  .filter((k) => esqueletoDeFormula(modelo.formulas[k]) !== esqueletoDeFormula(formulaVigente(k, contrato)))
 if (desincronizadas.length) {
   console.error(`\n✖ La fórmula viva de la fila ${modelo.fila} no es la que la réplica declara:`)
-  for (const [l, ev] of desincronizadas) console.error(`   ${l}: Sheet «${modelo.formulas[l]}» · réplica «${ev.formula}»`)
+  for (const k of desincronizadas) console.error(`   ${colDe[k].letra} (${k}): Sheet «${modelo.formulas[k]}» · réplica «${formulaVigente(k, contrato)}»`)
   console.error('   Actualizá orquestador/lib/comprobantes/formulas-compras.mjs. No se escribió nada.')
   process.exit(1)
 }

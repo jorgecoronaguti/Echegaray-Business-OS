@@ -70,18 +70,18 @@ export const DERIVADAS = Object.freeze([COMPRAS.parcial1, 'Estado pago', COMPRAS
  * QUÉ CELDA PUEDE ESCRIBIR UN PAGO, DERIVADO DEL CONTRATO A→AN — no de una lista escrita acá.
  *
  * Una columna es escribible si el contrato dice que la completa una PERSONA, o que la escribe el
- * CARGADOR, o que es fórmula por fila que **el cargador ya pisa** (`pisaElCargador`: hoy `Monto
+ * CARGADOR, o que es fórmula por fila que **una persona pisa desde la app** (`pisaLaPersona`: hoy `Monto
  * Pagado` y `Estado`, declarado y congelado por `contrato-columnas.test.mjs`). Todo lo demás —fórmula
  * por fila que nadie pisa, ARRAYFORMULA— queda afuera por construcción.
  *
- * El día que alguien saque `pisaElCargador` de `Estado`, este conjunto se achica solo y el plan de
+ * El día que alguien saque `pisaLaPersona` de `Estado`, este conjunto se achica solo y el plan de
  * pago deja de proponer esa celda. Eso es lo que se busca: una sola declaración.
  */
 export const ESCRIBIBLES = Object.freeze(new Set(
   DECLARACION
     .filter((c) => c.naturaleza === NATURALEZA.PERSONA
       || c.naturaleza === NATURALEZA.CARGADOR
-      || (c.naturaleza === NATURALEZA.FORMULA_FILA && c.pisaElCargador === true))
+      || (c.naturaleza === NATURALEZA.FORMULA_FILA && c.pisaLaPersona === true))
     .map((c) => c.rotulo),
 ))
 

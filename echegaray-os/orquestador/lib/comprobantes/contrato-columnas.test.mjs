@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CONTRATO, NATURALEZA, GRUPOS_FORMULA, COLUMNAS_A_ESTAMPAR, LETRAS_ARRAYFORMULA,
+  CONTRATO, NATURALEZA, GRUPOS_FORMULA, COLUMNAS_A_ESTAMPAR, LETRAS_ARRAYFORMULA, LETRAS_ESCRIBIBLES,
   columna, letrasIndebidas, tramosContiguos, indiceDe, letraDe,
 } from './contrato-columnas.mjs'
 import { GRUPOS_FORMULA as GRUPOS_DEL_CARGADOR, valoresInput, filaModeloDeFormulas } from '../carga-comprobantes.mjs'
@@ -44,17 +44,19 @@ test('el cargador estampa TODAS las columnas que el Sheet tiene con fórmula por
   for (const [a, b] of GRUPOS_DEL_CARGADOR) {
     for (let i = indiceDe(a); i <= indiceDe(b); i++) cubiertas.add(letraDe(i))
   }
-  // T y X quedan fuera a propósito: el cargador les escribe un valor encima y estamparlas después lo
-  // borraría. La decisión de sacar esa pisada es del dueño; hasta entonces no entran acá.
-  const esperadas = conFormula.filter((l) => !columna(l).pisaElCargador)
+  // Desde el 30/09 no hay excepción: el cargador tampoco pisa Monto Pagado ni Estado.
+  const esperadas = conFormula
   const faltan = esperadas.filter((l) => !cubiertas.has(l))
   assert.deepEqual(faltan, [], `columnas con fórmula por fila que el cargador NO estampa: ${faltan.join(', ')}`)
 })
 
-test('las pisadas declaradas son exactamente T y X — una nueva rompe el test', () => {
-  assert.deepEqual(CONTRATO.filter((c) => c.pisaElCargador).map((c) => c.letra), ['T', 'X'])
-  assert.equal(COLUMNAS_A_ESTAMPAR.includes('T'), false)
-  assert.equal(COLUMNAS_A_ESTAMPAR.includes('X'), false)
+test('el cargador NO pisa ninguna fórmula; sólo la puerta de pagos de la app pisa T y X — una nueva rompe el test', () => {
+  assert.deepEqual(CONTRATO.filter((c) => c.pisaElCargador), [])
+  assert.deepEqual(CONTRATO.filter((c) => c.pisaLaPersona).map((c) => c.letra), ['T', 'X'])
+  assert.equal(COLUMNAS_A_ESTAMPAR.includes('T'), true)
+  assert.equal(COLUMNAS_A_ESTAMPAR.includes('X'), true)
+  assert.equal(LETRAS_ESCRIBIBLES.includes('T'), false)
+  assert.equal(LETRAS_ESCRIBIBLES.includes('X'), false)
 })
 
 // ═══ EL DEFECTO 2: LA LISTA DE ARRAYFORMULA ESTABA A LA MITAD ═══
@@ -103,11 +105,11 @@ test('un monto pagado de cero NO se escribe: la fórmula de T ya dice cero y se 
   assert.equal(v.T, undefined, 'escribió un 0 en Monto Pagado sobre la fórmula que ya daba 0')
 })
 
-test('un monto pagado real sí se escribe — el arreglo del cero no apaga la columna', () => {
+test('un monto pagado real tampoco se escribe: lo rinde su fórmula (30/09)', () => {
   const v = valoresInput({
     fecha: '25/08/2026', proveedor: 'Robles Jose Maria', neto: 100000, iva: 21000, total: 121000, condicion: 'Contado',
   })
-  assert.equal(v.T, 121000)
+  assert.equal(v.T, undefined, 'T es =IF(F="pago";O;0): el cargador no la pisa ni con el total')
 })
 
 // ═══ LA FILA MODELO TIENE QUE EXIGIR LAS DOCE, NO LAS OCHO ═══
@@ -168,7 +170,7 @@ test('después de la inserción el portón protege las letras NUEVAS, no las vie
   for (const l of ['AD', 'AE', 'AF', 'AG', 'AK']) assert.match(d.letrasIndebidas([l])[0]?.motivo ?? '', /derrame/, l)
   assert.deepEqual(d.letrasIndebidas(['L', 'M']), [], 'L es la Obra y M el Concepto: las dos las escribe el cargador')
   assert.match(d.letrasIndebidas(['P'])[0].motivo, /fórmula por fila/, 'P es el Total después de la inserción')
-  assert.deepEqual([...d.GRUPOS_FORMULA], [['A', 'A'], ['D', 'D'], ['P', 'P'], ['R', 'S'], ['V', 'V'], ['AA', 'AA'], ['AH', 'AJ']])
+  assert.deepEqual([...d.GRUPOS_FORMULA], [['A', 'A'], ['D', 'D'], ['P', 'P'], ['R', 'S'], ['U', 'V'], ['Y', 'Y'], ['AA', 'AA'], ['AH', 'AJ']])
 })
 
 test('valoresInput con el contrato vivo: Obra en L, Concepto en M, y nunca una columna del dueño', () => {
@@ -184,7 +186,8 @@ test('valoresInput con el contrato vivo: Obra en L, Concepto en M, y nunca una c
   assert.equal(despues.L, 'OB-0021 · ME - PLAYÓN DE AZUFRE')
   assert.equal(despues.M, 'Cemento')
   assert.equal(despues.N, 100000)
-  assert.equal(despues.U, 121000, 'Monto Pagado se corrió de T a U')
+  assert.equal(despues.U, undefined, 'Monto Pagado (U) es fórmula: el cargador no la escribe')
+  assert.equal(despues.Y, undefined, 'Estado (Y) tampoco')
   assert.deepEqual(derivar(contrato).letrasIndebidas(Object.keys(despues)), [])
 })
 
