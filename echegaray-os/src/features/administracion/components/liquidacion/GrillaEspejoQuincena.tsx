@@ -106,14 +106,14 @@ export function GrillaEspejoQuincena({
     <div style={{ background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, overflow: 'clip' }}>
       {sello}
       {jornaleros.length > 0 && (
-        <TablaDeBloques testid="cuadro-jornaleros" principal titulo={`Jornaleros · por hora · ${jornaleros.length}`}
+        <TablaDeBloques testid="cuadro-jornaleros" principal titulo="Jornaleros" meta={`por hora · ${jornaleros.length}`}
           resumen={<ResumenJornaleros t={tJ} pagos={jornaleros.map((f) => f.linea.pago)} sellada={sellada} />} definicion={CUADRO_JORNALEROS} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
           filas={(c) => filasDe('jornalero', c)}
           total={(c) => <TotalJornaleros columnas={c} dias={dias} t={tJ} />} />
       )}
       {mensuales.length > 0 && (
-        <TablaDeBloques testid="cuadro-mensuales" titulo={sellada ? `Mensuales · lo liquidado en la quincena · ${mensuales.length}` : `Mensuales · sueldo del mes · ${mensuales.length}`}
+        <TablaDeBloques testid="cuadro-mensuales" titulo="Mensuales" meta={sellada ? `lo liquidado en la quincena · ${mensuales.length}` : `sueldo del mes · ${mensuales.length}`}
           resumen={<ResumenMensuales t={tM} sellada={sellada} />} definicion={CUADRO_MENSUALES} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
           filas={(c) => filasDe('mensual', c)}

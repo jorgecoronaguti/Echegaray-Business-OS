@@ -67,7 +67,7 @@ export const filaGrid = (columnas: string, alto: number): React.CSSProperties =>
   alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-export function TablaDeBloques({ testid, principal = false, titulo, resumen, definicion, dias, sellada, tirador, registrar, filas, total }: {
+export function TablaDeBloques({ testid, principal = false, titulo, meta, resumen, definicion, dias, sellada, tirador, registrar, filas, total }: {
   testid: string
   /**
    * El cuadro de jornaleros conserva los testids de siempre (`espejo-cinta`, `espejo-tabla`, `espejo-encabezado`,
@@ -75,7 +75,9 @@ export function TablaDeBloques({ testid, principal = false, titulo, resumen, def
    */
   principal?: boolean
   titulo: string
-  /** El subtotal del cuadro, dicho en una línea al lado del título. */
+  /** Lo que califica al título sin competir con él («por hora · 15»): tenue y más chico. */
+  meta?: string
+  /** El subtotal del cuadro, debajo del título. */
   resumen: ReactNode
   definicion: DefinicionDeCuadro
   dias: readonly string[]
@@ -92,8 +94,12 @@ export function TablaDeBloques({ testid, principal = false, titulo, resumen, def
   const id = (propio: string) => (principal ? `espejo-${propio}` : `${testid}-${propio}`)
   return (
     <section data-testid={testid} data-cuadro={testid}>
-      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 16, rowGap: 4, padding: `16px ${CANAL_SCROLL}px 8px` }}>
-        <h3 style={{ fontSize: '13px', fontWeight: 600, color: V.tinta, margin: 0 }}>{titulo}</h3>
+      {/* EL RESUMEN VA DEBAJO DEL TÍTULO, NO AL COSTADO (dueño, 30/09/2026, «rehacer»): al costado, el título y la
+          cantidad de personas se leían como parte de las cifras, y en PC el resumen arrancaba corrido a la derecha. */}
+      <div className="flex flex-col gap-3 pb-2 pt-4" style={{ paddingInline: CANAL_SCROLL }}>
+        <h3 className="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px] font-semibold leading-5 text-ink">
+          {titulo}{meta && <span className="text-[11.5px] font-normal text-faint">{meta}</span>}
+        </h3>
         {resumen}
       </div>
       <CintaHorizontal
@@ -138,7 +144,7 @@ function FondosDeBloque({ columnas, tramos }: { columnas: string; tramos: readon
  */
 function Saltos({ testid, cinta: idCinta, tramos, corrimiento }: { testid: string; cinta: string; tramos: readonly TramoDeBloque[]; corrimiento: number }) {
   // EL ANCHO VISIBLE SE MIDE (cinta menos Persona): sin él no se sabe qué bloque ocupa la pantalla.
-  const propio = useRef<HTMLDivElement | null>(null)
+  const propio = useRef<HTMLElement | null>(null)
   const [anchoVisible, setAnchoVisible] = useState(0)
   useEffect(() => {
     const cuadro = propio.current?.closest('[data-cuadro]')
@@ -152,20 +158,22 @@ function Saltos({ testid, cinta: idCinta, tramos, corrimiento }: { testid: strin
     cinta?.scrollTo({ left: desplazamientoHasta(t, i === 0), behavior: 'smooth' })
   }
   return (
-    <div ref={propio} data-testid={`${testid}-saltos`} style={{
-      display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0 8px', transform: `translateX(${corrimiento}px)`, width: 'max-content',
-    }}>
-      <span style={{ fontSize: '11px', color: V.tenue, marginRight: 4 }}>Ir a</span>
+    // LA NAVEGACIÓN SECUNDARIA DE LA APP, NO CHIPS (dueño, 30/09/2026, «rehacer»): texto de 12 px con el activo sobre
+    // el hairline, igual que «Quincena» y «Cobra» de los filtros de arriba (`FiltrosDelEspejo` · `Grupo`). Las
+    // píldoras con borde competían con el grafito del cuadro y parecían filtros de otra pantalla.
+    <nav ref={propio} aria-label="Bloques del cuadro" data-testid={`${testid}-saltos`}
+      className="flex w-max items-center gap-1 pb-2 pt-1" style={{ transform: `translateX(${corrimiento}px)` }}>
+      <span className="mr-1 text-[11px] text-faint">Ir a</span>
       {tramos.map((t, i) => (
         <button key={t.clave} type="button" onClick={(e) => ir(e, t, i)} data-testid={`${testid}-salto-${t.clave}`}
           aria-current={enVista === t.clave ? 'true' : undefined}
           className={[
-            'h-7 max-[767px]:h-9 rounded-full border px-3 text-[11.5px] leading-none whitespace-nowrap transition-colors',
+            'rounded px-2 py-1 text-[12px] leading-4 whitespace-nowrap transition-colors max-md:min-h-[40px]',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-            enVista === t.clave ? 'border-ink text-ink font-semibold' : 'border-line-strong text-muted hover:border-ink hover:text-ink',
+            enVista === t.clave ? 'bg-line-hairline font-semibold text-ink' : 'text-muted hover:text-ink',
           ].join(' ')}><span className="md:hidden">{t.corto}</span><span className="hidden md:inline">{t.rotulo}</span></button>
       ))}
-    </div>
+    </nav>
   )
 }
 
