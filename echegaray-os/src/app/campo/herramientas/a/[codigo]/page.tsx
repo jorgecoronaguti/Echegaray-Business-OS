@@ -170,6 +170,12 @@ export default async function UnaHerramienta({ params, searchParams }: {
             Ficha de revisión <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
         )}
+        {!baja && a.clase === 'rodado' && (
+          <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/novedad`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-novedad"
+            style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
+            Novedad del rodado: taller, service, reparación <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
+          </Link>
+        )}
         {!baja && (
           <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/reportar`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-reportar"
             style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
