@@ -108,10 +108,10 @@ import { mkdtempSync, writeFileSync as escribir } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join as unir } from 'node:path'
 
-test('resume/compact: dos líneas, sin traspaso, bajo 300 caracteres', () => {
+test('resume/compact: estado + modo breve, sin traspaso, bajo 400 caracteres', () => {
   const t = armarBreve({ fuente: 'resume', rama: 'x', sucios: ['a', 'b'], head: 'abc1234' })
   assert.match(t, /\[estado · resume\] rama x · HEAD abc1234 · 2 sin commitear/)
-  assert.ok(t.length < 300, `midió ${t.length}`)
+  assert.ok(t.length < 400, `midió ${t.length}`)
 })
 
 test('traspaso de más de 48 h entra sólo por título y ruta; uno fresco entra entero', () => {

@@ -38,6 +38,10 @@ evidencia suficiente; se escala sólo cuando la evidencia muestra que hace falta
   repitiendo trabajo determinístico.
 - **Bajo consumo no es menos control.** Se reemplaza generación por determinismo —tests,
   invariantes, scripts, evidencia—; nunca se baja la certeza ni la seguridad para ahorrar tokens.
+- **Modo permanente (dueño, 30/09/2026)**: contexto mínimo por tarea, lecturas por tramos,
+  herramientas determinísticas, modelo y esfuerzo según el riesgo, pruebas dirigidas, resultados
+  resumidos. Sin exploraciones generales, cargas redundantes, validaciones duplicadas ni subagentes
+  innecesarios. El hook `estado-sesion.mjs` lo recuerda en cada arranque y compactación.
 - **Respuestas cortas mientras se desarrolla**: HECHO / RESULTADO / PENDIENTE. No se narra cada
   archivo leído ni cada paso.
 
