@@ -29,7 +29,7 @@ export function VistaMovimientos({ parque, filtros, hoy = new Date() }: { parque
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 18, height: 34, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
-          <div>Cuándo</div><div>Qué se movió</div><div>Desde</div><div>Hacia</div><div>Quién</div>
+          <div>Cuándo</div><div>Qué se movió</div><div>Desde</div><div>Hacia</div><div>Quién lo tiene</div>
         </div>
         {r.length === 0 && <div style={{ fontSize: '13.5px', color: V.apagado, padding: '16px 0' }} data-testid="sin-movimientos">No hay movimientos con estos filtros.</div>}
         {r.map((m, i) => {
@@ -65,7 +65,11 @@ export function VistaMovimientos({ parque, filtros, hoy = new Date() }: { parque
                 {m.hacia}
                 {m.reimputacion && <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="reimputacion">reimputación · mismo cliente, no se movió</div>}
               </div>
-              <div style={m.quien ? { color: V.tintaSuave } : vacio}>{m.quien ?? 'sin registro'}</div>
+              {/* EPP y ropa: la persona a quien se le asignó. «Lo registró» es aparte: quien tipeó no es quien lo tiene. */}
+              <div style={m.persona || m.quien ? { color: V.tintaSuave } : vacio} data-testid="movimiento-quien">
+                {m.persona ?? m.quien ?? 'sin registro'}
+                {m.persona && m.quien && <div style={{ fontSize: '11.5px', color: V.apagado }}>lo registró {m.quien}</div>}
+              </div>
             </div>
           )
         })}

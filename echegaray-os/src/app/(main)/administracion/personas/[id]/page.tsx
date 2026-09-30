@@ -683,6 +683,7 @@ export default async function FichaPersonaPage({
               historial={vestimenta.historial}
               talles={vestimenta.talles}
               tallesSinBase={vestimenta.tallesSinBase}
+              trabajador={{ nombre: nombreLegal(persona.nombre_completo) ?? nombreDePersona(persona), dni: formatearDni(persona.dni), cuil: formatearCuit(persona.cuil) }}
             />
           )}
           {vista === 'epp' && vestimenta?.estado === 'falta_migracion' && (

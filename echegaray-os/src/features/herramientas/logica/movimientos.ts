@@ -5,7 +5,7 @@
 
 import { esReimputacion } from './clientes-lugar.ts'
 import type { Movimiento } from '../types.ts'
-import { autorDe, diasDesde, rotuloUbicacion, type Parque } from './parque.ts'
+import { autorDe, diasDesde, personaDelMovimiento, rotuloUbicacion, type Parque } from './parque.ts'
 import { claveDeOrden } from '../../../shared/personas/nombre.ts'
 
 export interface FiltrosMov {
@@ -21,6 +21,9 @@ export interface RenglonMov {
   activos: { id: string; nombre: string; codigo: string; clase: string }[]
   desde: string[]
   hacia: string
+  /** EPP y ropa: la persona que lo recibió o devolvió. null en herramientas y equipos. */
+  persona: string | null
+  /** Quién registró el movimiento (el usuario que apretó el botón). */
   quien: string | null
   nota: string | null
   alta: boolean
@@ -85,6 +88,7 @@ export function libroDeMovimientos(p: Parque, f: FiltrosMov, hoy: Date = new Dat
       }).sort((x, y) => Number(y.clase === 'rodado') - Number(x.clase === 'rodado') || x.nombre.localeCompare(y.nombre, 'es')),
       desde,
       hacia: rotuloUbicacion(p, primero.destino_id),
+      persona: personaDelMovimiento(p, primero),
       quien: autorDe(p, primero),
       nota: primero.nota && primero.nota !== 'alta' ? primero.nota : null,
       alta: ms.every((m) => !m.origen_id && !m.importado),

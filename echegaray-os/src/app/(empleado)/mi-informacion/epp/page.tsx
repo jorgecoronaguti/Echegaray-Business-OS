@@ -91,7 +91,7 @@ export default async function MiEppPage() {
                     key={f.activoId}
                     testid="mi-epp-fila"
                     titulo={f.nombre}
-                    detalle={`${talleDe(f)} · ${f.fecha ? `${f.yaLaTenia ? 'ya la tenías' : 'entregado'} el ${dmy(f.fecha)}` : 'sin registro de entrega'}`}
+                    detalle={`${talleDe(f)} · ${f.fecha ? `${f.yaLaTenia ? 'ya la tenías' : 'entregado'} el ${dmy(f.fecha)}${f.quien && !f.yaLaTenia ? ` por ${f.quien}` : ''}` : 'sin registro de entrega'}`}
                     senal={`× ${f.cantidad}`}
                     accion={f.respaldo ? <Constancia href={f.respaldo} /> : undefined}
                   />
@@ -110,7 +110,7 @@ export default async function MiEppPage() {
             {v.historial.map((h, i) => (
               <Fila
                 key={i}
-                titulo={`${ETIQUETA_EVENTO[h.tipo]} · ${h.nombre}`}
+                titulo={`${ETIQUETA_EVENTO[h.tipo]}${h.motivo ? ` (${h.motivo})` : ''} · ${h.nombre}`}
                 detalle={`${dmy(h.fecha) ?? 'sin fecha'} · × ${h.cantidad}`}
                 accion={h.respaldo ? <Constancia href={h.respaldo} /> : undefined}
               />

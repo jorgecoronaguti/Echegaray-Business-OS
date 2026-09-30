@@ -8,7 +8,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { aplicarBusqueda, cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
-import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloQuien, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
+import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, rotuloLugares, rotuloQuien, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo, Clase } from '../types'
@@ -185,7 +185,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <input type="checkbox" aria-label="Seleccionar todos" checked={lista.length > 0 && lista.every((a) => sel.includes(a.id))}
                 onChange={(e) => setSel(e.target.checked ? lista.map((a) => a.id) : [])} style={{ accentColor: V.grafito }} />
             </div>
-            <div>Activo</div><div>Categoría</div><div>Estado</div><div>Dónde</div><div>{personalMirado ? 'Quién lo tiene' : 'Quién la movió'}</div><div style={{ textAlign: 'right' }}>Visto</div>
+            <div>Activo</div><div>Categoría</div><div>Estado</div><div>Dónde</div><div>Quién lo tiene</div><div style={{ textAlign: 'right' }}>Visto</div>
           </div>
           </div>
         </div>
@@ -349,9 +349,10 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
   // Con un lugar filtrado, el lote muestra lo que hay AHÍ («× 3 de 8»); sin filtro, el total.
   const cant = cantidadVisible(parque, a, filtroUbicacion)
   const lugares = rotuloLugares(parque, a)
-  const quien = quienLaMovio(parque, a.id)
-  // EPP y ropa: la quinta columna es QUIÉN LO TIENE (dueño 30/09), no quién la movió. Dónde es la cuarta.
-  const tiene = esPersonal(a) ? rotuloQuien(parque, a) : null
+  // La quinta columna es SIEMPRE «Quién lo tiene» (dueño 30/09: «quién la movió» era un concepto errado, en EPP se
+  // asigna a una persona). Sale de `activo_existencia.persona_id`, nunca del último movimiento; «quién movió»
+  // sólo existe donde hay un movimiento (Movimientos, ficha). Dónde es la cuarta.
+  const tiene = rotuloQuien(parque, a)
   const visto = vistoEn(parque, a.id)
   const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
   // EPP y ropa: el stock se ve siempre (también 0) y en 0 dice «sin stock», no «sin ubicación cargada».
@@ -377,9 +378,9 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
       <div style={a.ubicacion_id ? { color: V.tintaSuave } : sinStock ? { color: V.apagado } : vacio}>
         {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : sinStock ? 'sin stock' : lugares}
       </div>
-      {tiene != null
-        ? <div style={tiene ? { color: V.tintaSuave, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : { color: V.apagado }} data-testid="quien-lo-tiene" title={tiene || undefined}>{tiene || 'nadie · disponible'}</div>
-        : <div style={quien ? { color: V.apagado } : vacio}>{quien ?? 'sin registro'}</div>}
+      <div style={tiene ? { color: V.tintaSuave, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : personal ? { color: V.apagado } : vacio} data-testid="quien-lo-tiene" title={tiene || undefined}>
+        {tiene || (personal ? 'nadie · disponible' : '')}
+      </div>
       <div style={{ textAlign: 'right', ...(visto ? { color: V.apagado } : vacio) }}>{textoVisto(visto)}</div>
     </div>
   )

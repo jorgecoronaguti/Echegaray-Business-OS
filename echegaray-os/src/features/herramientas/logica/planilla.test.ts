@@ -34,7 +34,7 @@ test('el control de la obra: lo que hay hoy por categoría, en el orden de la li
   assert.equal(c.unidades, 10, 'el lote cuenta su cantidad')
   const am = c.porCategoria[0].filas[0]
   assert.equal(am.dias, 83)
-  assert.equal(am.trajo, 'Rodrigo')
+  assert.equal(am.tiene, '', 'una herramienta sin asignar no dice quién la movió: la columna es de quien la tiene')
   assert.deepEqual(c.conProblema.map((f) => f.activo.id), ['c3'])
 })
 
