@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { intervalo, leerArgs, paraAvisar, textoDeFila, textoDeGrupo } from './control-de-fallas.mjs'
+import { intervalo, leerArgs, marcarAvisadas, paraAvisar, textoDeFila, textoDeGrupo } from './control-de-fallas.mjs'
 
 test('intervalo y argumentos', () => {
   assert.equal(intervalo('8h'), '8 hours')
@@ -25,4 +25,11 @@ test('textos: el grupo nuevo se marca, la fila dice a dónde la mandaron', () =>
   assert.match(t, /digest 3902547586/)
   assert.doesNotMatch(textoDeGrupo({ ...g, vista_por_primera_vez: '2026-09-01T00:00:00Z' }), /🆕/)
   assert.match(textoDeFila({ hora: '30/09 10:00:00', tipo: 'redireccion', metodo: 'GET', ruta: '/obras', consulta: '', estado: 307, destino: '/obras/hoy', dispositivo: 'pc', prestada: false, detalle: null }), /→ \/obras\/hoy \(307\)/)
+})
+
+test('marcarAvisadas: silenciado o fallido no marca; sólo el aviso que llegó', () => {
+  const nuevas = [{ tipo: 'error_cliente', firma: 'x' }]
+  assert.deepEqual(marcarAvisadas(['a'], nuevas, { ok: false, silenciado: true }), ['a'])
+  assert.deepEqual(marcarAvisadas(['a'], nuevas, undefined), ['a'])
+  assert.deepEqual(marcarAvisadas(['a'], nuevas, { ok: true, postId: 'p' }), ['a', 'error_cliente|x'])
 })

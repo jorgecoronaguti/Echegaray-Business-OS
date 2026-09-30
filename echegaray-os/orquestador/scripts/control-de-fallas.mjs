@@ -137,6 +137,12 @@ export function paraAvisar(gs, avisadas) {
   return gs.filter((g) => !ya.has(`${g.tipo}|${g.firma}`))
 }
 
+/** Qué queda marcado después de intentar avisar. Pura. Sólo un aviso que llegó (`ok`) marca: si el dueño
+ *  tenía los avisos apagados o el envío falló, la falla sigue sin avisar y la próxima corrida la intenta. */
+export function marcarAvisadas(avisadas, nuevas, r) {
+  return r?.ok ? [...avisadas, ...nuevas.map((g) => `${g.tipo}|${g.firma}`)] : avisadas
+}
+
 async function main() {
   const a = leerArgs(process.argv.slice(2))
   await import('../lib/config.mjs')
@@ -171,7 +177,7 @@ async function main() {
       const { avisar } = await import('./avisar-al-dueno.mjs')
       const texto = `**Fallas nuevas en la app** (${nuevas.length})\n\`\`\`\n${nuevas.slice(0, 8).map(textoDeGrupo).join('\n\n')}\n\`\`\`\nDetalle: \`node orquestador/scripts/control-de-fallas.mjs --desde 24h\``
       const r = await avisar(texto)
-      guardarAvisadas([...avisadas, ...nuevas.map((g) => `${g.tipo}|${g.firma}`)])
+      guardarAvisadas(marcarAvisadas(avisadas, nuevas, r))
       console.log(r.silenciado ? `NO avisado (avisos apagados): ${nuevas.length} grupos` : `avisado: ${nuevas.length} grupos · post ${r.postId}`)
       return
     }
