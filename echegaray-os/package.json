@@ -7,7 +7,7 @@
     "build": "scripts/recursos/ecos validacion -- next build",
     "start": "next start --hostname 127.0.0.1",
     "lint": "scripts/recursos/ecos validacion -- eslint .",
-    "typecheck": "scripts/recursos/ecos validacion -- sh -c \"NODE_OPTIONS=--max-old-space-size=2048 tsc --noEmit\"",
+    "typecheck": "scripts/recursos/ecos validacion -- sh -c \"NODE_OPTIONS=--max-old-space-size=2800 tsc --noEmit\"",
     "orq:worker": "node orquestador/worker.mjs",
     "orq:worker:once": "node orquestador/worker.mjs --once",
     "orq:health": "node orquestador/worker.mjs --health",
