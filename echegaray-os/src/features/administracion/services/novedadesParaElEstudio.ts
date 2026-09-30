@@ -1,50 +1,36 @@
 // «NOVEDADES PARA EL ESTUDIO» — el papel de la quincena que se le manda al contador.
 //
-// Dueño, 29/09/2026: un exportable por quincena, con los horarios de cada empleado y la liquidación estimada de
-// sus conceptos remunerativos y no remunerativos, para los contadores. El estudio liquida el sueldo; lo que
-// necesita de nosotros son las NOVEDADES (quién, qué categoría, qué días y horas, qué ausencias) y, como
-// referencia, lo que el panel estima.
+// ═══ NOVEDADES, NO UN RECIBO ESTIMADO (dueño, 30/09/2026, segundo rechazo) ═══
+//
+// «Te dije que esos conceptos no tenías que incluirlos en el export a contadores, rehacer todo.» El estudio
+// liquida el sueldo: los conceptos (0401, 0425, 4010…), los totales remunerativos y el bruto/neto los calcula
+// ÉL. Mandarle nuestra estimación de esos números es mandarle un segundo recibo que compite con el suyo. Lo que
+// necesita de nosotros son las novedades: quién, con qué legajo y categoría, a qué $/h y cuántas horas del blanco,
+// si cobra presentismo y por qué no, y qué pasó en la quincena (licencias, ingresos, egresos). Por eso este
+// módulo ya no toca un solo renglón del recibo: de `reciboFormatoContador` toma únicamente el $/h.
 //
 // ═══ SÓLO EL BLANCO, Y POR CONSTRUCCIÓN ═══
 //
-// Este módulo no lee el efectivo, los adelantos, los pagos ni el Banco del panel: de la liquidación
-// toma únicamente lo que ya pasa por `reciboFormatoContador` (reciboEstimado / conceptosReales / totalesReales).
-// No hay forma de que el negro entre porque el tipo de entrada no lo trae. Tampoco se copian los `avisos` del
-// recibo: comparan contra el Banco del panel y no son para el estudio.
+// No se lee el efectivo, los adelantos, los pagos ni el Banco del panel. Tampoco `netoMensual` de oficina: es el
+// acordado TOTAL (blanco + negro), no el sueldo del recibo. Como el cuadro no trae el mensual del blanco de la
+// oficina, esa columna no existe: un número inventado es peor que una columna ausente.
 //
-// ═══ DOS SECCIONES, COMO EN LIQ. DE HS (dueño, 30/09/2026) ═══
+// ═══ DOS BLOQUES, COMO EN LIQ. DE HS ═══
 //
-// «Rehacé lo del envío a los contadores: la lista de empleados, hs, legajo, categoría y valor hora, total de hs a
-// considerar y si le corresponde presentismo. Distinguí obreros de oficina, tal como en Liq. hs, y a esos les
-// ponés lo que les corresponde por recibo.» La separación es `linea`/`grupo` del cuadro (`FilaDelEspejo.grupo`),
-// la MISMA que dibuja la pantalla: no se re-deriva por rol ni por tarifa. Las liquidaciones finales (gente que ya
-// se fue) no van: el dueño las excluyó de la quincena y del costo de mano de obra.
-//
-// ═══ NADIE SE OMITE POR NO TENER RECIBO ═══
-//
-// Antes quien no tenía blanco por conceptos quedaba fuera. Ahora el pedido ES la lista de empleados: la persona
-// entra con su legajo, categoría, $/h, horas y presentismo, y los importes quedan vacíos con origen «Sin recibo».
-// El dueño ve cuántas son en `sinRecibo` y el archivo no inventa un número para ellas.
+// La separación es `FilaDelEspejo.grupo`, la MISMA que dibuja la pantalla: no se re-deriva por rol ni por tarifa.
+// Obreros (por hora) y oficina (mensuales) llevan columnas distintas porque el estudio les liquida cosas
+// distintas. Las liquidaciones finales (gente que ya se fue) no van: el dueño las excluyó de la quincena.
 //
 // ═══ CATEGORÍA Y $/H: LOS DEL RECIBO ═══
 //
-// El blanco usa la categoría, el $/h y las horas del último recibo real (`categoriaRecibo`). Sólo si la persona
-// nunca tuvo recibo cae a la del legajo, y la fila lo marca (`categoriaDelLegajo`) para que el estudio no la
-// tome por la del recibo.
-//
-// ═══ NADA SE RECALCULA ═══
-//
-// Los importes son los renglones del recibo; los subtotales, los del recibo. Las únicas sumas propias son los
-// totales del pie (suma de lo que ya está en cada fila) y el conteo de días/horas de las celdas de la grilla.
+// El blanco usa la categoría y el $/h del último recibo real (`categoriaRecibo`). Sólo si la persona nunca tuvo
+// recibo caen a los del legajo, y la fila lo dice en Observaciones para que el estudio no los tome por los suyos.
 
 import { compararPorApellido } from '../../../shared/personas/nombre.ts'
 import type { FilaDelEspejo } from './espejoDeJornales.ts'
 import type { PresentismoDeLinea } from './presentismo.ts'
-import { EMPLEADOR, esReciboContador, periodoDePago, reciboFormatoContador, type RenglonContador } from './reciboFormatoContador.ts'
-
-export type SeccionNovedad = 'remunerativo' | 'no_remunerativo' | 'descuento'
-
-export interface ColumnaDeConcepto { clave: string; seccion: SeccionNovedad; codigo: string; descripcion: string }
+import { EMPLEADOR, esReciboContador, periodoDePago, reciboFormatoContador } from './reciboFormatoContador.ts'
+import { categoriaVisible } from './vocabularioPersona.ts'
 
 /** Lo que la pantalla sabe de la persona y `FilaDelEspejo` no trae: viene del legajo. */
 export interface DatosDelLegajo {
@@ -52,17 +38,14 @@ export interface DatosDelLegajo {
   nombreCompleto: string | null
   legajo: string | null
   cuil: string | null
-  obra: string | null
+  convenio: string | null
+  puesto: string | null
 }
 
 /** Los dos cuadros que viajan al estudio. `final` (liquidaciones finales) no es parte de la quincena. */
 export type GrupoDeNovedades = 'obreros' | 'oficina'
-
-/**
- * «Sí» cumple (0425 sin 0426), «No» perdido (0426, por tardanzas). «No aplica»: oficina (mensual) o quincena
- * anterior al 16/09. «Sin dato»: sin horas o sin categoría y el recibo no lo dice.
- */
-export type TextoDePresentismo = 'Sí' | 'No' | 'No aplica' | 'Sin dato'
+/** Qué pidió el dueño bajar: un bloque o los dos. */
+export type AlcanceDeNovedades = GrupoDeNovedades | 'todos'
 
 export interface FilaDeNovedades {
   personaId: string
@@ -70,50 +53,25 @@ export interface FilaDeNovedades {
   legajo: string | null
   apellidoYNombre: string
   cuil: string | null
-  /** La del RECIBO; sin recibo previo, la del legajo (y `categoriaDelLegajo` es `true`). */
+  /** Obreros: la del RECIBO; sin recibo previo, la del legajo (`categoriaDelLegajo`). Oficina: la del legajo. */
   categoria: string | null
   categoriaDelLegajo: boolean
-  /** El $/h del blanco: el del recibo, o el piso de la categoría del legajo si nunca hubo recibo. */
+  convenio: string | null
+  puesto: string | null
+  /** Sólo obreros: el $/h del blanco (el del recibo; sin recibo previo, el piso de la categoría del legajo). */
   valorHora: number | null
-  obra: string | null
-  /** Las horas del blanco que el recibo considera. `null` = el panel no las trae (oficina, sin sueldo). */
-  horasAConsiderar: number | null
-  presentismo: TextoDePresentismo
-  diasTrabajados: number
-  horasNormales: number
-  horasExtra50: number
-  horasExtra100: number
-  horasTrabajadas: number
-  diasAusencia: number
-  diasAusenciaSinMotivo: number
-  diasLicencia: number
-  horasLicencia: number
-  origen: 'recibo' | 'estimado' | 'sin_recibo'
-  importes: Record<string, number | null>
-  totalRemunerativo: number | null
-  totalNoRemunerativo: number | null
-  sueldoBruto: number | null
-  totalDescuentos: number | null
-  neto: number | null
+  /** Sólo obreros: `sueldo.horasBlanco`, las horas del blanco que el panel considera para la quincena. */
+  horasBlanco: number | null
+  /** «Cumple» · «Perdido: llegó tarde 24/09; …» · «No aplica (mensual)» · «No rige» · «Sin dato». */
+  presentismo: string
+  /** Licencias, ingreso y egreso de la quincena; vacío si no hubo novedad. */
+  observaciones: string
 }
 
-export interface TotalesDeNovedades {
-  personas: number
-  horasAConsiderar: number
-  horasNormales: number
-  horasExtra50: number
-  horasExtra100: number
-  horasTrabajadas: number
-  diasAusencia: number
-  diasLicencia: number
-  porConcepto: Record<string, number>
-  totalRemunerativo: number
-  totalNoRemunerativo: number
-  sueldoBruto: number
-  totalDescuentos: number
-  neto: number
-  /** Filas con algún importe sin número (regla dudosa): sus totales no incluyen ese renglón. */
-  filasIncompletas: number
+export interface SeccionDeNovedades {
+  grupo: GrupoDeNovedades
+  titulo: 'OBREROS' | 'OFICINA'
+  filas: FilaDeNovedades[]
 }
 
 export interface ReporteDeNovedades {
@@ -121,60 +79,61 @@ export interface ReporteDeNovedades {
   titulo: string
   periodo: { desde: string; hasta: string; texto: string }
   emision: string
-  feriadosDeLaQuincena: number | null
+  alcance: AlcanceDeNovedades
   leyenda: string
-  columnas: ColumnaDeConcepto[]
-  /** Todas las filas, en el orden en que se escriben: primero OBREROS, después OFICINA. */
-  filas: FilaDeNovedades[]
+  /** Sólo los bloques pedidos, en orden: primero OBREROS, después OFICINA. */
   secciones: SeccionDeNovedades[]
-  totales: TotalesDeNovedades
+  filas: FilaDeNovedades[]
   /** Uso interno de la pantalla: NO se escribe en el archivo. Liquidaciones finales, que no entran. */
   excluidos: number
-  /** Personas en el archivo sin recibo (ni real ni estimado): van con importes vacíos. */
+  /** Obreros sin recibo previo: categoría y $/h del legajo. */
   sinRecibo: number
 }
 
-export interface SeccionDeNovedades {
-  grupo: GrupoDeNovedades
-  titulo: 'OBREROS' | 'OFICINA'
-  filas: FilaDeNovedades[]
-  totales: TotalesDeNovedades
+export const TITULO_DEL_REPORTE = 'Novedades de la quincena para el estudio'
+
+export const LEYENDA_NOVEDADES =
+  'Novedades de la quincena informadas por Echegaray Construcciones. Los conceptos e importes del recibo los liquida el estudio. '
+  + 'Horas del blanco: las que el OS considera para el recibo de la quincena. Presentismo: rige desde la quincena 2 de 09/2026.'
+
+const TITULO_DE: Record<GrupoDeNovedades, SeccionDeNovedades['titulo']> = { obreros: 'OBREROS', oficina: 'OFICINA' }
+const GRUPOS: readonly GrupoDeNovedades[] = ['obreros', 'oficina']
+const esGrupoDeNovedades = (g: string): g is GrupoDeNovedades => g === 'obreros' || g === 'oficina'
+/**
+ * El legajo guarda el CUIL a veces con guiones y a veces sin: al estudio le llega siempre igual (XX-XXXXXXXX-X).
+ * Sólo se reordena lo que tiene exactamente 11 dígitos; cualquier otra cosa va tal cual, para no esconder un error.
+ */
+export function cuilConGuiones(cuil: string | null): string | null {
+  const d = cuil?.replace(/\D/g, '') ?? ''
+  return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : cuil
+}
+const ddmm = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * EL PRESENTISMO CON SU PORQUÉ. Lo dice `presentismo.ts`, el mismo estado que muestra la pantalla. Al estudio no
+ * le alcanza un «No»: si lo perdió, tiene que ver qué día y por qué, porque es lo que se discute con el empleado.
+ */
+export function textoDePresentismo(p: PresentismoDeLinea | null): string {
+  if (p?.estado === 'aplica') return p.restituido ? 'Cumple (restituido)' : 'Cumple'
+  if (p?.estado === 'no_aplica') return p.motivoNoAplica ? `No aplica (${p.motivoNoAplica})` : 'No aplica'
+  if (p?.estado === 'no_rige') return 'No rige'
+  if (p?.estado !== 'perdido') return 'Sin dato'
+  const porEtiqueta = new Map<string, string[]>()
+  for (const c of p.causas) porEtiqueta.set(c.etiqueta, [...(porEtiqueta.get(c.etiqueta) ?? []), ddmm(c.fecha)])
+  const detalle = [...porEtiqueta].map(([etiqueta, fechas]) => `${etiqueta.toLowerCase()} ${fechas.join(', ')}`)
+  return detalle.length ? `Perdido: ${detalle.join('; ')}` : 'Perdido'
 }
 
-export const LEYENDA_ESTIMADO =
-  'Importes ESTIMADOS por el OS de Echegaray Construcciones con las horas cargadas de la quincena. No son la liquidación: '
-  + 'el recibo oficial lo emite el estudio. Las filas con origen «Recibo del estudio» llevan los conceptos del recibo ya cargado. '
-  + '* Sin recibo previo: categoría y valor hora son los del legajo del OS. '
-  + 'Presentismo: Sí = cumple (concepto 0425 sin 0426); No = perdido por tardanzas (0426); rige desde la quincena 2 de 09/2026.'
-
-const ORDEN_SECCION: Record<SeccionNovedad, number> = { remunerativo: 0, no_remunerativo: 1, descuento: 2 }
-const r2 = (n: number): number => Math.round(n * 100) / 100
-
-export function rotuloDeSeccion(s: SeccionNovedad): string {
-  return s === 'remunerativo' ? 'Remunerativo' : s === 'no_remunerativo' ? 'No remunerativo' : 'Descuentos'
+/** Lo que pasó en la quincena y el estudio tiene que saber: licencias, ingreso, egreso. Sólo de lo que ya está. */
+export function observacionesDe(f: FilaDelEspejo, q: { desde: string; hasta: string }, sinReciboPrevio: boolean): string {
+  const partes: string[] = []
+  const licencias = f.celdas.filter((c) => c.marca === 'licencia').map((c) => ddmm(c.fecha))
+  if (licencias.length) partes.push(`Licencia ${licencias.length} ${licencias.length === 1 ? 'día' : 'días'}: ${licencias.join(', ')}`)
+  if (f.alta && f.alta >= q.desde && f.alta <= q.hasta) partes.push(`Ingresó el ${ddmm(f.alta)}`)
+  if (f.baja) partes.push(`Egreso: ${f.baja.texto}`)
+  if (sinReciboPrevio) partes.push('Sin recibo previo: categoría y $/h del legajo')
+  return partes.join(' · ')
 }
-
-interface ConteoDeDias {
-  diasTrabajados: number; diasAusencia: number; diasAusenciaSinMotivo: number; diasLicencia: number; horasLicencia: number
-}
-
-/** Días y horas de las celdas de la grilla tal cual las pinta el panel (una celda = un día). */
-function contarDias(fila: FilaDelEspejo): ConteoDeDias {
-  const c: ConteoDeDias = { diasTrabajados: 0, diasAusencia: 0, diasAusenciaSinMotivo: 0, diasLicencia: 0, horasLicencia: 0 }
-  for (const x of fila.celdas) {
-    if (x.marca === 'horas' && (x.horas ?? 0) > 0) c.diasTrabajados += 1
-    else if (x.marca === 'ausencia') { c.diasAusencia += 1; if (x.sinMotivo) c.diasAusenciaSinMotivo += 1 }
-    else if (x.marca === 'licencia') { c.diasLicencia += 1; c.horasLicencia += x.horas ?? 0 }
-  }
-  c.horasLicencia = r2(c.horasLicencia)
-  return c
-}
-
-const renglonesDe = (r: { remunerativo: RenglonContador[]; noRemunerativo: RenglonContador[]; descuentos: RenglonContador[] }) => [
-  ...r.remunerativo.map((x) => ({ x, seccion: 'remunerativo' as const })),
-  ...r.noRemunerativo.map((x) => ({ x, seccion: 'no_remunerativo' as const })),
-  ...r.descuentos.map((x) => ({ x, seccion: 'descuento' as const })),
-]
 
 export interface EntradaDeNovedades {
   filas: readonly FilaDelEspejo[]
@@ -182,100 +141,54 @@ export interface EntradaDeNovedades {
   quincena: { desde: string; hasta: string }
   /** `YYYY-MM-DD` de hoy: se pasa, no se lee del reloj, para que el armado sea puro. */
   emision: string
-  feriados: number | null
+  alcance?: AlcanceDeNovedades
 }
 
-const TITULO_DE: Record<GrupoDeNovedades, SeccionDeNovedades['titulo']> = { obreros: 'OBREROS', oficina: 'OFICINA' }
-const GRUPOS: readonly GrupoDeNovedades[] = ['obreros', 'oficina']
-const esGrupoDeNovedades = (g: string): g is GrupoDeNovedades => g === 'obreros' || g === 'oficina'
-
-/**
- * SÍ / NO DEL PRESENTISMO. Lo dice `presentismo.ts` (el mismo estado que muestra la pantalla); sólo cuando el panel
- * no lo pudo evaluar y el recibo es el REAL del estudio se lee el hecho del papel: 0426 = perdido, 0425 = cumple.
- * Con estimado no se lee: el estimado ya salió de ese mismo estado y confirmarlo con él sería un control circular.
- */
-export function textoDePresentismo(
-  p: PresentismoDeLinea | null, origen: FilaDeNovedades['origen'], importes: Record<string, number | null>,
-): TextoDePresentismo {
-  if (p?.estado === 'aplica') return 'Sí'
-  if (p?.estado === 'perdido') return 'No'
-  if (p?.estado === 'no_aplica' || p?.estado === 'no_rige') return 'No aplica'
-  if (origen === 'recibo') {
-    if (importes['remunerativo:0426'] != null || importes['descuento:0426'] != null) return 'No'
-    if (importes['remunerativo:0425'] != null) return 'Sí'
+function filaDe(f: FilaDelEspejo & { grupo: GrupoDeNovedades }, l: DatosDelLegajo | undefined, q: EntradaDeNovedades['quincena']): FilaDeNovedades {
+  const base = {
+    personaId: f.personaId, grupo: f.grupo, legajo: l?.legajo ?? null, cuil: cuilConGuiones(l?.cuil ?? null),
+    apellidoYNombre: l?.nombreCompleto ?? f.nombre, convenio: l?.convenio ?? null, puesto: l?.puesto ?? null,
+    presentismo: textoDePresentismo(f.linea.presentismo),
   }
-  return 'Sin dato'
+  if (f.grupo === 'oficina') {
+    return { ...base, categoria: categoriaVisible(f.categoria, l?.puesto ?? null), categoriaDelLegajo: true,
+      valorHora: null, horasBlanco: null, observaciones: observacionesDe(f, q, false) }
+  }
+  const s = f.linea.sueldo
+  const r = reciboFormatoContador(s)
+  const categoriaRecibo = s?.categoriaRecibo ?? null
+  return {
+    ...base,
+    categoria: categoriaRecibo ?? categoriaVisible(f.categoria, l?.puesto ?? null), categoriaDelLegajo: categoriaRecibo == null,
+    valorHora: esReciboContador(r) ? r.valorHora : (s?.valorHoraCategoria ?? null),
+    horasBlanco: s?.horasBlanco ?? null,
+    observaciones: observacionesDe(f, q, categoriaRecibo == null),
+  }
 }
 
-/** Arma el reporte. Orden: sección (obreros, oficina) y dentro apellido (el comparador único de personas). */
+/** Arma el reporte. Orden: bloque (obreros, oficina) y dentro apellido (el comparador único de personas). */
 export function novedadesParaElEstudio(e: EntradaDeNovedades): ReporteDeNovedades {
-  const columnas = new Map<string, ColumnaDeConcepto>()
+  const alcance = e.alcance ?? 'todos'
   const filas: FilaDeNovedades[] = []
   let excluidos = 0
   for (const f of e.filas) {
-    if (!esGrupoDeNovedades(f.grupo)) { excluidos += 1; continue }
-    const s = f.linea.sueldo
-    const r = reciboFormatoContador(s)
-    const conRecibo = esReciboContador(r)
-    const l = e.legajos.get(f.personaId)
-    const importes: Record<string, number | null> = {}
-    if (conRecibo) {
-      for (const { x, seccion } of renglonesDe(r)) {
-        const clave = `${seccion}:${x.codigo}`
-        if (!columnas.has(clave)) columnas.set(clave, { clave, seccion, codigo: x.codigo, descripcion: x.descripcion })
-        importes[clave] = x.monto
-      }
-    }
-    const origen = conRecibo ? r.origen : 'sin_recibo'
-    const categoriaRecibo = s?.categoriaRecibo ?? null
-    filas.push({
-      personaId: f.personaId, grupo: f.grupo, legajo: l?.legajo ?? null, cuil: l?.cuil ?? null, obra: l?.obra ?? null,
-      apellidoYNombre: l?.nombreCompleto ?? f.nombre,
-      categoria: categoriaRecibo ?? f.categoria, categoriaDelLegajo: categoriaRecibo == null,
-      valorHora: conRecibo ? r.valorHora : (s?.valorHoraCategoria ?? null),
-      horasAConsiderar: s?.horasBlanco ?? null,
-      presentismo: textoDePresentismo(f.linea.presentismo, origen, importes),
-      ...contarDias(f),
-      horasNormales: f.horasPorTipo.normales, horasExtra50: f.horasPorTipo.extra50,
-      horasExtra100: f.horasPorTipo.extra100, horasTrabajadas: f.horasPorTipo.total,
-      origen, importes,
-      totalRemunerativo: conRecibo ? r.totalRemunerativo : null, totalNoRemunerativo: conRecibo ? r.totalNoRemunerativo : null,
-      sueldoBruto: conRecibo ? r.sueldoBruto : null, totalDescuentos: conRecibo ? r.totalDescuentos : null,
-      // Si el recibo no cuadra el neto no se afirma (misma regla que el recibo en blanco).
-      neto: conRecibo && r.cuadra ? r.neto : null,
-    })
+    const grupo = f.grupo
+    if (!esGrupoDeNovedades(grupo)) { excluidos += 1; continue }
+    if (alcance !== 'todos' && grupo !== alcance) continue
+    filas.push(filaDe({ ...f, grupo }, e.legajos.get(f.personaId), e.quincena))
   }
-  const cols = [...columnas.values()].sort((a, b) =>
-    ORDEN_SECCION[a.seccion] - ORDEN_SECCION[b.seccion] || a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
-  const secciones = GRUPOS.map((grupo): SeccionDeNovedades => {
-    const suyas = filas.filter((x) => x.grupo === grupo).sort((a, b) => compararPorApellido(a.apellidoYNombre, b.apellidoYNombre))
-    return { grupo, titulo: TITULO_DE[grupo], filas: suyas, totales: totalizar(suyas, cols) }
-  })
+  const secciones = GRUPOS.filter((g) => alcance === 'todos' || g === alcance).map((grupo): SeccionDeNovedades => ({
+    grupo, titulo: TITULO_DE[grupo],
+    filas: filas.filter((x) => x.grupo === grupo).sort((a, b) => compararPorApellido(a.apellidoYNombre, b.apellidoYNombre)),
+  }))
   const ordenadas = secciones.flatMap((x) => x.filas)
   const p = periodoDePago(e.quincena.desde)
   return {
     empleador: { razonSocial: EMPLEADOR.razonSocial, cuit: EMPLEADOR.cuit },
-    titulo: `Novedades para el estudio · ${p.texto}`,
+    titulo: TITULO_DEL_REPORTE,
     periodo: { desde: e.quincena.desde, hasta: e.quincena.hasta, texto: p.texto },
-    emision: e.emision, feriadosDeLaQuincena: e.feriados, leyenda: LEYENDA_ESTIMADO,
-    columnas: cols, filas: ordenadas, secciones, totales: totalizar(ordenadas, cols), excluidos,
-    sinRecibo: ordenadas.filter((x) => x.origen === 'sin_recibo').length,
-  }
-}
-
-function totalizar(filas: readonly FilaDeNovedades[], cols: readonly ColumnaDeConcepto[]): TotalesDeNovedades {
-  const suma = (f: (x: FilaDeNovedades) => number | null): number => r2(filas.reduce((a, x) => a + (f(x) ?? 0), 0))
-  const porConcepto: Record<string, number> = {}
-  for (const c of cols) porConcepto[c.clave] = suma((x) => x.importes[c.clave] ?? null)
-  return {
-    personas: filas.length,
-    horasAConsiderar: suma((x) => x.horasAConsiderar),
-    horasNormales: suma((x) => x.horasNormales), horasExtra50: suma((x) => x.horasExtra50),
-    horasExtra100: suma((x) => x.horasExtra100), horasTrabajadas: suma((x) => x.horasTrabajadas),
-    diasAusencia: suma((x) => x.diasAusencia), diasLicencia: suma((x) => x.diasLicencia),
-    porConcepto,
-    totalRemunerativo: suma((x) => x.totalRemunerativo), totalNoRemunerativo: suma((x) => x.totalNoRemunerativo),
-    sueldoBruto: suma((x) => x.sueldoBruto), totalDescuentos: suma((x) => x.totalDescuentos), neto: suma((x) => x.neto),
-    filasIncompletas: filas.filter((x) => x.neto == null || Object.values(x.importes).some((m) => m == null)).length,
+    emision: e.emision, alcance, leyenda: LEYENDA_NOVEDADES,
+    secciones, filas: ordenadas, excluidos,
+    sinRecibo: ordenadas.filter((x) => x.grupo === 'obreros' && x.categoriaDelLegajo).length,
   }
 }

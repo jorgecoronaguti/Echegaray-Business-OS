@@ -1,79 +1,66 @@
 // LAS COLUMNAS DE «NOVEDADES PARA EL ESTUDIO», UNA SOLA VEZ: el Excel y el PDF las leen de acá.
 //
 // Si cada formato armara su lista, el PDF y la planilla que recibe el estudio terminarían con rótulos u orden
-// distintos para la misma quincena. Acá sólo se decide QUÉ columna es y de dónde sale su valor y su total;
-// cómo se dibuja es cosa de cada formato.
+// distintos para la misma quincena. Acá sólo se decide QUÉ columna es y de dónde sale su valor; cómo se dibuja es
+// cosa de cada formato.
+//
+// Obreros y oficina tienen columnas distintas porque el estudio les liquida cosas distintas: al obrero, horas por
+// $/h de su categoría UOCRA; a la oficina, un mensual. Ninguna columna es un concepto ni un importe del recibo
+// (dueño, 30/09/2026): eso lo liquida el estudio.
 
-import type { FilaDeNovedades, ReporteDeNovedades, SeccionNovedad } from './novedadesParaElEstudio.ts'
+import type { AlcanceDeNovedades, FilaDeNovedades, GrupoDeNovedades, ReporteDeNovedades } from './novedadesParaElEstudio.ts'
 
 export type Valor = string | number | null
 
 export interface ColumnaDeSalida {
   titulo: string
-  tipo: 'texto' | 'horas' | 'dias' | 'plata'
+  tipo: 'texto' | 'horas' | 'plata'
   valor: (f: FilaDeNovedades) => Valor
-  /** Va en la hoja resumen del PDF; las demás (una por concepto) van en el detalle. */
-  resumen: boolean
-  /** Un valor por unidad (el $/h): sumarlo por columna no significa nada, el pie va vacío. */
-  sinTotal?: true
-  /** Un renglón de concepto del recibo (no un subtotal): va en las tablas de detalle del PDF. */
-  concepto?: true
+  /** Ancho relativo en el PDF: los textos largos (nombre, presentismo, observaciones) piden más. */
+  peso: number
 }
 
-const texto = (titulo: string, valor: (f: FilaDeNovedades) => Valor, resumen = true): ColumnaDeSalida =>
-  ({ titulo, tipo: 'texto', valor, resumen })
-const num = (titulo: string, tipo: 'horas' | 'dias' | 'plata', valor: (f: FilaDeNovedades) => Valor, resumen = true): ColumnaDeSalida =>
-  ({ titulo, tipo, valor, resumen })
+const col = (titulo: string, tipo: ColumnaDeSalida['tipo'], peso: number, valor: ColumnaDeSalida['valor']): ColumnaDeSalida =>
+  ({ titulo, tipo, valor, peso })
 
-const ROTULO: Record<SeccionNovedad, string> = { remunerativo: 'Rem.', no_remunerativo: 'No rem.', descuento: 'Desc.' }
+const IDENTIDAD: readonly ColumnaDeSalida[] = [
+  col('Legajo N.º', 'texto', 0.6, (f) => f.legajo),
+  col('Apellido y nombre', 'texto', 2, (f) => f.apellidoYNombre),
+  col('CUIL', 'texto', 1.1, (f) => f.cuil),
+]
+const NOVEDADES: readonly ColumnaDeSalida[] = [
+  col('Presentismo', 'texto', 2.2, (f) => f.presentismo),
+  col('Observaciones', 'texto', 2.4, (f) => f.observaciones || null),
+]
 
-export function columnasDeSalida(r: ReporteDeNovedades): ColumnaDeSalida[] {
-  const deSeccion = (s: SeccionNovedad, subtotal: ColumnaDeSalida): ColumnaDeSalida[] => [
-    ...r.columnas.filter((c) => c.seccion === s).map((c) =>
-      ({ ...num(`${ROTULO[s]} ${c.codigo} ${c.descripcion}`, 'plata', (f) => f.importes[c.clave] ?? null, false), concepto: true as const })),
-    subtotal,
-  ]
-  return [
-    texto('Legajo N.º', (f) => f.legajo),
-    texto('Apellido y nombre', (f) => f.apellidoYNombre),
-    texto('CUIL', (f) => f.cuil),
-    // La marca «*» dice que la categoría y el $/h son los del legajo: la persona nunca tuvo recibo.
-    texto('Categoría', (f) => (f.categoria == null ? null : `${f.categoria}${f.categoriaDelLegajo ? ' *' : ''}`)),
-    { ...num('Valor hora', 'plata', (f) => f.valorHora), sinTotal: true },
-    texto('Obra', (f) => f.obra, false),
-    num('Hs de la quincena', 'horas', (f) => f.horasTrabajadas),
-    num('Hs normales', 'horas', (f) => f.horasNormales, false),
-    num('Hs extra 50%', 'horas', (f) => f.horasExtra50, false),
-    num('Hs extra 100%', 'horas', (f) => f.horasExtra100, false),
-    num('Total hs a considerar', 'horas', (f) => f.horasAConsiderar),
-    texto('Presentismo', (f) => f.presentismo),
-    num('Días trabajados', 'dias', (f) => f.diasTrabajados, false),
-    num('Días ausencia', 'dias', (f) => f.diasAusencia),
-    num('Ausencias sin motivo', 'dias', (f) => f.diasAusenciaSinMotivo, false),
-    num('Días licencia', 'dias', (f) => f.diasLicencia),
-    num('Hs licencia', 'horas', (f) => f.horasLicencia, false),
-    texto('Origen del importe', (f) => (f.origen === 'recibo' ? 'Recibo del estudio' : f.origen === 'estimado' ? 'Estimado' : 'Sin recibo')),
-    ...deSeccion('remunerativo', num('Total remunerativo', 'plata', (f) => f.totalRemunerativo)),
-    ...deSeccion('no_remunerativo', num('Total no remunerativo', 'plata', (f) => f.totalNoRemunerativo)),
-    ...deSeccion('descuento', num('Total descuentos', 'plata', (f) => f.totalDescuentos)),
-    num('Sueldo bruto estimado', 'plata', (f) => f.sueldoBruto, false),
-    num('Neto estimado', 'plata', (f) => f.neto),
-  ]
+const COLUMNAS: Record<GrupoDeNovedades, readonly ColumnaDeSalida[]> = {
+  obreros: [
+    ...IDENTIDAD,
+    col('Categoría UOCRA', 'texto', 1.1, (f) => f.categoria),
+    col('$/h blanco', 'plata', 0.8, (f) => f.valorHora),
+    col('Hs blanco de la quincena', 'horas', 0.8, (f) => f.horasBlanco),
+    ...NOVEDADES,
+  ],
+  oficina: [
+    ...IDENTIDAD,
+    col('Convenio', 'texto', 1.6, (f) => f.convenio),
+    col('Categoría', 'texto', 1.1, (f) => f.categoria),
+    col('Puesto', 'texto', 1.1, (f) => f.puesto),
+    ...NOVEDADES,
+  ],
 }
 
-/**
- * EL TOTAL DEL PIE ES LA SUMA DE LA COLUMNA QUE SE VE. Una sola cuenta para las dos salidas y para cada sección
- * (subtotal) y el total general: el pie del Excel y el del PDF no pueden separarse de las filas de arriba. Un renglón sin número (regla dudosa) no suma.
- */
-export function totalDeColumna(filas: readonly FilaDeNovedades[], c: ColumnaDeSalida): number | null {
-  if (c.tipo === 'texto' || c.sinTotal) return null
-  const t = filas.reduce((a, f) => a + (Number(c.valor(f)) || 0), 0)
-  return Math.round(t * 100) / 100
-}
+export const columnasDe = (g: GrupoDeNovedades): readonly ColumnaDeSalida[] => COLUMNAS[g]
 
 const fechaAR = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
-/** La línea del período, igual en el Excel y en el PDF. */
-export const lineaDelPeriodo = (r: ReporteDeNovedades): string =>
-  `Período: ${fechaAR(r.periodo.desde)} al ${fechaAR(r.periodo.hasta)} · Emitido el ${fechaAR(r.emision)}`
-  + (r.feriadosDeLaQuincena == null ? '' : ` · Feriados en la quincena: ${r.feriadosDeLaQuincena}`)
+const ROTULO_ALCANCE: Record<AlcanceDeNovedades, string> = {
+  todos: 'Obreros y oficina', obreros: 'Obreros (jornaleros por hora)', oficina: 'Oficina (mensuales)',
+}
+
+/** Las líneas del encabezado, iguales en el Excel y en el PDF. */
+export const lineasDelEncabezado = (r: ReporteDeNovedades): string[] => [
+  `${r.empleador.razonSocial} · CUIT ${r.empleador.cuit}`,
+  `Quincena: ${fechaAR(r.periodo.desde)} al ${fechaAR(r.periodo.hasta)} (${r.periodo.texto})`,
+  `Grupo: ${ROTULO_ALCANCE[r.alcance]} · Emitido el ${fechaAR(r.emision)}`,
+]

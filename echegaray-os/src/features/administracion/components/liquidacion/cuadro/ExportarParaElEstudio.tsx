@@ -12,6 +12,13 @@ import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 
 type Formato = 'xlsx' | 'pdf'
+type Grupo = 'todos' | 'obreros' | 'oficina'
+
+// Obreros y oficina se liquidan distinto: el dueño puede mandar cada bloque por separado.
+const GRUPOS: { valor: Grupo; texto: string }[] = [
+  { valor: 'todos', texto: 'Obreros y oficina' }, { valor: 'obreros', texto: 'Sólo obreros' }, { valor: 'oficina', texto: 'Sólo oficina' },
+]
+const SELECT = { padding: '6px 8px', borderRadius: 6, fontSize: '12.5px', background: '#FFFFFF', flexBasis: '100%', minWidth: 0 } as const
 
 // Mismo estilo que los enlaces de «Más» (BarraSolapas).
 const ITEM = { padding: '7px 10px', borderRadius: 5, color: V.tinta, fontSize: '12.5px', fontWeight: 400 } as const
@@ -24,6 +31,7 @@ export function ExportarParaElEstudio({ quincenas, actual }: {
 }) {
   const [abierto, setAbierto] = useState(false)
   const [desde, setDesde] = useState(actual)
+  const [grupo, setGrupo] = useState<Grupo>('todos')
   const [ocupado, setOcupado] = useState<Formato | null>(null)
   const [mensaje, setMensaje] = useState<{ tono: 'ok' | 'error'; texto: string } | null>(null)
 
@@ -31,7 +39,7 @@ export function ExportarParaElEstudio({ quincenas, actual }: {
     setOcupado(formato)
     setMensaje(null)
     try {
-      const res = await fetch(`/administracion/personas/novedades-estudio?quincena=${encodeURIComponent(desde)}&formato=${formato}`, { cache: 'no-store' })
+      const res = await fetch(`/administracion/personas/novedades-estudio?quincena=${encodeURIComponent(desde)}&formato=${formato}&grupo=${grupo}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(res.status === 404 ? 'sin permiso' : `error ${res.status}`)
       const blob = await res.blob()
       const nombre = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `novedades-estudio.${formato}`
@@ -46,7 +54,7 @@ export function ExportarParaElEstudio({ quincenas, actual }: {
       const sinRecibo = Number(res.headers.get('X-Novedades-Sin-Recibo') ?? 0)
       setMensaje({
         tono: 'ok',
-        texto: `${res.headers.get('X-Novedades-Personas') ?? '?'} personas en el archivo${sinRecibo > 0 ? ` · ${sinRecibo} sin recibo previo (importes vacíos)` : ''}`,
+        texto: `${res.headers.get('X-Novedades-Personas') ?? '?'} personas en el archivo${sinRecibo > 0 ? ` · ${sinRecibo} sin recibo previo (categoría y $/h del legajo)` : ''}`,
       })
     } catch (e) {
       setMensaje({ tono: 'error', texto: `No se pudo generar el archivo: ${e instanceof Error ? e.message : 'error desconocido'}` })
@@ -68,8 +76,13 @@ export function ExportarParaElEstudio({ quincenas, actual }: {
     <div data-testid="exportar-estudio" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 10px' }}>
       <select value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Quincena a exportar" data-testid="exportar-estudio-quincena"
         className={TACTIL}
-        style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${V.linea}`, fontSize: '12.5px', background: '#FFFFFF', color: V.tinta, flexBasis: '100%', minWidth: 0 }}>
+        style={{ ...SELECT, border: `1px solid ${V.linea}`, color: V.tinta }}>
         {quincenas.map((q) => <option key={q.desde} value={q.desde}>{q.texto}</option>)}
+      </select>
+      <select value={grupo} onChange={(e) => setGrupo(GRUPOS.find((g) => g.valor === e.target.value)?.valor ?? 'todos')} aria-label="Grupo a exportar" data-testid="exportar-estudio-grupo"
+        className={TACTIL}
+        style={{ ...SELECT, border: `1px solid ${V.linea}`, color: V.tinta }}>
+        {GRUPOS.map((g) => <option key={g.valor} value={g.valor}>{g.texto}</option>)}
       </select>
       {(['xlsx', 'pdf'] as const).map((f) => (
         <button key={f} type="button" disabled={ocupado != null} onClick={() => bajar(f)} data-testid={`exportar-estudio-${f}`}
