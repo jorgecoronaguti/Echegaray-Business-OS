@@ -36,7 +36,7 @@ export default async function StockCampoPage() {
         </Link>
       )}
       {stock.estado === 'ok' && (
-        <StockPorLugar lugares={stock.lugares} existencias={stock.existencias} puedeOperar={puedeOperarMaterial(perfil.data?.rol)} cara="telefono" />
+        <StockPorLugar lugares={stock.lugares} existencias={stock.existencias} puedeOperar={puedeOperarMaterial(perfil.data?.rol)} cara="telefono" destinos={stock.destinos} />
       )}
     </MarcoCampo>
   )

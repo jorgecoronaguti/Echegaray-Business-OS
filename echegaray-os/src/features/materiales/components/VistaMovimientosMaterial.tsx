@@ -15,14 +15,16 @@ import { MAX_MOVIMIENTOS } from '../services/stockService'
 const BASE = '/herramientas/material'
 const COLS = '120px minmax(0,1.3fr) 130px minmax(0,1.2fr) minmax(0,1fr)'
 
-export function VistaMovimientosMaterial({ movimientos, lugares, remitos, tipo, lugar }: {
+export function VistaMovimientosMaterial({ movimientos, lugares, remitos, tipo, lugar, rotulosObra = {} }: {
   movimientos: MovimientoMaterial[]
   lugares: Lugar[]
   remitos: Remito[]
   tipo: TipoMovimiento | null
   lugar: string | null
+  /** «OB-00xx · Obra» por id, para nombrar el acopio de cada asiento. */
+  rotulosObra?: Record<string, string>
 }) {
-  const filas = libroMaterial(movimientos, lugares, remitos, { tipo, lugar })
+  const filas = libroMaterial(movimientos, lugares, remitos, { tipo, lugar }, rotulosObra)
   const href = (t: TipoMovimiento | null, l: string | null) => {
     const p = new URLSearchParams({ ver: 'movimientos' })
     if (t) p.set('tipo', t)

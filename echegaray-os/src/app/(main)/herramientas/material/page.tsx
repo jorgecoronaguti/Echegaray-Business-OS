@@ -102,11 +102,11 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
           <VistaResumenMaterial pedidos={lectura.pedidos} existencias={stock.existencias} lugares={stock.lugares} movimientos={movimientos} />
         )}
         {solapa === 'inventario' && stock.estado === 'ok' && (
-          <VistaInventarioMaterial existencias={stock.existencias} lugares={stock.lugares} movimientos={movimientos ?? []} destinos={stock.destinos}
+          <VistaInventarioMaterial existencias={stock.existencias} lugares={stock.lugares} movimientos={movimientos ?? []} destinos={stock.destinos} rotulosObra={stock.rotulosObra}
             q={uno(sp.q)} lugar={uno(sp.lugar)} puedeOperar={puedeOperar} />
         )}
         {solapa === 'movimientos' && stock.estado === 'ok' && movimientos && (
-          <VistaMovimientosMaterial movimientos={movimientos} lugares={stock.lugares} remitos={stock.remitos} tipo={tipoLibroDeUrl(uno(sp.tipo))} lugar={uno(sp.lugar)} />
+          <VistaMovimientosMaterial movimientos={movimientos} lugares={stock.lugares} remitos={stock.remitos} tipo={tipoLibroDeUrl(uno(sp.tipo))} lugar={uno(sp.lugar)} rotulosObra={stock.rotulosObra} />
         )}
         {solapa === 'ubicaciones' && stock.estado === 'ok' && (
           <StockEscritorio lugares={stock.lugares} existencias={stock.existencias} destinos={stock.destinos} remitos={stock.remitos} puedeOperar={puedeOperar} />

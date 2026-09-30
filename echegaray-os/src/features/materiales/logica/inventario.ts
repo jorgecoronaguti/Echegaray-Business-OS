@@ -14,7 +14,7 @@ import { sinEntregar, lecturaPedido } from '../../../shared/lib/estadoPedidoMate
 import { hrefMaterialEscritorio, type Pedido } from './pedidos.ts'
 import { faltaLlegar, numeroRemito, redondear, type Existencia, type Lugar, type Remito } from './stock.ts'
 
-export type TipoMovimiento = 'entrada' | 'consumo' | 'traslado' | 'ajuste' | 'anulacion'
+export type TipoMovimiento = 'entrada' | 'consumo' | 'traslado' | 'ajuste' | 'anulacion' | 'reasignacion'
 
 /** Un asiento de `material_movimiento`, con el nombre del material y el de quien lo hizo ya resueltos. */
 export interface MovimientoMaterial {
@@ -28,6 +28,10 @@ export interface MovimientoMaterial {
   cantidad: number
   pedido_id: string | null
   remito_id: string | null
+  /** Obra del acopio que tocó el asiento (`null` = libre). En una reasignación es de dónde salió. */
+  acopio_id?: string | null
+  /** Sólo en una reasignación: a qué obra pasó (`null` = quedó libre). */
+  acopio_a_id?: string | null
   motivo: string | null
   nota: string | null
   creado_en: string
@@ -51,7 +55,7 @@ export interface FilaInventario {
   unidad: string | null
   /** La suma de los lugares que se muestran. Con el filtro de lugar, es lo que hay en ESE lugar. */
   total: number
-  lugares: Array<{ id: string; rotulo: string; tipo: 'taller' | 'obra'; cantidad: number }>
+  lugares: Array<{ id: string; rotulo: string; tipo: 'taller' | 'obra'; cantidad: number; /** Lo que, de esa cantidad, está acopiado para una obra. */ acopiado: number }>
   /** Fecha del último asiento de ese material, o `null` si no hay ninguno visible. */
   ultimo: string | null
 }
@@ -80,11 +84,15 @@ export function inventarioPorMaterial(
     if (q && !normalizar(e.material).includes(q)) continue
     const l = lugar.get(e.ubicacion_id)
     // Un saldo en un lugar archivado o que la lectura no trajo no se esconde: se muestra como «otro lugar».
-    const info = { id: e.ubicacion_id, rotulo: l?.rotulo ?? 'Otro lugar', tipo: l?.tipo ?? 'obra', cantidad: e.cantidad }
+    const acop = e.destino_obra_id ? e.cantidad : 0
+    const info = { id: e.ubicacion_id, rotulo: l?.rotulo ?? 'Otro lugar', tipo: l?.tipo ?? 'obra', cantidad: e.cantidad, acopiado: acop }
     const f = filas.get(e.material_id)
     if (f) {
       f.total = redondear(f.total + e.cantidad)
-      f.lugares.push(info)
+      // Libre y acopiado son filas distintas de un MISMO lugar: en el inventario el lugar aparece una vez.
+      const mismo = f.lugares.find((x) => x.id === e.ubicacion_id)
+      if (mismo) { mismo.cantidad = redondear(mismo.cantidad + e.cantidad); mismo.acopiado = redondear(mismo.acopiado + acop) }
+      else f.lugares.push(info)
     } else {
       filas.set(e.material_id, {
         material_id: e.material_id, material: e.material, unidad: e.unidad, total: e.cantidad, lugares: [info], ultimo: ultimo.get(e.material_id) ?? null,
@@ -299,6 +307,7 @@ export const TIPOS_LIBRO: Array<{ id: TipoMovimiento; label: string }> = [
   { id: 'traslado', label: 'Envíos' },
   { id: 'ajuste', label: 'Recuentos' },
   { id: 'anulacion', label: 'Anulaciones' },
+  { id: 'reasignacion', label: 'Reasignaciones' },
 ]
 export const tipoLibroDeUrl = (v: string | null | undefined): TipoMovimiento | null =>
   TIPOS_LIBRO.find((t) => t.id === v)?.id ?? null
@@ -307,7 +316,10 @@ const MOTIVO: Record<string, string> = { recuento: 'recuento', perdido: 'perdido
 
 export function libroMaterial(
   movimientos: MovimientoMaterial[], lugares: Lugar[], remitos: Remito[], filtro: { tipo?: TipoMovimiento | null; lugar?: string | null } = {},
+  /** Rótulo de cada obra por id: para decir «Acopio OB-0008 → libre» en las reasignaciones. */
+  obras: Record<string, string> = {},
 ): RenglonLibro[] {
+  const obra = (id: string | null | undefined) => (id ? (obras[id] ?? id) : 'libre')
   const rot = new Map(lugares.map((l) => [l.id, l.rotulo]))
   const nro = new Map(remitos.map((r) => [r.id, numeroRemito(r.numero)]))
   const nombre = (id: string | null) => (id ? (rot.get(id) ?? 'otro lugar') : null)
@@ -318,15 +330,18 @@ export function libroMaterial(
       const n = cant(m.cantidad, m.unidad)
       const suma = m.tipo === 'entrada' || (m.tipo === 'ajuste' && m.destino_id != null)
       const que =
-        m.tipo === 'entrada' ? (m.pedido_id ? 'Llegó' : 'Ingreso')
-        : m.tipo === 'consumo' ? 'Usé'
+        m.tipo === 'entrada' ? `${m.pedido_id ? 'Llegó' : 'Ingreso'}${m.acopio_id ? ` para ${obra(m.acopio_id)}` : ''}`
+        : m.tipo === 'consumo' ? `Usé${m.acopio_id ? ` · acopio ${obra(m.acopio_id)}` : ''}`
         : m.tipo === 'traslado' ? 'Envío'
         : m.tipo === 'ajuste' ? `Recuento · ${MOTIVO[m.motivo ?? ''] ?? 'ajuste'}`
+        : m.tipo === 'reasignacion' ? `Acopio ${obra(m.acopio_id)} → ${obra(m.acopio_a_id)}`
         : 'Llegada anulada'
+      // Una reasignación no mueve nada de lugar: origen y destino son el mismo, no se dibuja «Taller → Taller».
+      const quieta = m.tipo === 'reasignacion'
       return {
         id: m.id, creado_en: m.creado_en, material: m.material,
-        cantidad: m.tipo === 'traslado' ? n : `${suma ? '+' : '−'}${n}`,
-        que, desde: nombre(m.origen_id), hacia: nombre(m.destino_id),
+        cantidad: m.tipo === 'traslado' || quieta ? n : `${suma ? '+' : '−'}${n}`,
+        que, desde: nombre(m.origen_id), hacia: quieta ? null : nombre(m.destino_id),
         remito: m.remito_id ? (nro.get(m.remito_id) ?? null) : null,
         nota: m.nota, quien: m.quien,
       }

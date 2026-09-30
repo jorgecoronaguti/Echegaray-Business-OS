@@ -88,6 +88,8 @@ import {
   asignarActividadAPedido, borrarParte, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { AsignarPersona, TabPersonal } from '@/features/obras/components/TabPersonal'
+import { AcopioDeLaObra } from '@/features/materiales/components/AcopioDeLaObra'
+import { leerAcopioDeObra } from '@/features/materiales/services/stockService'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { AccionesDocumentos, NuevoImpedimento } from '@/features/obras/components/operacion/AccionesCabecera'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
@@ -301,6 +303,8 @@ export default async function ObraPage({
   // La traducción del query string vive en el servicio: ahí están los subs y ahí están los nombres
   // viejos que todavía llegan por enlaces guardados.
   const subOp: SubOperacion = subDeLaUrl(sub)
+  // Lo que el Taller guarda para esta obra: sólo donde se mira lo pedido (Operación › Pedidos).
+  const acopioTaller = vista === 'operacion' && subOp === 'pedidos' ? await leerAcopioDeObra(supabase, obraId) : null
 
   const todas = actividades
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
@@ -633,6 +637,7 @@ export default async function ObraPage({
           asignarActividadAPedido={asignarActividadAPedido.bind(null, obraId)}
         />
       )}
+      {vista === 'operacion' && subOp === 'pedidos' && <AcopioDeLaObra items={acopioTaller} />}
 
       {/* DOCUMENTOS (14 · M17): todo nuevo desde el 23/09/2026. Los papeles del cliente, el índice y
           los dos bloques del pie (subidos desde acá · en la carpeta de Drive) los dibuja la solapa. */}
