@@ -58,7 +58,10 @@ test('RECIBO REAL + HORAS MANUALES: un ⚠ con title junto al Banco, sin texto',
   const b = fuente('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx')
   assert.ok(!/sin recalc/.test(b), 'MUTACIÓN: vuelve el texto «sin recalc.» debajo del Banco')
   assert.match(b, /export const AVISO_NETO_NO_RECALCULADO = 'el neto es del recibo del estudio y no se recalcula: editá Banco si cambió'/)
-  assert.equal((b.match(/<IconoDeAviso titulo=\{AVISO_NETO_NO_RECALCULADO\}/g) ?? []).length, 2, 'editable y de sólo lectura')
+  // 30/09/2026: son tres (editable · sólo lectura con PDF · sólo lectura sin PDF); lo que se fija es que TODOS
+  // lleven el mismo `title` y ninguno texto, no cuántos son.
+  assert.ok((b.match(/<IconoDeAviso titulo=\{AVISO_NETO_NO_RECALCULADO\}/g) ?? []).length >= 2, 'editable y de sólo lectura')
+  assert.ok(!/AVISO_NETO_NO_RECALCULADO\}<|>\{AVISO_NETO_NO_RECALCULADO\}/.test(b), 'el aviso volvió como texto')
   const c = fuente('../components/liquidacion/CeldasDeLiquidacion.tsx')
   const icono = c.slice(c.indexOf('export function IconoDeAviso('), c.indexOf('export function Manual('))
   assert.match(icono, /title=\{titulo\}/)

@@ -22,7 +22,7 @@ import { V } from '@/shared/components/v2/patron'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, fondoDeColumnaFija } from '../solapas/tabla'
 import {
-  anchoDe, bloqueEnVista, columnasDe, corrimientoDelRotulo, desplazamientoHasta, tramosDeBloques, DIA,
+  anchoDe, bloqueEnVista, columnaDestacada, columnasDe, corrimientoDelRotulo, desplazamientoHasta, tramosDeBloques, DIA,
   type DefinicionDeCuadro, type TonoDeBloque, type TramoDeBloque,
 } from './columnasDelCuadro'
 import type { Tirador } from './useAnchoDePersona'
@@ -32,7 +32,9 @@ import type { Tirador } from './useAnchoDePersona'
 export const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 
 /** El fondo de cada tono, de los tokens del tema: canvas y superficie hundida. Clases estáticas, no hex. */
-export const CLASE_DE_TONO: Record<TonoDeBloque, string> = { ninguno: '', claro: 'bg-canvas', hundido: 'bg-surface-sunken' }
+export /** La banda de la columna destacada: amarillo de marca suave; encima va la tinta normal (contraste > 4,5:1). */
+const CLASE_DESTACADA = 'bg-marca-soft'
+const CLASE_DE_TONO: Record<TonoDeBloque, string> = { ninguno: '', claro: 'bg-canvas', hundido: 'bg-surface-sunken' }
 
 /**
  * EL ✎ SIGUE ESTANDO —lo pedido no se quita— PERO NO COMPITE (limpieza 17/09/2026). Repetido en once rótulos, en la
@@ -91,6 +93,7 @@ export function TablaDeBloques({ testid, principal = false, titulo, meta, resume
   const columnas = columnasDe(definicion, dias.length)
   const ancho = anchoDe(definicion, dias.length)
   const tramos = tramosDeBloques(definicion, dias.length)
+  const destacada = columnaDestacada(definicion, dias.length)
   const id = (propio: string) => (principal ? `espejo-${propio}` : `${testid}-${propio}`)
   return (
     <section data-testid={testid} data-cuadro={testid}>
@@ -115,7 +118,7 @@ export function TablaDeBloques({ testid, principal = false, titulo, meta, resume
       >
         <div ref={registrar} className={VARIABLE_PERSONA} data-testid={id('tabla')}
           style={{ minWidth: ancho, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-          <FondosDeBloque columnas={columnas} tramos={tramos} />
+          <FondosDeBloque columnas={columnas} tramos={tramos} destacada={destacada} />
           {filas(columnas)}
           {total(columnas)}
         </div>
@@ -125,7 +128,7 @@ export function TablaDeBloques({ testid, principal = false, titulo, meta, resume
 }
 
 /** La capa de fondos: una caja por bloque con tono, detrás de las filas. */
-function FondosDeBloque({ columnas, tramos }: { columnas: string; tramos: readonly TramoDeBloque[] }) {
+function FondosDeBloque({ columnas, tramos, destacada }: { columnas: string; tramos: readonly TramoDeBloque[]; destacada: number | null }) {
   return (
     <div aria-hidden style={{
       position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: columnas, gridTemplateRows: '100%', columnGap: 8, pointerEvents: 'none',
@@ -134,6 +137,11 @@ function FondosDeBloque({ columnas, tramos }: { columnas: string; tramos: readon
         <div key={t.clave} data-fondo-bloque={t.clave} className={CLASE_DE_TONO[t.tono]}
           style={{ gridColumn: `${t.inicio} / span ${t.span}`, gridRow: 1, marginInline: -2 }} />
       ))}
+      {/* LA COLUMNA TOTAL LLEVA LA MARCA DETRÁS, filas y pie (dueño, 30/09/2026: «esa es la columna q marca el TOTAL q
+          cobra, marcamela de otra manera»). Va después de los bloques para pintarse encima; la tinta sigue siendo la
+          de siempre: el amarillo suave es señal de fondo, no un control ni un estado. */}
+      {destacada != null && <div data-fondo-columna="destacada" className={CLASE_DESTACADA}
+        style={{ gridColumn: destacada, gridRow: 1, marginInline: -4 }} />}
     </div>
   )
 }
@@ -225,8 +233,12 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
       {dias.map((f, i) => (
         <div key={f} title={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center', padding: '28px 0 8px', minWidth: DIA }}>{rotuloDia(f)}</div>
       ))}
+      {definicion.columnas.map((c, i) => c.destacada && (
+        <div key={`${c.clave}-banda`} aria-hidden data-testid={`banda-${c.clave}`} className={CLASE_DESTACADA}
+          style={{ gridColumn: 2 + dias.length + i, gridRow: 2, alignSelf: 'stretch', marginInline: -4 }} />
+      ))}
       {definicion.columnas.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}><RotuloDeColumna rotulo={sellada && c.rotuloSellado ? c.rotuloSellado : c.rotulo} /></div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px', ...(c.destacada ? { color: V.tinta, fontWeight: 600, position: 'relative' as const } : {}) }}><RotuloDeColumna rotulo={sellada && c.rotuloSellado ? c.rotuloSellado : c.rotulo} /></div>
       ))}
     </div>
   )

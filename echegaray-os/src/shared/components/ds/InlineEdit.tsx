@@ -132,6 +132,9 @@ export function InlineEdit({
   // «✓» BREVE DESPUÉS DE GUARDAR (dueño, 15/09/2026: «mejores la ux de cada celda»). Se dibuja en posición
   // absoluta, igual que «guardando…»: la fila no se mueve.
   const [recienGuardado, setRecienGuardado] = useState(false)
+  // «SIN CAMBIOS» BREVE cuando se confirma lo mismo que ya estaba (dueño, 30/09/2026: «no me permite anotar»: la
+  // celda se cerraba muda y era indistinguible de una escritura perdida). Misma posición absoluta que el ✓.
+  const [sinCambios, setSinCambios] = useState(false)
   const [falloReciente, setFalloReciente] = useState(false)
   const confirmando = useRef(false)
   const cancelado = useRef(false)
@@ -195,7 +198,12 @@ export function InlineEdit({
     }
     // UNA CUENTA DISTINTA SE GUARDA AUNQUE DÉ EL MISMO NÚMERO: «=9*105» y «945» valen lo mismo y no explican
     // lo mismo. Sin esto, corregir la cuenta y no el resultado no guardaría nada.
-    if (!hayQueGuardar(estado, v, { ceroAbreVacio: abrirVacio }) && nuevaCuenta === cuenta) { setEditando(false); setError(null); luego?.(); return }
+    if (!hayQueGuardar(estado, v, { ceroAbreVacio: abrirVacio }) && nuevaCuenta === cuenta) {
+      setEditando(false); setError(null)
+      setSinCambios(true)
+      setTimeout(() => setSinCambios(false), 1500)
+      luego?.(); return
+    }
     confirmando.current = true
     setGuardando(true)
     const r = await guardarDeshacible(aGuardar)
@@ -247,7 +255,9 @@ export function InlineEdit({
     ? <span className="pointer-events-none absolute -top-2.5 right-0 text-[10px] text-faint">guardando…</span>
     : recienGuardado
       ? <span className="pointer-events-none absolute -top-2.5 right-0 text-[10px] text-pos" aria-live="polite">✓</span>
-      : null
+      : sinCambios
+        ? <span className="pointer-events-none absolute -top-2.5 right-0 text-[10px] text-faint" aria-live="polite" data-testid={testid ? `${testid}-sin-cambios` : undefined}>sin cambios</span>
+        : null
 
   if (!editando) {
     return (

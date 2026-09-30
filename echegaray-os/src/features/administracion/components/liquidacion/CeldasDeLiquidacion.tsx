@@ -34,7 +34,7 @@ import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
-import { accionDelRedondeo, debeGuardarAlSalir, efectivoMostrado, teclaDelRedondeo } from '../../services/efectivoRedondeado'
+import { accionDelRedondeo, debeGuardarAlSalir, efectivoMostrado, teclaDelRedondeo, motivoSinCambios } from '../../services/efectivoRedondeado'
 import { horas, pesos, textoDelRedondeo } from './formato'
 import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
@@ -300,6 +300,7 @@ export function estiloDelRedondeo(ancho: number): CSSProperties {
  */
 const CAJA_DEL_REDONDEO: CSSProperties = { display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }
 const ERROR_DEL_REDONDEO: CSSProperties = { fontSize: 11, lineHeight: '13px', color: V.neg, whiteSpace: 'normal', maxWidth: 160, textAlign: 'right' }
+const AVISO_DEL_REDONDEO: CSSProperties = { ...ERROR_DEL_REDONDEO, color: V.tenue }
 
 export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, bloqueada, ancho = 96 }: {
   personaId: string
@@ -324,6 +325,8 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   const [guardando, empezar] = useTransition()
   const cancelado = useRef(false)
   const [errorReciente, setErrorReciente] = useState(false)
+  // «SIN CAMBIOS» BREVE (dueño, 30/09/2026): confirmar el sugerido o el guardado cerraba la celda muda.
+  const [sinCambios, setSinCambios] = useState<string | null>(null)
   // EL VALOR DE AFUERA MANDA cuando la línea se vuelve a leer del servidor, salvo mientras alguien
   // escribe. Se ajusta durante el render, no en un efecto: sin fotograma con el valor viejo.
   if (!tocado && inicial !== base) {
@@ -365,6 +368,8 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
     if (a.accion === 'nada') {
       setTocado(false)
       setTexto(inicial)
+      setSinCambios(motivoSinCambios({ texto, guardado: valor, sugerido: mostrado.sugeridoAhora }))
+      setTimeout(() => setSinCambios(null), 2500)
       return
     }
     empezar(async () => {
@@ -416,6 +421,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
     />
     {error && ((enEdicion || errorReciente) ? <span role="alert" data-testid={`redondeo-error-${personaId}`} style={ERROR_DEL_REDONDEO}>{error}</span>
       : <IconoDeAviso titulo={error} tono="neg" testid={`redondeo-aviso-${personaId}`} />)}
+    {!error && sinCambios && <span role="status" data-testid={`redondeo-sin-cambios-${personaId}`} style={AVISO_DEL_REDONDEO}>{sinCambios}</span>}
     </span>
   )
 }

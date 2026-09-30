@@ -76,6 +76,19 @@ export function accionDelRedondeo(e: { texto: string; guardado: number | null; s
 // CONFLICT DO UPDATE SET liquidacion_id, persona_id, efectivo_redondeado, y `authenticated` no tiene UPDATE sobre
 // las dos llaves (42501). Lo que decide cada tecla y la relectura viven acá, puros, para poder probarlos.
 
+/**
+ * POR QUÉ NO SE GUARDÓ, para decirlo en la celda (dueño, 30/09/2026: el Efect. red. se cerraba mudo cuando lo
+ * tipeado era el sugerido, y parecía roto). Sólo tiene sentido cuando `accionDelRedondeo` dio `nada`.
+ */
+export function motivoSinCambios(e: { texto: string; guardado: number | null; sugerido: number | null }): string {
+  if (e.texto.trim() === '') return 'sin cambios · vacío, queda el sugerido'
+  const importe = importeDelTexto(e.texto)
+  if (importe == null) return 'sin cambios · no es un número'
+  if (e.guardado != null && importe === e.guardado) return 'sin cambios · igual al guardado'
+  if (e.guardado == null && e.sugerido != null && importe === e.sugerido) return 'sin cambios · es el sugerido'
+  return 'sin cambios'
+}
+
 export type TeclaDelRedondeo = 'guardar' | 'revertir' | 'guardar-y-pasar' | null
 
 /** Enter guarda, Escape revierte sin guardar, Tab guarda y deja que el navegador pase al siguiente campo. */

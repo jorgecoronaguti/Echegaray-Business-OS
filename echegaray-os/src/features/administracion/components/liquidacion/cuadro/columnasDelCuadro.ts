@@ -25,6 +25,8 @@ export interface Columna {
   clave: string; rotulo: string; px: number; bloque: ClaveDeBloque
   /** El rótulo en una quincena CERRADA (sin ✎: nada se escribe). Ver `Bloque.rotuloSellado`. */
   rotuloSellado?: string
+  /** LA COLUMNA QUE MARCA LO QUE COBRA (dueño, 30/09/2026: «distinguila con otro color»): banda de marca detrás. */
+  destacada?: true
 }
 
 export interface DefinicionDeCuadro {
@@ -67,7 +69,7 @@ export const CUADRO_JORNALEROS: DefinicionDeCuadro = {
     { clave: 'saldoEfectivo', rotulo: 'Saldo', px: 112, bloque: 'negro' },
     { clave: 'presentismo', rotulo: 'Presentismo', px: 128, bloque: 'resto' }, // 128: «Perdido dd/mm, dd/mm» + [Restituir] sin cortarse (30/09)
     { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108, bloque: 'resto' },
-    { clave: 'total', rotulo: 'Total', px: 124, bloque: 'resto' },
+    { clave: 'total', rotulo: 'Total', px: 124, bloque: 'resto', destacada: true },
     { clave: 'pagado', rotulo: 'Pagado', px: 112, bloque: 'resto' },
     { clave: 'saldo', rotulo: 'Saldo', px: 120, bloque: 'resto' },
     { clave: 'saldoRedondeado', rotulo: 'Saldo red.', px: 120, bloque: 'resto' },
@@ -103,7 +105,7 @@ export const CUADRO_MENSUALES: DefinicionDeCuadro = {
     { clave: 'saldoEfectivo', rotulo: 'Saldo', px: 112, bloque: 'efectivo' },
     { clave: 'presentismo', rotulo: 'Presentismo', px: 112, bloque: 'resto' },
     { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108, bloque: 'resto' },
-    { clave: 'total', rotulo: 'Total', px: 124, bloque: 'resto' },
+    { clave: 'total', rotulo: 'Total', px: 124, bloque: 'resto', destacada: true },
     { clave: 'pagado', rotulo: 'Pagado', px: 112, bloque: 'resto' },
     { clave: 'saldo', rotulo: 'Saldo', px: 120, bloque: 'resto' },
     { clave: 'saldoRedondeado', rotulo: 'Saldo red.', px: 120, bloque: 'resto' },
@@ -144,6 +146,12 @@ export interface TramoDeBloque extends Bloque {
  * DÓNDE CAE CADA BLOQUE. Persona es la columna 1 y no es de ningún bloque: queda fija. Los bloques son contiguos y en
  * el orden de la definición; si una columna quedara fuera de orden, el tramo lo delata en el test.
  */
+/** La línea de grid de la columna destacada (`destacada: true`), o null si el cuadro no tiene una. Persona es la 1. */
+export function columnaDestacada(d: DefinicionDeCuadro, nDias: number): number | null {
+  const i = d.columnas.findIndex((c) => c.destacada)
+  return i < 0 ? null : 2 + nDias + i
+}
+
 export function tramosDeBloques(d: DefinicionDeCuadro, nDias: number): TramoDeBloque[] {
   const pistas = [
     ...Array.from({ length: diasDe(d, nDias) }, () => ({ bloque: d.bloqueDeLosDias as ClaveDeBloque, px: DIA })),

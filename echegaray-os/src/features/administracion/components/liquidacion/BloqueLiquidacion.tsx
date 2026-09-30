@@ -10,7 +10,7 @@ import {
   desgloseDeQuincena, tarjetaDeQuincena, totalesDeCuadro, type ParteDeLaTarjeta,
 } from '../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../services/liquidacionQuincenaService'
-import { estadoDelCuadro } from '../../services/estadoDelCuadro'
+import { estadoDelCuadro, resumenDeEstados } from '../../services/estadoDelCuadro'
 import { CuadroLiquidacion } from './CuadroLiquidacion'
 
 // LA SOLAPA «LIQUIDACIÓN» — qué cobra cada persona en esta quincena y por qué canal sale.
@@ -43,6 +43,8 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
   const { cuadros, camposEditables, estados, errores, sinActividad } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const esLaDeHoy = quincenaDe(hoy).desde === quincena.desde
+  const estadoDeLaQuincena = resumenDeEstados(cuadros.map((c) => estadoDelCuadro(estados, c.grupo).estado))
 
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
@@ -63,9 +65,20 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
       <div style={{
         display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, padding: '4px 0 12px',
       }}>
-        <span style={{ fontSize: '13px', color: V.tinta }} data-testid="rotulo-quincena-liquidacion">
+        {/* QUÉ QUINCENA ES Y EN QUÉ ESTADO, sin leer letra chica (dueño, 30/09/2026: escribió en la quincena
+            siguiente creyendo que era la de hoy). El estado sale de los cuadros de la base, no de la fecha. */}
+        <span style={{ fontSize: '15px', fontWeight: 600, color: V.tinta }} data-testid="rotulo-quincena-liquidacion">
           {rotuloQuincena(quincena)}
         </span>
+        {estadoDeLaQuincena && (
+          <span data-testid="estado-quincena-liquidacion" style={{ fontSize: '12px', color: estadoDeLaQuincena === 'abierta' ? V.apagado : V.tinta }}>
+            {estadoDeLaQuincena}
+          </span>
+        )}
+        {!esLaDeHoy && (
+          <Link href={hrefDe(quincenaDe(hoy).desde)} prefetch={false} data-testid="liquidacion-quincena-hoy"
+            style={{ fontSize: '12px', color: V.tinta, textDecoration: 'underline' }}>ir a la quincena de hoy</Link>
+        )}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: '12px' }}>
           <Link href={hrefDe(correrQuincena(quincena, -1).desde)} prefetch={false}
             data-testid="liquidacion-quincena-anterior" style={{ color: V.apagado }}>‹ anterior</Link>

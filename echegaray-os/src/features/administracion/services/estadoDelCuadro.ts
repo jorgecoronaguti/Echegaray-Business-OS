@@ -30,3 +30,10 @@ export function estadoDelCuadro(
     ? { id: null, estado: 'cerrada', cerradaEn: cerrado.cerradaEn }
     : { id: null, estado: 'abierta', cerradaEn: null }
 }
+
+/** Un solo estado para la cabecera: todos cerrados → «cerrada»; ninguno → «abierta»; mezcla → «cerrada en parte». */
+export function resumenDeEstados(estados: readonly ('abierta' | 'cerrada')[]): 'abierta' | 'cerrada' | 'cerrada en parte' | null {
+  if (estados.length === 0) return null
+  const cerrados = estados.filter((e) => e === 'cerrada').length
+  return cerrados === 0 ? 'abierta' : cerrados === estados.length ? 'cerrada' : 'cerrada en parte'
+}
