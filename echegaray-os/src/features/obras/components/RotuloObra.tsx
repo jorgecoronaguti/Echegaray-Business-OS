@@ -1,3 +1,5 @@
+'use client'
+
 // EL RÓTULO ÚNICO DE OBRA: «OB-0012 · NOMBRE» y, debajo, el estado (dueño, 29/09/2026).
 //
 // Lo dibujan la Tabla y el Gantt de Obras, el escritorio del jefe (`/obras/hoy`) y el teléfono: si cada
