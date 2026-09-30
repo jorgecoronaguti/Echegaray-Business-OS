@@ -27,6 +27,21 @@ export function motivosDePerdida(p: PresentismoDeLinea): string {
   return p.causas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)} ${c.etiqueta}`).join(' · ')
 }
 
+/** «30/09» del sello `restituido_en` (timestamptz), en hora de San Juan: el día que se ve en la oficina, no el de UTC. */
+export function diaCortoDe(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+  // Argentina es UTC−3 fijo (sin horario de verano desde 2009). Aritmética y no Intl: el ICU de Node y el del
+  // navegador formatean distinto («30/9» vs «30/09») y el servidor y el cliente tienen que dibujar lo mismo.
+  const sj = new Date(d.getTime() - 3 * 3600_000).toISOString()
+  return `${sj.slice(8, 10)}/${sj.slice(5, 7)}`
+}
+
+/** «Jorge» de «Jorge Corona Gutierrez»: la celda mide 128 px; el nombre entero va en el `title` y en el panel. */
+export function primerNombre(nombre: string): string {
+  return nombre.trim().split(/\s+/)[0] || nombre
+}
+
 export interface RenglonDePresentismo {
   /** «Presentismo» o, perdido, «− Presentismo»: el mismo signo en el rótulo que «− Adelanto». */
   rotulo: string
@@ -74,6 +89,13 @@ export function renglonDePresentismo(p: PresentismoDeLinea | null): RenglonDePre
   }
   if (p.estado === 'perdido') {
     return r('− Presentismo', p.importe, ['Perdido', base, motivosDePerdida(p), ...aRevisar(p)])
+  }
+  // RESTITUIDO (30/09/2026): cobra como el que cumple, pero NO se dice «sin faltas ni tardanzas» —las tuvo y alguien
+  // las perdonó—. Quién, cuándo y qué fechas, a la vista: en el teléfono no hay `title`.
+  if (p.restituido) {
+    const x = p.restituido
+    return r('Presentismo', p.importe, [`Restituido por ${x.por} el ${diaCortoDe(x.en)}`, base,
+      `perdonó ${fechasCortas(x.fechas)}`, ...(x.motivo ? [x.motivo] : [])])
   }
   return r('Presentismo', p.importe, ['Cumple', base, 'sin faltas injustificadas, tardanzas ni retiros'])
 }

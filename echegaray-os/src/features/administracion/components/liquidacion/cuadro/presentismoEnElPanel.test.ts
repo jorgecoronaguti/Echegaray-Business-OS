@@ -76,3 +76,21 @@ test('la nota que va bajo un 0425 del recibo no lleva la base ni el % del OS', (
   assert.doesNotMatch(r.notaSinBase, /%|\$/)
   assert.match(r.notaSinBase, /^Cumple/)
 })
+
+// RESTITUIDO (30/09/2026): el panel no puede decir «Cumple · sin faltas ni tardanzas» a quien las tuvo y alguien se las
+// perdonó. Dice quién, cuándo (hora de San Juan: 01:30 UTC del 01/10 es todavía 30/09) y qué fechas.
+test('restituido: quién, cuándo y qué perdonó, no «Cumple»', () => {
+  const p = presentismoDeLinea({
+    ...E,
+    tardanzas: [{ fecha: '2026-09-22', llegoTarde: true, salioAntes: false }],
+    restitucion: { por: 'Jorge Corona Gutierrez', en: '2026-10-01T01:30:00Z', motivo: null, fechas: ['2026-09-22'] },
+  }, 100)
+  assert.equal(p.estado, 'aplica')
+  const r = renglonDePresentismo(p)
+  assert.equal(r?.rotulo, 'Presentismo')
+  assert.equal(r?.valor, 63480)
+  const nota = r?.nota ?? ''
+  assert.ok(nota.startsWith('Restituido por Jorge Corona Gutierrez el 30/09 · 20 % de $317.400'), nota)
+  assert.match(nota, /perdonó 22\/09/)
+  assert.doesNotMatch(nota, /Cumple|sin faltas/)
+})

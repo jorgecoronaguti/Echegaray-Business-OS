@@ -65,7 +65,7 @@ export const CUADRO_JORNALEROS: DefinicionDeCuadro = {
     { clave: 'negro', rotulo: 'Importe ✎', px: 104, bloque: 'negro' },
     { clave: 'pagadoEfectivo', rotulo: 'Pagado ✎', px: 112, bloque: 'negro' },
     { clave: 'saldoEfectivo', rotulo: 'Saldo', px: 112, bloque: 'negro' },
-    { clave: 'presentismo', rotulo: 'Presentismo', px: 112, bloque: 'resto' },
+    { clave: 'presentismo', rotulo: 'Presentismo', px: 128, bloque: 'resto' }, // 128: «Perdido dd/mm, dd/mm» + [Restituir] sin cortarse (30/09)
     { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108, bloque: 'resto' },
     { clave: 'total', rotulo: 'Total', px: 124, bloque: 'resto' },
     { clave: 'pagado', rotulo: 'Pagado', px: 112, bloque: 'resto' },

@@ -22,7 +22,7 @@ import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
 import { fechasCortas, type PresentismoDeLinea } from '../../../services/presentismo'
 import { motivosDePerdida } from './presentismoEnElPanel'
-import { BotonRestituir, MarcaDeRestituido, type VentanaRestitucion } from './BotonRestituirPresentismo'
+import { PerdidoConRestituir, RestituidoConDeshacer, type VentanaRestitucion } from './BotonRestituirPresentismo'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
@@ -84,7 +84,8 @@ export function CeldaPresentismo({ fila, quincena }: { fila: FilaDelEspejo; quin
       ? ` · sin motivo cargado: ${fechasCortas(p.aRevisar)}. Cargá el motivo y, si lo justifica, lo recupera.`
       : ''
     const titulo = `${cuenta} · PERDIDO: ${motivosDePerdida(p)} · el 0426 lo anula en el recibo en blanco; el negro no se toca${recuperable}`
-    if (ventana) return <BotonRestituir v={ventana} perdido={p.perdido} titulo={`${titulo} · Apretá para restituir el presentismo.`} testid={testid} />
+    // ESTADO Y ACCIÓN SEPARADOS (dueño 30/09/2026, segunda vuelta): el texto dice el estado; el botón, debajo, la acción.
+    if (ventana) return <PerdidoConRestituir v={ventana} perdido={p.perdido} titulo={titulo} testid={testid} sinMotivo={recuperable !== ''} />
     return (
       <div data-testid={testid} data-presentismo="perdido" data-sin-motivo={recuperable ? '1' : undefined}
         title={titulo}
@@ -93,7 +94,7 @@ export function CeldaPresentismo({ fila, quincena }: { fila: FilaDelEspejo; quin
       </div>
     )
   }
-  if (p.restituido) return <MarcaDeRestituido r={p.restituido} v={ventana} cuenta={cuenta} testid={testid} />
+  if (p.restituido) return <RestituidoConDeshacer r={p.restituido} importe={pesos(p.importe)} v={ventana} cuenta={cuenta} testid={testid} />
   return (
     <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Cumple: se cobra en el recibo en blanco (0425).`}
       style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>{pesos(p.importe)}</div>

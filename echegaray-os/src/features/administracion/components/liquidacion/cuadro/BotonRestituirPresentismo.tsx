@@ -1,105 +1,116 @@
 'use client'
 
-// «perdido 24/09» ES UN BOTÓN (dueño, 30/09/2026): vuelve a considerar el presentismo a esa persona.
+// RESTITUIR EL PRESENTISMO DESDE LA CELDA (dueño, 30/09/2026: «quiero que ahí donde dice "perdido xxx" sea un botón que si
+// aprieto le considera automáticamente el presentismo nuevamente»).
 //
-// Un paso de confirmación liviano —el motivo es opcional—, porque devuelve plata (0425 en el blanco) y no es
-// un clic que deba salir de un roce. Después la celda dice «restituido · quién» con la salida de deshacer.
-// Lo que se restituye lo decide el servidor (`restituirPresentismo`): acá no viaja ninguna fecha.
+// ═══ SEGUNDA VUELTA — POR QUÉ SE REHIZO (dueño, 30/09/2026: «esos "botones" que ni siquiera lo son como tal») ═══
 //
-// Quien no puede editar (quincena cerrada) ve el texto plano: el botón no existe donde la base diría que no.
+// La primera versión convirtió el TEXTO «perdido 24/09» en el botón: un chip de borde ámbar redondeado que se leía como
+// una etiqueta de estado, no decía qué pasaba al apretarlo y con varias fechas se estiraba. Ahora son dos cosas:
+//
+//   ESTADO   «Perdido 22/09, 24/09» — texto ámbar, sin borde ni fondo: se lee, no se aprieta.
+//   ACCIÓN   [Restituir] — un <button> de verdad, con el mismo estilo que los secundarios del panel (blanco, filo
+//            `line-strong`, radio 6), hover, foco visible y «Restituyendo…» mientras guarda.
+//
+// SIN DIÁLOGO DE CONFIRMACIÓN: el dueño pidió «automáticamente», y la acción se deshace en un clic desde la misma celda
+// con quién y cuándo sellados (la tabla no borra: `deshecho_en`). Un paso más sería fricción sobre algo reversible.
+// El motivo sigue siendo opcional en el servidor; desde la celda no se pide.
+//
+// Qué se restituye lo decide el servidor (`restituirPresentismo`): acá no viaja ninguna fecha. Quien no puede editar
+// (quincena cerrada) ve sólo el estado: el botón no existe donde la base diría que no.
 
-import { useEffect, useState, useTransition } from 'react'
+import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { V } from '@/shared/components/v2/patron'
 import { fechasCortas, type RestitucionDePresentismo } from '../../../services/presentismo'
 import { deshacerRestitucion, restituirPresentismo } from '../../../services/presentismoRestitucionActions'
+import { diaCortoDe, primerNombre } from './presentismoEnElPanel'
 
-const BOTON = {
-  border: `1px solid ${V.warn}`, borderRadius: 6, background: 'transparent', color: V.warn,
-  fontSize: 12, fontWeight: 500, padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
-} as const
+/**
+ * El botón chico de la celda: 24 px de alto (grid de 8), y en pantallas táctiles el área que se toca crece a 40 px con
+ * un `::after` invisible, sin agrandar la fila (58 px). Tokens del tema, nada de hex.
+ */
+const BOTON_CELDA = [
+  'relative inline-flex items-center justify-center h-6 px-2 rounded-md border border-line-strong bg-surface',
+  'text-[12px] leading-4 font-medium text-ink whitespace-nowrap cursor-pointer select-none',
+  'hover:bg-surface-sunken hover:border-muted active:bg-surface-sunken',
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+  'disabled:cursor-wait disabled:opacity-60',
+  "after:absolute after:content-[''] after:-inset-y-2 after:-inset-x-1",
+].join(' ')
 
-/** El objetivo táctil de 44 px sólo en pantallas táctiles: el primer dibujo es igual en servidor y navegador. */
-function useTactil(): boolean {
-  const [t, setT] = useState(false)
-  useEffect(() => { setT(window.matchMedia('(pointer: coarse)').matches) }, [])
-  return t
+const LINEA: React.CSSProperties = {
+  fontSize: '11px', lineHeight: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
 }
+const PILA: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, minWidth: 0 }
 
 export interface VentanaRestitucion { personaId: string; nombre: string; desde: string; hasta: string }
 
-export function BotonRestituir({ v, perdido, titulo, testid }: {
-  v: VentanaRestitucion; perdido: readonly string[]; titulo: string; testid: string
+/** Presentismo PERDIDO en una quincena abierta: el estado (texto) y, debajo, el botón que lo restituye. */
+export function PerdidoConRestituir({ v, perdido, titulo, testid, sinMotivo }: {
+  v: VentanaRestitucion; perdido: readonly string[]; titulo: string; testid: string; sinMotivo: boolean
 }) {
-  const [abierto, setAbierto] = useState(false)
-  const [motivo, setMotivo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enCurso, empezar] = useTransition()
   const router = useRouter()
-  const alto = useTactil() ? 44 : undefined
-  const confirmar = () => empezar(async () => {
-    const r = await restituirPresentismo({ persona_id: v.personaId, desde: v.desde, hasta: v.hasta, motivo: motivo.trim() || undefined })
+  const restituir = () => empezar(async () => {
+    const r = await restituirPresentismo({ persona_id: v.personaId, desde: v.desde, hasta: v.hasta })
     if (!r.ok) { setError(r.error); return }
-    setAbierto(false); setError(null); router.refresh()
+    setError(null)
+    router.refresh()
   })
   return (
-    <div style={{ position: 'relative', textAlign: 'right' }}>
-      <button type="button" data-testid={`${testid}-restituir`} data-presentismo="perdido" title={titulo}
-        aria-label={`Restituir el presentismo a ${v.nombre}`} onClick={() => setAbierto(true)}
-        style={{ ...BOTON, minHeight: alto }}>
-        perdido {fechasCortas(perdido)}
+    <div data-testid={testid} data-presentismo="perdido" data-sin-motivo={sinMotivo ? '1' : undefined} style={PILA}>
+      {error
+        ? <span role="alert" title={error} style={{ ...LINEA, color: V.neg }}>No se guardó</span>
+        : (
+          <span title={titulo} style={{ ...LINEA, color: V.warn }}>
+            <span style={{ fontWeight: 600 }}>Perdido</span> {fechasCortas(perdido)}
+          </span>
+        )}
+      <button type="button" data-testid={`${testid}-restituir`} onClick={restituir} disabled={enCurso} aria-busy={enCurso}
+        aria-label={`Restituir el presentismo a ${v.nombre} (perdido ${fechasCortas(perdido)})`}
+        title={`Restituir el presentismo a ${v.nombre}: vuelve a cobrar el 0425 en el blanco. Se puede deshacer.`}
+        className={BOTON_CELDA}>
+        {enCurso ? 'Restituyendo…' : 'Restituir'}
       </button>
-      {abierto && (
-        <div role="dialog" aria-label={`Restituir presentismo a ${v.nombre}`} data-testid={`${testid}-confirmar`}
-          style={{ position: 'absolute', right: 0, top: '100%', zIndex: 20, width: 260, padding: 10, textAlign: 'left',
-            background: '#fff', border: `1px solid ${V.lineaFuerte}`, borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,.12)' }}>
-          <div style={{ fontSize: 12, color: V.tinta, marginBottom: 6 }}>
-            ¿Restituir el presentismo a {v.nombre}? Se perdona {fechasCortas(perdido)} y cobra el 0425 en el blanco.
-          </div>
-          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={300} placeholder="Motivo (opcional)"
-            aria-label="Motivo de la restitución"
-            style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '4px 6px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 4 }} />
-          {error && <div role="alert" style={{ fontSize: 11, color: V.neg, marginTop: 4 }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button" onClick={() => { setAbierto(false); setError(null) }} disabled={enCurso}
-              style={{ ...BOTON, minHeight: alto, borderColor: V.lineaFuerte, color: V.apagado }}>Cancelar</button>
-            <button type="button" data-testid={`${testid}-confirmar-si`} onClick={confirmar} disabled={enCurso}
-              style={{ ...BOTON, minHeight: alto, background: V.marca, borderColor: V.marca, color: V.tinta }}>
-              {enCurso ? 'Restituyendo…' : 'Restituir'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
-/** «restituido · Jorge» + deshacer. Sólo lectura (sin `v`) cuando la quincena no se edita. */
-export function MarcaDeRestituido({ r, v, cuenta, testid }: {
-  r: RestitucionDePresentismo; v: VentanaRestitucion | null; cuenta: string; testid: string
+/**
+ * Presentismo RESTITUIDO: el importe que vuelve a cobrar, quién y cuándo, y —si la quincena está abierta— «Deshacer».
+ * Sin `v` (quincena cerrada) es sólo lectura.
+ */
+export function RestituidoConDeshacer({ r, importe, v, cuenta, testid }: {
+  r: RestitucionDePresentismo; importe: string; v: VentanaRestitucion | null; cuenta: string; testid: string
 }) {
   const [error, setError] = useState<string | null>(null)
   const [enCurso, empezar] = useTransition()
   const router = useRouter()
-  const alto = useTactil() ? 44 : undefined
   const deshacer = () => empezar(async () => {
     if (!v) return
     const res = await deshacerRestitucion({ persona_id: v.personaId, desde: v.desde, hasta: v.hasta })
     if (!res.ok) { setError(res.error); return }
-    setError(null); router.refresh()
+    setError(null)
+    router.refresh()
   })
-  const detalle = `Restituido por ${r.por} el ${r.en.slice(0, 10)} (perdonó ${fechasCortas(r.fechas)})${r.motivo ? ` · ${r.motivo}` : ''}`
+  const dia = diaCortoDe(r.en)
+  const detalle = `Restituido por ${r.por} el ${dia} (perdonó ${fechasCortas(r.fechas)})${r.motivo ? ` · ${r.motivo}` : ''}`
   return (
-    <div data-testid={testid} data-presentismo="restituido" title={`${cuenta}. ${detalle}`}
-      style={{ textAlign: 'right', fontSize: 11, lineHeight: '13px', color: V.pos }}>
-      <div style={{ whiteSpace: 'nowrap' }}>restituido · {r.por}</div>
+    <div data-testid={testid} data-presentismo="restituido" title={`${cuenta}. ${detalle}`} style={PILA}>
+      <span style={{ whiteSpace: 'nowrap', color: V.tintaSuave, lineHeight: '16px' }}>{importe}</span>
+      {error
+        ? <span role="alert" title={error} style={{ ...LINEA, color: V.neg }}>No se deshizo</span>
+        : <span style={{ ...LINEA, color: V.pos }}>Restituido {dia} · {primerNombre(r.por)}</span>}
       {v && (
-        <button type="button" data-testid={`${testid}-deshacer`} onClick={deshacer} disabled={enCurso}
-          style={{ background: 'none', border: 0, padding: 0, minHeight: alto, color: V.apagado, textDecoration: 'underline', fontSize: 11, cursor: 'pointer' }}>
-          {enCurso ? 'deshaciendo…' : 'deshacer'}
+        <button type="button" data-testid={`${testid}-deshacer`} onClick={deshacer} disabled={enCurso} aria-busy={enCurso}
+          aria-label={`Deshacer la restitución del presentismo de ${v.nombre}`}
+          title={`Deshacer: ${v.nombre} vuelve a perder el presentismo (${fechasCortas(r.fechas)}).`}
+          className={BOTON_CELDA}>
+          {enCurso ? 'Deshaciendo…' : 'Deshacer'}
         </button>
       )}
-      {error && <div role="alert" style={{ color: V.neg }}>{error}</div>}
     </div>
   )
 }
