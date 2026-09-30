@@ -25,6 +25,7 @@ import { ajustarExistenciaAction, cambiarEstadoAction } from '../services/accion
 import { useHerramientas } from './Espacio'
 import { QR } from './QR'
 import { ResumenRevision } from './FichaRevision'
+import { LibroDeVidaFicha } from './LibroDeVida'
 import { Unidades } from './Unidades'
 import { SacarFoto } from './campo/SacarFoto'
 import { AZUL, COLOR_TONO, eyebrow, MONO, SUPERFICIE, V, vacio } from './estilo'
@@ -183,6 +184,8 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
       )}
 
       <Papeles id={a.id} clase={a.clase} />
+
+      <LibroDeVidaFicha id={a.id} />
 
       <ResumenRevision id={a.id} />
 

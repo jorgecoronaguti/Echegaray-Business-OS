@@ -5,6 +5,7 @@
 // Un activo sin `ubicacion_id` está «sin ubicación cargada», no en ningún lado; uno sin movimientos ni
 // reportes se vio «nunca». Ninguna función de acá devuelve 0 o un lugar por defecto para tapar un hueco.
 
+import type { Evento } from './evento.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import type { Papel } from './papeles.ts'
 import type { Recuento, RecuentoLinea } from './recuento.ts'
@@ -55,6 +56,8 @@ export interface DatosParque {
   revisiones?: Revision[] | null
   /** La vigente por tipo con sus días (`activo_revision_vigente`). `null`/ausente = sin la migración. */
   revisionesVigentes?: RevisionVigente[] | null
+  /** El libro de vida de los rodados (`activo_evento`, 20260930T2300). `null`/ausente = sin la migración. */
+  eventos?: Evento[] | null
   /** Los recuentos físicos por lugar (`activo_recuento`, 20260923T1700). `null`/ausente = sin la migración. */
   recuentos?: Recuento[] | null
   /** Las líneas de cada recuento (`activo_recuento_linea`). `null`/ausente = sin la migración. */
