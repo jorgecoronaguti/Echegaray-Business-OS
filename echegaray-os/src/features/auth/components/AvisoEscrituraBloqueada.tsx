@@ -16,12 +16,13 @@ export function AvisoEscrituraBloqueada() {
 
   useEffect(() => {
     const original = window.fetch
-    window.fetch = async (...args: Parameters<typeof fetch>) => {
+    const mio = async (...args: Parameters<typeof fetch>) => {
       const r = await original(...args)
       if (esBloqueoPorLente(r)) setVisible(true)
       return r
     }
-    return () => { window.fetch = original }
+    window.fetch = mio
+    return () => { if (window.fetch === mio) window.fetch = original }
   }, [])
 
   if (!visible) return null
