@@ -57,6 +57,11 @@ const codigoPagina = () => pagina()
   })
   .join('\n')
 
+const codigoServicio = (a: string) => readFileSync(join(DIR, '../services', a), 'utf8')
+  .split('\n')
+  .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+  .join('\n')
+
 /** Dónde vive el vocabulario compartido del v2, relativo a esta carpeta. */
 const V2 = '../../../shared/components/v2/'
 
@@ -82,7 +87,10 @@ test('la banda de señales NO vuelve: lo que falta se lee en la fila y en su rec
   const src = pagina()
   assert.equal(src.includes('<TrabajoDeSeccion'), false, 'volvió la banda de señales')
   assert.ok(src.indexOf('<CabeceraSeccion') > 0, 'la pantalla abre por sus sub-vistas')
-  assert.match(src, /etiqueta: 'Sin CUIT'/, 'se fue la banda y no quedó el recorte que la reemplaza')
+  // Desde el 30/09 los chips los arma `chipsCartera.ts` (el literal ya no vive en la página): la
+  // página tiene que usarlos y el chip «Sin CUIT» tiene que seguir existiendo ahí.
+  assert.match(src, /opcionesChips\(/, 'se fue la banda y no quedó el recorte que la reemplaza')
+  assert.match(codigoServicio('chipsCartera.ts'), /etiqueta: 'Sin CUIT'/, 'el chip «Sin CUIT» desapareció')
   // LA COLA SIGUE SIENDO UNA SECCIÓN, PERO EL RÓTULO YA NO SE ESCRIBE ACÁ (16/09/2026). Desde que
   // Proveedores es una sección de Compras, las cuatro secciones viven en `seccionesDeCompras.ts` y
   // las dibujan las dos pantallas. Buscar el literal en este archivo volvería a pedir que la lista
@@ -143,7 +151,7 @@ test('TODOS los recortes dicen su población, no sólo el que reemplazó a la ba
   // contar filas a ojo. El handoff v4 pone el número al lado de cada recorte porque es lo que
   // reemplaza al renglón de señales que se retiró.
   const src = codigoPagina()
-  assert.match(src, /cuenta: POBLACION\[a\]/, 'los tres cortes de estado quedaron mudos')
+  assert.match(src, /nArchivados: POBLACION\.archivados/, 'el chip de archivados quedó mudo')
   assert.match(src, /activos: nActivos\?\.data \?\? null/)
   assert.match(src, /archivados: nArchivados\?\.data \?\? null/)
   assert.match(src, /todos: nTodos\?\.data \?\? null/)
@@ -174,8 +182,10 @@ test('el conteo de subcontratistas se hace sobre la lista LEÍDA, no sobre la ya
   // haría que el número se derrumbara a 1 apenas se hace clic en el recorte, y a 0 combinándolo con
   // «Sin CUIT»: el contador diría que hay menos subcontratistas porque se los está mirando.
   const src = codigoPagina()
-  assert.match(src, /cuenta: todos\.filter\(\(p\) => subs\.has\(p\.id\)\)\.length/)
-  assert.doesNotMatch(src, /cuenta: porFiltro\.filter/)
+  const chips = codigoServicio('chipsCartera.ts')
+  assert.match(chips, /cuenta: e\.todos\.filter\(\(p\) => e\.subs\?\.has\(p\.id\)\)\.length/)
+  assert.match(src, /todos, datos, chips: chipsUso/, 'los chips se cuentan sobre la lista leída')
+  assert.doesNotMatch(chips, /cuenta: e\.porFiltro/)
   assert.doesNotMatch(src, /cuenta: lista\.filter/)
 })
 
@@ -306,7 +316,7 @@ test('el maestro tiene las SIETE columnas: las cinco del v4 más el contador y l
   //
   // ADEUDADO ≠ COMPRADO y por eso son dos columnas: una es el histórico entero y la otra el saldo
   // vivo de hoy. Juntarlas sería mezclar dos ventanas de tiempo en la misma celda.
-  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Adeudado', 'Comprobantes · histórico', 'Última compra']) {
+  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Total 12 m', 'Saldo pendiente', 'Comprob. 12 m', 'Última compra']) {
     assert.ok(src.includes(`>${c}<`), `falta la columna ${c}`)
   }
   // Un «Comprobantes» pelado, sin la ventana, es el defecto que este test existe para atrapar.
@@ -331,8 +341,8 @@ test('el maestro tiene las SIETE columnas: las cinco del v4 más el contador y l
   // fila, no sobre el archivo, para que un `<span>` del encabezado no infle el número.
   const cuerpo = src.slice(src.indexOf('{proveedores.map('))
   const celdas = [
-    'IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)', 'deuda-proveedor',
-    'textoComprobantes(c, comprado !== null)', 'ultima-compra',
+    'IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(u.total12)', 'deuda-proveedor',
+    'u?.comprobantes12', 'ultima-compra',
   ]
   for (const c of celdas) assert.ok(cuerpo.includes(c), `la fila perdió la celda ${c}`)
   // EL CONTADOR NO SE CUENTA EN LA PANTALLA. Un `filas.length` o un `reduce` acá sería la segunda
@@ -429,12 +439,13 @@ test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {
   // La nota al pie declara la ventana de las DOS columnas derivadas de la misma vista —el total y
   // el contador— y nombra el número con el que se puede confundir: el «Comprado 2026» del Sheet.
   const nota = pagina().replace(/\s+/g, ' ')
-  assert.match(nota, /Lo comprado y sus comprobantes son históricos: cuentan todo lo cargado, no el año en curso/)
+  assert.match(nota, /«Total 12 m» y «Comprob\. 12 m» cuentan los últimos doce meses corridos desde hoy/)
   assert.match(nota, /Comprado 2026/)
-  for (const a of ['TablaProveedores.tsx', 'PanelProveedor.tsx']) {
-    assert.equal(/12 M\b|últimos 12 meses|12 meses/i.test(codigo(a)), false,
-      `${a} rotula lo comprado con una ventana de tiempo inventada`)
-  }
+  // Desde el 30/09 la tabla SÍ declara 12 m, porque el dato lo tiene de verdad (filas de
+  // `costos_obra` con fecha ≥ hoy − 12 meses). El defecto que sigue atrapado es el otro: que la
+  // ficha rotule «12 m» un histórico. Ahí la ventana sigue siendo «histórico».
+  assert.equal(/12 M\b|últimos 12 meses|12 meses/i.test(codigo('PanelProveedor.tsx')), false,
+    'PanelProveedor.tsx rotula lo comprado con una ventana de tiempo inventada')
   assert.match(codigo('PanelProveedor.tsx'), /· histórico/)
 })
 

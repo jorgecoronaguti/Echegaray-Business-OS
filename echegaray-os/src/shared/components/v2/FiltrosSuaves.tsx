@@ -32,7 +32,7 @@ export interface OpcionFiltro {
   cuenta?: number | null
 }
 
-export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: {
+export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros', desplazable, verTodoHref }: {
   opciones: OpcionFiltro[]
   /**
    * `{ n, total }`. La fila que recorta la población lo escribe SIEMPRE, aunque no filtre nada
@@ -59,9 +59,18 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
    */
   rotulo?: string
   testid?: string
+  /**
+   * EN EL TELÉFONO, UNA SOLA FILA QUE SE DESPLAZA DE COSTADO (30/09/2026). Ocho chips con conteo
+   * envueltos ocupan cinco renglones a 390px y empujan la lista fuera de la primera pantalla; en una
+   * fila con scroll horizontal la lista queda a la vista y el dedo sigue alcanzando todos. Sólo
+   * actúa por debajo de `md`: en escritorio los chips se envuelven como siempre.
+   */
+  desplazable?: boolean
+  /** Si hay algo activo, «Ver todo» lo limpia de un clic. `undefined` = no hay nada que limpiar. */
+  verTodoHref?: string
 }) {
   return (
-    <div data-testid={testid} className="max-md:!gap-1.5" style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
+    <div data-testid={testid} className={`max-md:!gap-1.5 ${desplazable ? 'max-md:!flex-nowrap max-md:overflow-x-auto' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
       {rotulo && (
         <span style={{ fontSize: '11.5px', color: V.tenue, marginRight: 3 }} data-testid={`${testid}-rotulo`}>
           {rotulo}
@@ -80,7 +89,7 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
           aria-current={o.activo ? 'true' : undefined}
           // EN EL TELÉFONO, LA PASTILLA DE M03 (24/09/2026): 36px de alto y texto de 13 — un chip de 22px
           // no es un blanco para el dedo. El fondo del activo y el peso no cambian: es la misma señal.
-          className="hover:bg-surface-sunken max-md:!inline-flex max-md:min-h-[36px] max-md:items-center max-md:!rounded-[16px] max-md:!px-3 max-md:!text-[13px]"
+          className={`hover:bg-surface-sunken ${desplazable ? 'max-md:shrink-0 max-md:whitespace-nowrap' : ''} max-md:!inline-flex max-md:min-h-[36px] max-md:items-center max-md:!rounded-[16px] max-md:!px-3 max-md:!text-[13px]`}
           style={{
             fontSize: '12px', padding: '4px 9px', borderRadius: 6,
             color: o.activo ? V.tinta : V.apagado,
@@ -101,6 +110,17 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
           )}
         </Link>
       ))}
+      {verTodoHref && (
+        <Link
+          href={verTodoHref}
+          prefetch={false}
+          data-testid={`${testid}-ver-todo`}
+          className={`underline ${desplazable ? 'max-md:shrink-0 max-md:whitespace-nowrap' : ''} max-md:!inline-flex max-md:min-h-[36px] max-md:items-center max-md:!px-3 max-md:!text-[13px]`}
+          style={{ fontSize: '12px', padding: '4px 9px', color: V.tinta, fontWeight: 500 }}
+        >
+          Ver todo
+        </Link>
+      )}
       {conteo && (
         <span
           className="font-mono tabular-nums"
