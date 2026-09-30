@@ -178,7 +178,7 @@ export function personaDeCarpeta(nombreCarpeta, personas) {
  * adivina— y sólo si no lo hay, por nombre.
  */
 export function planDeNomina({ nomina, personas }) {
-  const plan = { altas: [], cambios: [], ambiguas: [], fueraDeNomina: [] }
+  const plan = { altas: [], cambios: [], ambiguas: [], fueraDeNomina: [], discrepancias: [] }
   const enNomina = new Set()
 
   for (const fila of nomina) {
@@ -201,11 +201,16 @@ export function planDeNomina({ nomina, personas }) {
     // planilla no tiene por qué ganarle a una corrección hecha a mano.
     const cambio = { persona }
     if (fila.legajo && persona.legajo !== fila.legajo) cambio.legajo = fila.legajo
-    // EL CARGO DE LA NÓMINA ES LA CATEGORÍA DEL CONVENIO, no un puesto. Cargarlo en `puesto` daba
-    // dos respuestas al mismo hecho —y distintas, porque `categoria` se llenaba de la libreta con la
-    // del ingreso—. Sólo lo que NO está en la escala («JEFE DE OBRA») es un puesto de verdad.
+    // LA PLANILLA NO ESCRIBE LA CATEGORÍA DE UNA PERSONA QUE YA EXISTE (dueño, 30/09/2026). La
+    // categoría vigente es `personas.categoria` y manda el documento formal (recibo > IERIC > alta
+    // ARCA, regla del 14/09); este timer la pisaba cada 6 h con la columna «cargo» de PERSONAL y
+    // dejaba a Petina en medio_oficial y a Castillo en oficial contra sus papeles. El cargo sólo se
+    // usa para el ALTA (arriba) y, cuando NO es una categoría de la escala («JEFE DE OBRA»), como
+    // puesto de quien no tiene ninguno. Si la planilla difiere del recibo, se reporta, no se pisa.
     const categoria = categoriaDeConvenio(fila.cargo)
-    if (categoria && persona.categoria !== categoria) cambio.categoria = categoria
+    if (categoria && persona.categoria && persona.categoria !== categoria) {
+      plan.discrepancias.push({ persona: persona.nombre_completo, planilla: categoria, vigente: persona.categoria })
+    }
     if (fila.cargo && !categoria && !persona.puesto) cambio.puesto = fila.cargo
     if (persona.en_la_empresa !== fila.activo) cambio.en_la_empresa = fila.activo
     if (Object.keys(cambio).length > 1) plan.cambios.push(cambio)

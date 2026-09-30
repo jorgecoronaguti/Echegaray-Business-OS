@@ -38,10 +38,22 @@ function Editar({ href, testid }: { href: string; testid: string }) {
 }
 
 export interface DatoDeLegajo { k: string; v: string | null; falta?: string; mono?: boolean }
+/** Un paso de la cronología de categoría, ya formateado: fecha corta, etiqueta del convenio, fuente. */
+export interface PasoDeCategoriaDeLegajo { desde: string; categoria: string; fuente: string; referencia: string | null }
 
-export function CostadoLegajo({ identidad, laboral, asignacion, meses, hrefIdentidad, hrefLaboral, puedeEditar }: {
+const FUENTE_DEL_PASO: Record<string, string> = {
+  recibo: 'recibo',
+  alta_arca: 'alta ARCA',
+  ieric: 'IERIC',
+  estudio: 'estudio',
+  planilla: 'planilla',
+  os: 'ficha',
+}
+
+export function CostadoLegajo({ identidad, laboral, categorias = [], asignacion, meses, hrefIdentidad, hrefLaboral, puedeEditar }: {
   identidad: DatoDeLegajo[]
   laboral: DatoDeLegajo[]
+  categorias?: PasoDeCategoriaDeLegajo[]
   asignacion: DatoDeLegajo[]
   meses: MesDeHH[]
   hrefIdentidad: string
@@ -73,6 +85,34 @@ export function CostadoLegajo({ identidad, laboral, asignacion, meses, hrefIdent
           <DatoDeCostado key={d.k} k={d.k} v={d.v} falta={d.falta} mono={d.mono} />
         ))}
       </div>
+
+      {/* CRONOLOGÍA DE CATEGORÍA (dueño, 30/09/2026): de dónde salió cada paso, más nuevo arriba.
+          Es la misma tabla que fija `personas.categoria`, así que el primer renglón coincide con
+          «Categoría» del bloque Laboral. La referencia (qué recibo, qué pedido) va en `title`:
+          bajo demanda, no como párrafo. */}
+      {categorias.length > 0 && (
+        <div data-testid="bloque-categorias" style={{ marginTop: 22 }}>
+          <RotuloPanel>Categoría · cronología</RotuloPanel>
+          {categorias.map((c, i) => (
+            <div
+              key={`${c.desde}-${c.categoria}`}
+              data-testid="paso-categoria"
+              title={c.referencia ?? undefined}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0' }}
+            >
+              <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.apagado, width: 64, flexShrink: 0 }}>
+                {c.desde}
+              </span>
+              <span style={{ fontSize: '11.5px', color: i === 0 ? V.tinta : V.apagado, fontWeight: i === 0 ? 600 : 400, flex: 1, minWidth: 0 }}>
+                {c.categoria}
+              </span>
+              <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }}>
+                {FUENTE_DEL_PASO[c.fuente] ?? c.fuente}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ marginTop: 22 }}>
         <RotuloPanel>Asignación</RotuloPanel>

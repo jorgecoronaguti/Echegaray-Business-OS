@@ -82,7 +82,7 @@ import { CamposIdentidad, CamposLaboral } from '@/features/administracion/compon
 import { AltaDocumento } from '@/features/administracion/components/FichaPartes'
 import { LABEL_FICHA, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/services/vistasFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
-import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
+import { getAsignacionesDe, getCategoriaHistorial, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
 import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
 import { liquidaSueldos } from '@/features/auth/types/areas'
@@ -176,7 +176,7 @@ export default async function FichaPersonaPage({
   // AFIRMA en todas. Leerlo sólo en el Resumen escribiría «sin $/h cargado» en las otras cinco
   // sobre gente que sí tiene tarifa —el defecto que ya se pagó con «Obra actual: sin asignar»—. Son
   // cuatro consultas chicas: las de UNA persona y la escala de UNA categoría, no el módulo entero.
-  const [asignaciones, documentos, valorHora] = await Promise.all([
+  const [asignaciones, documentos, valorHora, historialCategoria] = await Promise.all([
     getAsignacionesDe(supabase, id),
     getDocumentos(supabase, id),
     getValorHoraDelLegajo(supabase, {
@@ -190,7 +190,16 @@ export default async function FichaPersonaPage({
       puedeVer: liquida,
       hoy,
     }),
+    getCategoriaHistorial(supabase, id),
   ])
+  // La cronología de categoría, para el costado. Si la lectura falla se calla el bloque: la
+  // categoría vigente ya está en Laboral y sale de la misma tabla.
+  const categorias = (historialCategoria.data ?? []).map((c) => ({
+    desde: fecha(c.desde),
+    categoria: etiquetaCategoria(c.categoria),
+    fuente: c.fuente,
+    referencia: c.referencia,
+  }))
   // LA RETRIBUCIÓN DEL AÑO SÓLO EN SU SOLAPA Y SÓLO CON PERMISO: es la lectura más cara del legajo
   // —le pregunta a la Liquidación quincena por quincena— y no se paga en las otras seis vistas.
   // LO QUE EL BANCO CERTIFICA QUE LE PAGÓ (dueño, 18/09/2026) va en la misma solapa, con la misma puerta y en
@@ -730,6 +739,7 @@ export default async function FichaPersonaPage({
                 <CostadoLegajo
                   identidad={identidad}
                   laboral={laboral}
+                  categorias={categorias}
                   asignacion={asignacion}
                   meses={meses}
                   hrefIdentidad={href(vista, 'identidad')}

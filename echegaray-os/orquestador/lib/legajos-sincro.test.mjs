@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   BUCKET_ACTIVOS, BUCKET_INACTIVOS, CATEGORIAS, REQUERIDOS_ACTIVO,
   categoriaDeArchivo, faltantes, fechaDelArchivo, nombreCanonico, personaDeCarpeta,
+  planDeNomina,
   planDeSincronizacion, documentosAusentes, esBucketDeLegajos,
 } from './legajos-sincro.mjs'
 
@@ -196,4 +197,25 @@ test('«HM» es la libreta del IERIC, no el examen médico (11/09/2026: Ochoa y 
   assert.equal(categoriaDeArchivo('HM - OCHOA EDUARDO.pdf'), 'libreta_fondo_cese')
   assert.equal(categoriaDeArchivo('HM.pdf'), 'libreta_fondo_cese')
   assert.equal(categoriaDeArchivo('Examen medico preocupacional.pdf'), 'examen_medico')
+})
+
+test('la nómina no pisa la categoría de una persona existente: la reporta', () => {
+  // 30/09/2026: el timer dejaba a Petina en medio_oficial y a Castillo en oficial contra su recibo
+  // y su alta en ARCA. La categoría vigente manda desde el documento; la planilla sólo carga altas.
+  const plan = planDeNomina({
+    nomina: [{ nombre: 'PETINA JUAN', legajo: 12, cargo: 'MEDIO OFICIAL', activo: true }],
+    personas: [{ id: 'p1', nombre_completo: 'PETINA JUAN', legajo: 12, categoria: 'oficial', en_la_empresa: true }],
+  })
+  assert.equal(plan.altas.length, 0)
+  assert.ok(plan.cambios.every((c) => !('categoria' in c)), 'ningún cambio lleva categoria')
+  assert.deepEqual(plan.discrepancias, [{ persona: 'PETINA JUAN', planilla: 'medio_oficial', vigente: 'oficial' }])
+})
+
+test('la nómina sí carga la categoría en un alta', () => {
+  const plan = planDeNomina({
+    nomina: [{ nombre: 'NUEVO PEDRO', legajo: 99, cargo: 'AYUDANTE', activo: true }],
+    personas: [],
+  })
+  assert.equal(plan.altas.length, 1)
+  assert.equal(plan.altas[0].categoria, 'ayudante')
 })

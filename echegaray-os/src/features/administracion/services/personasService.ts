@@ -224,6 +224,28 @@ export async function getPersona(supabase: SupabaseClient, id: string): Promise<
   return { data: (data as unknown as Persona) ?? null, error: null }
 }
 
+/** Un paso de categoría de la persona: LA MISMA tabla que alimenta `personas.categoria` por trigger. */
+export interface PasoDeCategoria { categoria: string; desde: string; fuente: string; referencia: string | null }
+
+/**
+ * La cronología de categoría (30/09/2026, dueño: «registro cronológico de pasos de categoría de cada
+ * empleado»). Sale de `persona_categoria_historial`, que se escribe SOLA cada vez que cambia
+ * `personas.categoria` — por eso la ficha no puede decir una categoría y el historial otra: el último
+ * renglón ES la vigente. Más nueva primero.
+ */
+export async function getCategoriaHistorial(
+  supabase: SupabaseClient,
+  personaId: string,
+): Promise<ServiceResult<PasoDeCategoria[]>> {
+  const { data, error } = await supabase
+    .from('persona_categoria_historial')
+    .select('categoria, desde, fuente, referencia')
+    .eq('persona_id', personaId)
+    .order('desde', { ascending: false })
+  if (error) return { data: null, error: error.message }
+  return { data: (data as unknown as PasoDeCategoria[]) ?? [], error: null }
+}
+
 /**
  * El historial de asignaciones, vigentes y cerradas.
  *

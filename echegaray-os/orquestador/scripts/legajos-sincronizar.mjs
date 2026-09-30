@@ -132,6 +132,7 @@ async function main() {
     linea(`  · ${c.persona.nombre_completo}: ${q}`)
   }
   for (const a of nom.ambiguas) linea(`  ⚠ ${a.nomina}: ${a.motivo}`)
+  for (const d of nom.discrepancias ?? []) linea(`  ≠ ${d.persona}: la planilla dice ${d.planilla}, la ficha ${d.vigente} (no se pisa; reportar al estudio)`)
 
   if (!enSeco) {
     for (const a of nom.altas) {
@@ -142,12 +143,12 @@ async function main() {
     }
     for (const c of nom.cambios) {
       await query(
+        // SIN `categoria`: la planilla no la escribe en una persona existente (30/09/2026).
         `update personas set legajo = coalesce($1, legajo), puesto = coalesce($2, puesto),
-                             categoria = coalesce($3, categoria),
-                             en_la_empresa = coalesce($4, en_la_empresa),
-                             fecha_egreso = case when $4 is true then null else fecha_egreso end
-          where id = $5`,
-        [c.legajo ?? null, c.puesto ?? null, c.categoria ?? null, c.en_la_empresa ?? null, c.persona.id])
+                             en_la_empresa = coalesce($3, en_la_empresa),
+                             fecha_egreso = case when $3 is true then null else fecha_egreso end
+          where id = $4`,
+        [c.legajo ?? null, c.puesto ?? null, c.en_la_empresa ?? null, c.persona.id])
     }
     personas = await leerPersonas()
   }
