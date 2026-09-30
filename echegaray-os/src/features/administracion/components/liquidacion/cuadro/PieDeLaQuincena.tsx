@@ -13,6 +13,8 @@ import type { ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import { CANAL_SCROLL } from '../solapas/tabla'
+import { conciliarPlata } from './conciliacionDePlata'
+import type { PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
 import { cierreDeTotales } from '../../../services/cuadroDeJornales'
 import type { TotalGeneral, TotalesDeJornaleros, TotalesDeMensuales } from '../../../services/liquidacionPorTipo'
 
@@ -52,32 +54,49 @@ const APagar = ({ rotulo, valor, testid }: { rotulo: string; valor: number | nul
   </div>
 )
 
-const Celda = ({ valor, testid, nota, fuerte }: { valor: number | null; testid: string; nota?: string; fuerte?: boolean }) => (
+const Celda = ({ valor, testid, fuerte }: { valor: number | null; testid: string; fuerte?: boolean }) => (
   <div style={NUM}>
     <span data-testid={testid} style={{ fontWeight: fuerte ? 600 : 400 }}>{pesos(valor)}</span>
-    {nota && <div title="Redondeado para pagar en mano" style={{ ...ROT, fontSize: '10.5px' }}>{nota}</div>}
   </div>
 )
 
-export function ResumenJornaleros({ t, sellada = false }: { t: TotalesDeJornaleros; sellada?: boolean }) {
+// UNA NOTA VISIBLE, NUNCA UN title: es lo que hace que la fila cierre a la vista (auditor 30/09/2026).
+const Nota = ({ children, testid, tono }: { children: ReactNode; testid: string; tono?: string }) => (
+  <div data-testid={testid} style={{ gridColumn: '1 / -1', ...ROT, fontSize: '11px', color: tono ?? V.tenue, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{children}</div>
+)
+
+// El universo de las tres columnas es UNO: las filas con saldo que afirmar (`conciliarPlata`). Las demás se cuentan
+// en un aviso visible en vez de entrar en Total pero no en Saldo.
+export function ResumenJornaleros({ t, pagos, sellada = false }: { t: TotalesDeJornaleros; pagos: readonly PagoDeLaLinea[]; sellada?: boolean }) {
   const cierre = cierreDeTotales(t)
+  const c = conciliarPlata(pagos)
   const avisos: string[] = []
   if (cierre?.cierra === false) avisos.push(`no cierra por ${pesos(cierre.diferencia)}`)
   // EN LA CERRADA «SIN SALDO» ES «NADIE REGISTRÓ LO PAGADO» (`pagoSinRegistrar`): no se da por debido ni por pagado.
-  if (t.pago.sinSaldo > 0) avisos.push(sellada ? `${t.pago.sinSaldo} con el pago sin registrar: no se afirma saldo` : `${t.pago.sinSaldo} sin saldo`)
+  if (c.sinSaldo > 0) avisos.push(sellada ? `${c.sinSaldo} con el pago sin registrar: no entran en Total, Pagado ni Saldo` : `${c.sinSaldo} sin saldo: no entran en Total, Pagado ni Saldo`)
   if (t.sinNeto > 0) avisos.push(`${t.sinNeto} sin neto`)
   if (t.sinTarifa > 0) avisos.push(`${t.sinTarifa} sin retribución`)
-  const redEfe = t.redondeo > 0 ? `≈ ${pesos(t.redondeo)}` : undefined
-  const redSaldo = t.saldoRedondeado > 0 ? `≈ ${pesos(t.saldoRedondeado)}` : undefined
   // Columna de rótulo angosta y tres de cifras iguales: en 390 px cada cifra («$3.536.928,84») entra sin partirse.
   const fila = { display: 'grid', gridTemplateColumns: 'minmax(56px, auto) repeat(3, minmax(0, 1fr))', columnGap: 12, alignItems: 'baseline', padding: '6px 0', borderTop: `1px solid ${V.linea}` } as const
+  const notasDeCanal = (k: 'banco' | 'efectivo', otro: string) => (
+    <>
+      {c[k].descontado > 0 && <Nota testid={`pie-descuento-${k}`}>{`${otro} pagado de más, se descuenta de acá: −${pesos(c[k].descontado)}`}</Nota>}
+      {c[k].sobrepasado > 0 && <Nota testid={`pie-sobrepasado-${k}`}>{`Cobraron de más por acá: +${pesos(c[k].sobrepasado)}`}</Nota>}
+    </>
+  )
   return (
     <div data-testid="espejo-pie" style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: '12px', color: V.tinta }}>
-      {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro, así que suman el saldo y no más. */}
+      {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro. */}
       <div data-testid="pie-a-pagar" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 32, rowGap: 8 }}>
-        <APagar rotulo="A pagar hoy · banco" valor={t.pago.aPagarBanco} testid="pie-a-pagar-banco" />
-        <APagar rotulo="A pagar hoy · efectivo" valor={t.pago.aPagarEfectivo} testid="pie-a-pagar-efectivo" />
+        <APagar rotulo="A pagar hoy · banco" valor={c.aPagarBanco} testid="pie-a-pagar-banco" />
+        <div>
+          <APagar rotulo="A pagar hoy · efectivo" valor={c.aPagarEfectivo} testid="pie-a-pagar-efectivo" />
+          {t.redondeo > 0 && <div data-testid="pie-redondeo" style={ROT}>{`Efectivo redondeado ${pesos(t.redondeo)}`}</div>}
+        </div>
       </div>
+      {c.cobraronDeMas.personas > 0 && (
+        <Aviso tono={V.warn}><span data-testid="pie-cobraron-de-mas">{`${c.cobraronDeMas.personas} cobraron de más: ${pesos(c.cobraronDeMas.importe)} (banco + efectivo a pagar suman esto más que el Saldo)`}</span></Aviso>
+      )}
       <div style={{ maxWidth: 560 }}>
         <div style={{ ...fila, borderTop: 'none', paddingTop: 0 }}>
           <span />
@@ -87,21 +106,24 @@ export function ResumenJornaleros({ t, sellada = false }: { t: TotalesDeJornaler
         </div>
         <div style={fila}>
           <span style={ROT}>Banco</span>
-          <Celda valor={t.netoBandas} testid="pie-neto" />
-          <Celda valor={t.pago.pagadoBanco} testid="pie-pagado-banco" />
-          <Celda valor={t.pago.saldoBanco} testid="pie-saldo-banco" />
+          <Celda valor={c.banco.total} testid="pie-neto" />
+          <Celda valor={c.banco.pagado} testid="pie-pagado-banco" />
+          <Celda valor={c.banco.saldo} testid="pie-saldo-banco" />
+          {notasDeCanal('banco', 'Efectivo')}
         </div>
         <div style={fila}>
           <span style={ROT}>Efectivo</span>
-          <Celda valor={t.negro} testid="pie-negro" nota={redEfe} />
-          <Celda valor={t.pago.pagadoEfectivo} testid="pie-pagado-efectivo" />
-          <Celda valor={t.pago.saldoEfectivo} testid="pie-saldo-efectivo" />
+          <Celda valor={c.efectivo.total} testid="pie-negro" />
+          <Celda valor={c.efectivo.pagado} testid="pie-pagado-efectivo" />
+          <Celda valor={c.efectivo.saldo} testid="pie-saldo-efectivo" />
+          {notasDeCanal('efectivo', 'Banco')}
         </div>
         <div style={{ ...fila, borderTop: `1px solid ${V.grafito}` }}>
           <span style={{ ...ROT, color: V.tinta, fontWeight: 600 }}>Total</span>
-          <Celda valor={t.cobra} testid="pie-total" fuerte />
-          <Celda valor={t.pago.pagado} testid="pie-pagado" fuerte />
-          <Celda valor={t.pago.saldoTotal} testid="pie-saldo" fuerte nota={redSaldo} />
+          <Celda valor={c.total.total} testid="pie-total" fuerte />
+          <Celda valor={c.total.pagado} testid="pie-pagado" fuerte />
+          <Celda valor={c.total.saldo} testid="pie-saldo" fuerte />
+          {t.saldoRedondeado > 0 && <Nota testid="pie-saldo-redondeado">{`Saldo redondeado ${pesos(t.saldoRedondeado)}`}</Nota>}
         </div>
       </div>
       {avisos.length > 0 && <Aviso tono={cierre?.cierra === false ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}

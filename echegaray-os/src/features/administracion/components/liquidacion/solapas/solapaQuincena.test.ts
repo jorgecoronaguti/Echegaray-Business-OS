@@ -112,7 +112,8 @@ test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas
   // 17/09/2026 los mensuales tienen su propio resumen (`t.sueldo`), fuera del de jornaleros.
   for (const t of ['t.cobra', 't.horasPagas', 't.netoBandas', 't.negro', 't.sueldo',
     't.pago.pagadoBanco', 't.pago.saldoBanco', 't.pago.pagadoEfectivo', 't.pago.saldoEfectivo', 't.pago.pagado', 't.pago.saldoTotal',
-    't.pago.aPagarEfectivo', 't.pago.aPagarBanco']) {
+    // «A pagar hoy» del pie de jornaleros sale ahora de `conciliarPlata(pagos)` (mismo universo que Total/Pagado/Saldo).
+    'c.aPagarEfectivo', 'c.aPagarBanco']) {
     assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
   }
 })
