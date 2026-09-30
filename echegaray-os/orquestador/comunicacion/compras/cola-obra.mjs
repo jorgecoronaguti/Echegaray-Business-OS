@@ -42,6 +42,7 @@
 import { planificarObra, relecturaConfirma } from '../../lib/bisturi-compras-obra.mjs'
 import { planificarPago, relecturaConfirmaPago } from '../../lib/bisturi-compras-pago.mjs'
 import { planificarAnulacion } from '../../lib/bisturi-compras-anulacion.mjs'
+import { planificarDetalle, relecturaConfirmaDetalle } from '../../lib/bisturi-compras-detalle.mjs'
 import { planificarObraCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
 import { contratoDeColumnas, filaACompra } from '../../lib/compras-fila.mjs'
 import { rangoEncabezado, rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
@@ -120,6 +121,8 @@ export const pestanaDe = (cambio) => (cambio?.pestana === 'Cobranzas' ? 'Cobranz
 export const esPago = (cambio) => cambio?.tipo === 'pago'
 /** ¿Es la anulación de una fila que escribió una rendición de efectivo? (23/09/2026) Una sola celda: Estado. */
 export const esAnulacion = (cambio) => cambio?.tipo === 'anular'
+/** ¿Corrige la fecha y/o el concepto de una fila A rendir? (30/09/2026) Celdas por encabezado, nunca AC/AD/AE/AF/AJ. */
+export const esDetalle = (cambio) => cambio?.tipo === 'detalle'
 
 const PLANIFICADOR = Object.freeze({ Compras: planificarObra, Cobranzas: planificarObraCobranza })
 
@@ -169,11 +172,13 @@ export async function decidir({ port, google, fileId, cambio, encabezado, obras,
     ? planificarPago({ cambio, encabezado, fila, respaldo })
     : esAnulacion(cambio)
     ? planificarAnulacion({ cambio, encabezado, fila, respaldo })
+    : esDetalle(cambio)
+    ? planificarDetalle({ cambio, encabezado, fila, respaldo })
     : PLANIFICADOR[pestana]({
       cambio, encabezado, fila, respaldo,
       obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
     })
-  return { ...plan, actor, pestana, esPago: esPago(cambio), esAnulacion: esAnulacion(cambio) }
+  return { ...plan, actor, pestana, esPago: esPago(cambio), esAnulacion: esAnulacion(cambio), esDetalle: esDetalle(cambio) }
 }
 
 /** Sólo lectura: cuántos cambios quedaron `rechazado` por `sin_huella` (los que hoy se pueden reintentar). */
@@ -230,11 +235,15 @@ const cerrar = (port, id, { estado, motivo, leido }) => port.query(
  * normalización (`filaACompra`) con el que el bisturí las comparó antes de escribir.
  */
 async function escribirPagoYReleer({ port, google, fileId, cambio, plan }) {
+  const detalle = plan.esDetalle === true
+  const confirma = detalle ? relecturaConfirmaDetalle : relecturaConfirmaPago
   const rangos = plan.celdas.map((c) => ({ range: c.celda, values: [[c.escribir]] }))
   const r = await google.batchUpdateValues(fileId, rangos, {
     confirmacion: {
       actor: plan.actor,
-      motivo: `pago de la fila ${cambio.fila} de Compras registrado en la app por ${plan.actor} (cambio ${cambio.id})`,
+      motivo: detalle
+        ? `fecha/concepto de la fila ${cambio.fila} de Compras corregidos en la app por ${plan.actor} (cambio ${cambio.id})`
+        : `pago de la fila ${cambio.fila} de Compras registrado en la app por ${plan.actor} (cambio ${cambio.id})`,
     },
   })
   const frenado = await frenoOCandado({ port, cambio, r, celda: plan.celdas.map((c) => c.celda).join(', ') })
@@ -244,17 +253,17 @@ async function escribirPagoYReleer({ port, google, fileId, cambio, plan }) {
   if (!fila || !encabezado) {
     const agotado = cambio.intentos >= MAX_INTENTOS
     await marcar(port, cambio.id, agotado ? 'error' : 'pendiente',
-      `las celdas de pago se escribieron pero no pude releer la fila ${cambio.fila}: sin evidencia no se cierra`)
+      `las celdas se escribieron pero no pude releer la fila ${cambio.fila}: sin evidencia no se cierra`)
     return 'error'
   }
   const compra = filaACompra(fila, contratoDeColumnas(encabezado), Number(cambio.fila))
-  const v = relecturaConfirmaPago(compra, plan.celdas)
+  const v = confirma(compra, plan.celdas)
   const leido = plan.celdas.map((c) => `${c.rotulo}=${c.escribir}`).join(' · ')
   if (!v.ok) {
     await cerrar(port, cambio.id, { estado: 'error', motivo: `relectura distinta: ${v.detalle}`, leido })
     return 'error'
   }
-  await cerrar(port, cambio.id, { estado: 'aplicado', motivo: `${plan.celdas.length} celda(s) de pago escritas por ${plan.actor}${plan.nota ? ` · ${plan.nota}` : ''}`, leido })
+  await cerrar(port, cambio.id, { estado: 'aplicado', motivo: `${plan.celdas.length} celda(s) ${detalle ? 'de detalle' : 'de pago'} escritas por ${plan.actor}${plan.nota ? ` · ${plan.nota}` : ''}`, leido })
   return 'aplicado'
 }
 
@@ -321,7 +330,7 @@ export async function aplicarCambio({ port, google, fileId, cambio, encabezado, 
     await cerrar(port, cambio.id, { estado: 'aplicado', motivo: 'la celda ya decía lo pedido: no se volvió a escribir', leido: plan.actual })
     return 'aplicado'
   }
-  return plan.esPago
+  return plan.esPago || plan.esDetalle
     ? escribirPagoYReleer({ port, google, fileId, cambio, plan })
     : escribirYReleer({ port, google, fileId, cambio, plan })
 }

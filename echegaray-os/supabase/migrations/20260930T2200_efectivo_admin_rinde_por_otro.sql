@@ -104,3 +104,104 @@ begin
      set estado = 'rechazado', motivo = 'la persona sacó la foto de nuevo', cerrado_at = now()
    where id = c.entrada_id and estado in ('pendiente', 'en_espera', 'error');
 end $$;
+
+-- ═══ LA FOTO DE OTRA PERSONA SE VE (dueño 30/09: «editar por completo») ═════════════════════════════
+-- Hasta acá sólo leía `<uid>/rendicion/…` el que subió la foto; Administración y Dirección, que cargan y
+-- corrigen por otro, recibían «No pude abrir la foto». `comprobantes_lee_administracion` (20260926T0001) ya
+-- cubre el bucket entero para ve_economia(), pero depender de que esa migración esté aplicada y de que nadie
+-- la acote después es frágil: esta política es propia de las rendiciones y dice lo mismo acotado a la carpeta
+-- `rendicion`, al lado de la escritura por otro que la necesita. El Jefe de obra NO entra: ve_economia() lo
+-- excluye, igual que en la escritura.
+drop policy if exists comprobantes_lee_rendicion_economia on storage.objects;
+create policy comprobantes_lee_rendicion_economia on storage.objects for select to authenticated
+  using (bucket_id = 'comprobantes' and (storage.foldername(name))[2] = 'rendicion' and (select public.ve_economia()));
+
+-- ═══ EDITAR FECHA Y CONCEPTO DE UNA RENDICIÓN: viajan a la fila de Compras por la cola ══════════════
+-- Un tipo nuevo de cambio, `detalle`: sus valores nuevos viven en `celdas` ({fecha, concepto}) y los de antes
+-- en `previo`. El worker (bisturí `bisturi-compras-detalle`) escribe SÓLO «Fecha factura» y «Concepto» de esa
+-- fila y sólo si es «A rendir» (la escribió el bot, no una persona).
+--
+-- EL PROVEEDOR NO SE EDITA ACÁ, y no es un olvido: la clave de la fila (`compra_clave`) es el CUIT que la
+-- pestaña deduce del Proveedor (o el Proveedor mismo si no hay CUIT). Cambiarlo cambia la clave, y la
+-- rendición quedaría apuntando a una fila que ya no existe con esa clave: el ticket dejaría de rendir. El
+-- importe tampoco: «La fila de Compras no cambia» sigue valiendo para el monto que rinde la entrega.
+alter table public.compra_obra_cambio drop constraint if exists compra_obra_cambio_tipo_chk;
+alter table public.compra_obra_cambio add constraint compra_obra_cambio_tipo_chk
+  check (tipo in ('obra', 'pago', 'anular', 'detalle'));
+alter table public.compra_obra_cambio drop constraint if exists compra_obra_cambio_detalle_con_celdas;
+alter table public.compra_obra_cambio add constraint compra_obra_cambio_detalle_con_celdas
+  check (tipo <> 'detalle' or (jsonb_typeof(celdas) = 'object' and celdas <> '{}'::jsonb));
+comment on column public.compra_obra_cambio.tipo is
+  'obra = la celda Obra. pago = celdas de los tramos de pago (celdas, array). anular = Estado ← Cancelado de una '
+  'fila que escribió una rendición. detalle = Fecha factura y/o Concepto de una fila A rendir (celdas, objeto).';
+
+-- Se reemplaza la firma de tres parámetros por la de cinco: dejar las dos haría ambigua la llamada por nombre.
+drop function if exists public.editar_rendicion_efectivo(uuid, numeric, uuid);
+create or replace function public.editar_rendicion_efectivo(
+  p_rendicion uuid, p_monto numeric, p_entrega uuid, p_fecha date default null, p_concepto text default null
+) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_usr uuid := public._efectivo_exigir_administracion();
+  r public.efectivo_rendicion;
+  s record;
+  v_concepto text := nullif(btrim(coalesce(p_concepto, '')), '');
+  v_nombre text;
+  v_celdas jsonb := '{}'::jsonb;
+  v_previo jsonb := '{}'::jsonb;
+begin
+  select * into r from public.efectivo_rendicion where id = p_rendicion for update;
+  if r.id is null then raise exception 'esa rendición ya no existe' using errcode = 'P0001'; end if;
+  if p_monto is null or p_monto <= 0 then raise exception 'el importe tiene que ser mayor que cero' using errcode = 'P0001'; end if;
+  if to_jsonb(r) ->> 'adelanto_persona_id' is not null
+     and (round(p_monto, 2) <> r.monto or (p_entrega is not null and p_entrega <> r.entrega_id)
+          or p_fecha is not null or v_concepto is not null) then
+    raise exception 'un adelanto de sueldo está sumado en Liquidación: se corrige quitándolo («Quitar») y cargándolo de nuevo' using errcode = 'P0001';
+  end if;
+  if p_entrega is not null and p_entrega <> r.entrega_id then
+    if r.comprobante_id is not null then
+      perform public._efectivo_mover_comprobante(r.comprobante_id, p_entrega);
+    else
+      if not exists (select 1 from public.efectivo_entrega where id = p_entrega and anulada_en is null) then
+        raise exception 'la entrega de destino no existe o está anulada' using errcode = 'P0001';
+      end if;
+      update public.efectivo_rendicion set entrega_id = p_entrega where id = p_rendicion;
+    end if;
+  end if;
+  update public.efectivo_rendicion set monto = round(p_monto, 2) where id = p_rendicion;
+
+  if p_fecha is null and v_concepto is null then return; end if;
+  -- Que la fila sea «A rendir» (la escribió el bot, no una persona) lo verifica el worker contra el Sheet vivo.
+  select fila, sheet_id, fecha, concepto, anulada into s from public.compra_sheet where clave = r.compra_clave limit 1;
+  if s.fila is null then
+    raise exception 'la fila de Compras del comprobante % todavía no está en el espejo: esperá el próximo sync (minutos) y volvé a intentar', r.compra_clave
+      using errcode = 'P0001';
+  end if;
+  if coalesce(s.anulada, false) then raise exception 'la fila de Compras está cancelada: no se corrige' using errcode = 'P0001'; end if;
+  if p_fecha is not null and p_fecha is distinct from s.fecha then
+    v_celdas := v_celdas || jsonb_build_object('fecha', p_fecha);
+    v_previo := v_previo || jsonb_build_object('fecha', s.fecha);
+  end if;
+  if v_concepto is not null and v_concepto is distinct from s.concepto then
+    v_celdas := v_celdas || jsonb_build_object('concepto', v_concepto);
+    v_previo := v_previo || jsonb_build_object('concepto', s.concepto);
+  end if;
+  if v_celdas = '{}'::jsonb then return; end if;   -- ya decía eso: no se encola un cambio vacío
+  -- Dos correcciones pendientes de la misma fila se pisarían en el orden en que el worker las tome.
+  if exists (select 1 from public.compra_obra_cambio
+              where fila = s.fila and tipo = 'detalle' and estado in ('pendiente', 'procesando')) then
+    raise exception 'esa fila ya tiene una corrección esperando al Sheet: esperá a que se aplique' using errcode = 'P0001';
+  end if;
+  select nombre into v_nombre from public.perfiles where id = v_usr;
+  insert into public.compra_obra_cambio
+    (fila, clave, sheet_id, pestana, tipo, celdas, previo, valor_anterior, valor_nuevo, origen, pedido_por, pedido_por_nombre)
+  values
+    (s.fila, r.compra_clave, s.sheet_id, 'Compras', 'detalle', v_celdas, v_previo, v_previo::text, v_celdas::text, 'app', v_usr, v_nombre);
+end $$;
+comment on function public.editar_rendicion_efectivo(uuid, numeric, uuid, date, text) is
+  'Administración corrige cuánto rinde una fila de Compras, a qué entrega y su fecha y concepto (estos dos viajan '
+  'al Sheet por la cola, tipo detalle). El proveedor no: es parte de la clave de la fila.';
+revoke all on function public.editar_rendicion_efectivo(uuid, numeric, uuid, date, text) from public, anon;
+grant execute on function public.editar_rendicion_efectivo(uuid, numeric, uuid, date, text) to authenticated;
+
+notify pgrst, 'reload schema';
