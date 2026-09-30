@@ -8,6 +8,7 @@ import { leerSelloDatoBueno, textoDatoBueno } from './frescura'
 import { ubicarPantalla } from './ubicacion'
 import { esAccionDeOtraVersion } from '@/shared/tiempo-real/version'
 import { recargarPorVersionNueva } from '@/shared/tiempo-real/ProveedorTiempoReal'
+import { avisarError } from '@/shared/registro/avisarError'
 
 // LA PANTALLA QUE SE CAYÓ — `design/screens/gestion-obras-v5.md` §13, literal:
 // *«Loading / vacío / error visualmente distintos. El error nunca se parece a un vacío: regla roja,
@@ -79,6 +80,21 @@ export function EstadoError({
   }, [error])
   useEffect(() => {
     if (error || mensaje) console.error('[pantalla caída]', pathname, d.clave, error ?? mensaje)
+  }, [error, mensaje, pathname, d.clave])
+  // Y AL REGISTRO GENERAL (30/09/2026): la consola sólo la ve quien está sentado frente a la pantalla.
+  // Con esto el error queda en `app_registro` con quién, dónde y el digest que Vercel conoce.
+  useEffect(() => {
+    if (!error && !mensaje) return
+    if (esAccionDeOtraVersion(error)) return
+    avisarError({
+      ruta: pathname ?? location.pathname,
+      consulta: location.search,
+      digest: error?.digest ?? null,
+      mensaje: error?.message ?? mensaje ?? null,
+      clave: d.clave,
+      pila: (error as { stack?: string } | null | undefined)?.stack ?? null,
+      origen: error ? 'error_tsx' : 'pagina',
+    })
   }, [error, mensaje, pathname, d.clave])
   const detalleEnPantalla = d.clave === 'desconocido' ? d.detalle : null
 

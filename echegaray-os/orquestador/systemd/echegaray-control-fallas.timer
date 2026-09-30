@@ -1,0 +1,12 @@
+[Unit]
+Description=Echegaray OS — Control de fallas de la app (cada 15 min)
+
+[Timer]
+# Cada 15 minutos mira las últimas 2 h: una falla nueva llega al dueño antes de que la persona que la
+# sufrió tenga que escribir. Un grupo ya avisado no se repite.
+OnBootSec=3min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

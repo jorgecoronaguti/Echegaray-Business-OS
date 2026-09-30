@@ -1,0 +1,17 @@
+[Unit]
+# Lee public.app_registro (el registro general de la app) y avisa al dueño por DM cuando aparece una
+# falla que no avisó antes. Sólo lectura de la base. Ver orquestador/scripts/control-de-fallas.mjs.
+Description=Echegaray OS — Control de fallas de la app (registro general)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/comunicacion.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/control-de-fallas.mjs --avisar
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=control-fallas

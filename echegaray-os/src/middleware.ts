@@ -1,5 +1,5 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/types'
 import {
   destinoDeRebote, entradaDeArea, fichaDeGestionPara, puedeUsarApi, puedeVerRuta, veEconomia,
@@ -13,6 +13,7 @@ import { trazar } from '@/lib/supabase/traza'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
 import { destinoPermanente } from '@/shared/auth/rutasViejas'
+import { clasificar, debeRegistrar, registrar } from '@/shared/registro/registroApp'
 import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe, caraDeTelefonoDelJefe, obraQueSeMira } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
@@ -37,7 +38,47 @@ import {
  * 503 con una página que dice QUÉ no responde y que no es culpa del que mira. Las rutas públicas
  * (login, estáticos) siguen pasando: no dependen de Supabase para dibujarse.
  */
-export async function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  const respuesta = await puerta(request)
+  // ═══ EL REGISTRO GENERAL (30/09/2026) ═══ Cada pedido que no es prefetch ni estático deja una fila en
+  // `app_registro` con quién, dónde y qué decidió la puerta. `waitUntil`: la respuesta sale ya y la fila
+  // se escribe después, con tope; si la base no contesta se pierde la fila, nunca la pantalla.
+  // `estado` es lo que decidió ESTA puerta (redirección, 403, 503); cuando deja pasar queda null: lo
+  // que contestó la página lo anota `instrumentation.ts` si falla. Ver `shared/registro/registroApp.ts`.
+  try {
+    const { pathname, search } = request.nextUrl
+    if (debeRegistrar(pathname, request.method, request.headers)) {
+      const quien = QUIEN.get(request)
+      const pasa = respuesta.headers.has('x-middleware-next') || respuesta.headers.has('x-middleware-rewrite')
+      const estado = pasa ? null : respuesta.status
+      const accion = request.headers.get('next-action')
+      const verComo = request.cookies.get(COOKIE_VER_COMO)?.value
+      event.waitUntil(registrar({
+        tipo: estado === null ? (request.method === 'GET' ? 'navegacion' : 'accion') : clasificar(request.method, estado),
+        ruta: pathname,
+        consulta: search,
+        perfil_id: quien?.uid ?? null,
+        rol: quien?.rol ?? null,
+        prestada: request.cookies.has(COOKIE_ENTRAR_COMO),
+        metodo: request.method,
+        estado,
+        destino: respuesta.headers.get('location'),
+        dispositivo: pareceTelefonoSegun(request.headers) ? 'telefono' : 'pc',
+        detalle: accion || verComo || request.headers.has('rsc')
+          ? { ...(accion ? { accion } : {}), ...(verComo ? { ver_como: true } : {}), ...(request.headers.has('rsc') ? { rsc: true } : {}) }
+          : null,
+      }))
+    }
+  } catch {
+    // El registro nunca decide la respuesta.
+  }
+  return respuesta
+}
+
+/** Quién pidió, anotado por la puerta cuando lo sabe (sesión y rol), para el registro. */
+const QUIEN = new WeakMap<NextRequest, { uid: string; rol: string | null }>()
+
+async function puerta(request: NextRequest): Promise<NextResponse> {
   // ═══ LAS URLS VIEJAS, A SU LUGAR NUEVO (25/09/2026) ═══ Antes que todo, con o sin sesión: un 308 a la
   // URL vigente del mismo concepto. El destino pasa después por la puerta de siempre. Tabla y porqué en
   // `shared/auth/rutasViejas.ts`.
@@ -125,6 +166,7 @@ async function middlewareConBackend(request: NextRequest) {
   // refresh token sí queda invalidado al instante por `signOut({ scope: 'global' })`.
   const { data: sesion } = await supabase.auth.getClaims()
   const user = sesion?.claims ? { id: sesion.claims.sub } : null
+  if (user) QUIEN.set(request, { uid: user.id, rol: null })
   const pathname = request.nextUrl.pathname
 
   // ── SIN SESIÓN NO SE VE NADA. Es lo primero que se decide, antes que cualquier rol.
@@ -231,6 +273,7 @@ async function middlewareConBackend(request: NextRequest) {
         })
       }
     }
+    QUIEN.set(request, { uid: user.id, rol })
     // ═══ «VER COMO»: LA LENTE DE DIRECCIÓN (22/09/2026) ═══
     //
     // El dueño pidió mirar la app con los ojos de cada rol sin dar de alta usuarios de prueba. Acá

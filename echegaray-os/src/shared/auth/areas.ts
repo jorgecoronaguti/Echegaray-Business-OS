@@ -349,7 +349,7 @@ export function puedeVerRuta(rol: Rol | null | undefined, ruta: string): boolean
  * que hubiera perfil: un operario podía usar el chat con todo el OS o encolar lecturas de planos.
  * Las públicas (`/api/salud`, `/api/os`, `/api/oauth/*`) no llegan acá: las deja pasar `esRutaPublica`.
  */
-export const API_DE_TODOS = ['/api/version'] as const
+export const API_DE_TODOS = ['/api/version', '/api/registro-error'] as const
 
 export function puedeUsarApi(rol: Rol | null | undefined, pathname: string): boolean {
   if (veEconomia(rol)) return true
