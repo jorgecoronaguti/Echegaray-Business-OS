@@ -97,12 +97,12 @@ test('carga lo que dice el mensaje contra la entrega de QUIEN ESCRIBE, con la cl
   assert.doesNotMatch(r.texto, /te quedan|saldo de \$|suma \$/i, 'ni el saldo ni lo que suma el empleado se publican en el canal')
 })
 
+// Sin entrega ya NO es un rechazo (30/09): es un pago con la caja, probado en efectivo-pagos.test.mjs.
 test('las puertas fallen cerrado y NO escriben', async () => {
   for (const [o, estado] of [
     [{ canal: false }, 'rechazado_canal'],
     [{ perfil: null }, 'rechazado_sin_persona'],
     [{ esPrueba: true }, 'rechazado_persona_prueba'],
-    [{ abiertas: [] }, 'rechazado_sin_entrega'],
     [{ abiertas: [{ ...ENTREGA, es_prueba: true }] }, 'rechazado_entrega_prueba'],
   ]) {
     const { r, escrituras } = await atender('le di 8500 de adelanto a Pastrán', { ...o, actor: actor(`p-${estado}`) })

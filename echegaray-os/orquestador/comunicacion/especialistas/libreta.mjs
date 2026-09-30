@@ -31,6 +31,7 @@ import * as repo from '../comprobantes/repositorio.mjs'
 import { perfilDeMattermost } from './entregas-efectivo.mjs'
 import { elegirEmpleado, senalDeAdelanto } from '../../lib/adelanto-sueldo-texto.mjs'
 import { padronDeAdelantos } from './adelantos-sueldo.mjs'
+import { pareceUnPago } from '../../lib/efectivo-pago-texto.mjs'
 
 export const AREA_LIBRETA = 'rendicion'
 
@@ -115,6 +116,10 @@ export const especialista = {
         if (q.persona || q.candidatos?.length) return null
       } catch { /* sin padrón, la libreta sigue como siempre */ }
     }
+    // UN PAGO ESCRITO COMO FRASE («hoy le pagué 100 a Rodrigo», «se pagaron 220000 en efectivo de arreglo de la
+    // F100») no es un renglón de libreta: lo lee `efectivo-pagos`, que sabe si es a una persona, un gasto o un
+    // subcontratista. Acá «nada_cargable» era lo que el dueño recibía el 30/09. Varias líneas siguen siendo libreta.
+    if (pareceUnPago(texto)) return null
     const leidas = interpretarLibreta(texto)
     if (leidas.some((l) => l.estado === 'listo' || l.estado === 'jornales')) {
       return { destino: 'libreta', confianza: 1, leidas }
