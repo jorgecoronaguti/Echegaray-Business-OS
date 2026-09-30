@@ -81,6 +81,7 @@ import {
 } from '../lib/obras-en-cash-flow.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
+import { chequesYaDebitadosDelRegistro } from '../lib/libro-cheques-debitados.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 // EL CRUCE DEL RESTO DEL LIBRO (cargas sociales, impuestos, financiero). Corre sobre el libro
 // ENTERO, como el de cheques: un extractor que sólo ve su pestaña no puede saber qué débito ya
@@ -632,6 +633,8 @@ export async function extraerDeLasFuentes(google, corte) {
     // el libro ENTERO (necesita a los REAL para que consuman su débito primero), no dentro de un
     // extractor que sólo ve su pestaña.
     debitosBanco: extracto.debitos,
+    // Los DEBITADO = SI no se emiten, pero su débito está en el extracto: ver lib/libro-cheques-debitados.mjs.
+    chequesYaDebitados: chequesYaDebitadosDelRegistro(cheques, { fila0: reg.primera }),
     // EL MISMO Set QUE YA CONSUMIÓ LA NÓMINA. El cruce del resto del libro corre después y tiene que
     // ver qué débitos están reclamados: con un Set nuevo, el lote de haberes que ya pagó una quincena
     // podría además "pagar" una obligación de otra naturaleza. Un débito respalda a UNO solo.
@@ -687,14 +690,14 @@ function cruceBanco(libro, debitos, corteBanco, usados, log = console.log) {
  * `log` existe para que la simulación no imprima las trescientas líneas de evidencia del cruce: la
  * decisión es la misma, lo único que cambia es si se narra.
  */
-export function consolidar(porFuente, { debitosBanco, corteBanco, usadosBanco, log = () => {} }) {
+export function consolidar(porFuente, { debitosBanco, corteBanco, usadosBanco, chequesYaDebitados = [], log = () => {} }) {
   let todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
   // `public.cheques` tenía corte 31/07 y el banco ya había debitado cheques que el libro seguía
   // contando como COMPROMETIDOS ($500.000 de Diesel, refs 314/315 del 24/07). La regla, su porqué y
   // sus guardas viven en lib/libro-respaldo-banco.mjs (`chequesCubiertosPorBanco`).
-  const respaldo = chequesCubiertosPorBanco(todos, debitosBanco)
+  const respaldo = chequesCubiertosPorBanco(todos, debitosBanco, { yaDebitados: chequesYaDebitados })
   for (const aviso of respaldo.avisos) log(`  ⚠ ${aviso}`)
   respaldo.cubiertos.forEach((d, i) => {
     const m = todos[i]
@@ -728,10 +731,10 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
   const {
-    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras,
+    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras, chequesYaDebitados,
   } = await extraerDeLasFuentes(google, corte)
   const { consolidado, internas, netoInterno, colapsos } = consolidar(porFuente,
-    { debitosBanco, corteBanco, usadosBanco, log: console.log })
+    { debitosBanco, corteBanco, usadosBanco, chequesYaDebitados, log: console.log })
 
   console.log(`LIBRO CANÓNICO — corte ${new Date().toLocaleDateString('es-AR')} · extracto hasta el serial ${corteBanco}`)
   for (const [fuente, ms] of Object.entries(porFuente)) {

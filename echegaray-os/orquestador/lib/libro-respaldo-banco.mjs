@@ -295,7 +295,7 @@ const ES_DEBITO_DE_CHEQUE = /cheque debitado|echeq (canje|clearing)|canje intern
  * @returns {{cubiertos:Map<number,{fecha:number,fila:number}>, avisos:string[]}} índice del
  *   movimiento → con qué débito quedó cubierto
  */
-export function chequesCubiertosPorBanco(movimientos = [], debitos = []) {
+export function chequesCubiertosPorBanco(movimientos = [], debitos = [], { yaDebitados = [] } = {}) {
   const esCheque = (m) => m?.signo === -1 && /cheq/i.test(String(m?.instrumento ?? ''))
   const deCheque = debitos.filter((d) => ES_DEBITO_DE_CHEQUE.test(d.concepto))
   const libres = new Map() // importe exacto → débitos no consumidos
@@ -303,15 +303,24 @@ export function chequesCubiertosPorBanco(movimientos = [], debitos = []) {
     if (!libres.has(d.importe)) libres.set(d.importe, [])
     libres.get(d.importe).push(d)
   }
+  // Un cheque no debita antes de librarse: sin fecha de emisión conocida no se excluye a nadie.
+  const posibleParaEmision = (d, emision) => !Number.isFinite(emision) || d.fecha >= emision
+  const consumir = (importe, fechaRef, emision) => {
+    const grupo = (libres.get(importe) ?? []).filter((d) => posibleParaEmision(d, emision))
+    if (!grupo.length) return
+    grupo.sort((a, b) => Math.abs(a.fecha - fechaRef) - Math.abs(b.fecha - fechaRef))
+    libres.get(importe).splice(libres.get(importe).indexOf(grupo[0]), 1)
+  }
   // Paso 2: lo REAL consume primero.
   for (const m of movimientos) {
-    if (!esCheque(m) || m.estado !== 'REAL') continue
-    const grupo = libres.get(m.importe)
-    if (!grupo?.length) continue
-    grupo.sort((a, b) => Math.abs(a.fecha - m.fecha) - Math.abs(b.fecha - m.fecha))
-    grupo.shift()
+    if (esCheque(m) && m.estado === 'REAL') consumir(m.importe, m.fecha, m.fechaEmision)
   }
-  // Paso 3: conteo por importe exacto sobre lo pendiente.
+  // Paso 2b: los cheques que el registro YA marcó DEBITADO no están en el libro, pero su débito sí
+  // está en el extracto. Sin este paso ese débito "sobra" y se le atribuye a un pendiente del mismo
+  // importe: FISICO 328 (DEBITADO) le robó el débito al ECHEQ 390 vivo (30/09/2026).
+  for (const c of yaDebitados) consumir(c.importe, c.fechaPago ?? c.fechaEmision ?? 0, c.fechaEmision)
+  // Paso 3: sobre lo pendiente, un débito sólo vale para el cheque al que le es posible (posterior a
+  // su emisión) y sólo se acepta si el reparto es inequívoco.
   const pendientes = new Map()
   movimientos.forEach((m, i) => {
     if (!esCheque(m) || m.estado === 'REAL') return
@@ -323,12 +332,26 @@ export function chequesCubiertosPorBanco(movimientos = [], debitos = []) {
   for (const [importe, indices] of pendientes) {
     const grupo = (libres.get(importe) ?? []).sort((a, b) => a.fecha - b.fecha)
     if (!grupo.length) continue
-    if (grupo.length < indices.length) {
-      avisos.push(`respaldo-banco: ${grupo.length} débito(s) de $${importe} contra ${indices.length} `
+    const posibles = indices.filter((i) => grupo.some((d) => posibleParaEmision(d, movimientos[i].fechaEmision)))
+    if (!posibles.length) continue
+    // Ambiguo = hay menos débitos posibles que cheques que los reclaman: alguien pagaría con el débito
+    // de otro. Decir "pagado" de más es el error que rompe una tesorería: no se cubre ninguno. (Con
+    // débitos de SOBRA se conserva el criterio del 06/08: el reparto sólo mueve la fecha del REAL.)
+    const reclamables = grupo.filter((d) => posibles.some((i) => posibleParaEmision(d, movimientos[i].fechaEmision)))
+    if (reclamables.length < posibles.length) {
+      avisos.push(`respaldo-banco: ${reclamables.length} débito(s) de $${importe} contra ${posibles.length} `
         + 'cheque(s) pendientes del mismo importe — ambiguo, no cubro ninguno')
       continue
     }
-    indices.forEach((i, k) => cubiertos.set(i, { fecha: grupo[k].fecha, fila: grupo[k].fila }))
+    // El más acotado (emisión más tardía) elige primero, para no gastar el débito que sólo él puede usar.
+    const usados = new Set()
+    const orden = [...posibles].sort((x, y) => (movimientos[y].fechaEmision ?? 0) - (movimientos[x].fechaEmision ?? 0))
+    for (const i of orden) {
+      const d = reclamables.find((x) => !usados.has(x) && posibleParaEmision(x, movimientos[i].fechaEmision))
+      if (!d) { cubiertos.delete(i); continue }
+      usados.add(d)
+      cubiertos.set(i, { fecha: d.fecha, fila: d.fila })
+    }
   }
   return { cubiertos, avisos }
 }
