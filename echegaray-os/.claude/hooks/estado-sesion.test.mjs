@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { armarInicio, recortar, baseDeTrabajo, armarBreve, traspasoVencido, momentoDelTraspaso, armarTraspasoAuto, ultimoPedido } from './estado-sesion.mjs'
+import { armarInicio, recortar, baseDeTrabajo, armarBreve, traspasoVencido, momentoDelTraspaso, armarTraspasoAuto, ultimoPedido, MODO, MODO_BREVE } from './estado-sesion.mjs'
 
 const RUTA = fileURLToPath(new URL('./estado-sesion.mjs', import.meta.url))
 
@@ -156,4 +156,16 @@ test('la antigüedad del traspaso sale de su fecha escrita, no del mtime de un c
 test('una fecha vieja citada en el cuerpo no vence un traspaso reciente', () => {
   const ahora = Date.now()
   assert.equal(momentoDelTraspaso('# Traspaso de hoy\n\nel 26/09/2026 pasó X', ahora - 1000), ahora - 1000)
+})
+
+test('el modo de trabajo entra en cada arranque y en cada compactación, dentro del techo', () => {
+  // Mutación corrida el 30/09: sin MODO en armarInicio o sin MODO_BREVE en armarBreve, este test es rojo.
+  const inicio = armarInicio({ rama: 'r', sucios: [], commits: 'abc uno', traspaso: 'x'.repeat(500000), fechaTraspaso: '2026-09-30' })
+  assert.ok(inicio.includes(MODO), 'el arranque no trae el modo')
+  assert.ok(inicio.length <= 2000, `midió ${inicio.length}`)
+  for (const fuente of ['resume', 'compact']) {
+    assert.ok(armarBreve({ fuente, rama: 'r', sucios: [], head: 'abc1234' }).includes(MODO_BREVE), `${fuente} no trae el modo`)
+  }
+  assert.match(MODO, /\[modo\]/)
+  assert.match(MODO_BREVE, /\[modo\]/)
 })
