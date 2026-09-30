@@ -153,6 +153,9 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
   // EL NETO DEL RECIBO, SIN LA RESTA DE OTRO: la resta va en la marca, y escribir la celda escribe el neto.
   const fila = conNetoDelRecibo(conResta)
   const l = fila.linea
+  // LA MARCA VA DEBAJO DEL NÚMERO, NUNCA AL LADO (dueño, 30/09/2026: «mirá ese destrozo»): «$241.507,76 +$16.558,72» más
+  // el campo escribible no entran en 124 px y la celda se derramaba sobre el $/h de la izquierda. La fila mide 58 px: hay
+  // lugar para dos renglones.
   const marca = <MarcaDeArrastre l={conResta.linea} testid={`neto-arrastre-${fila.personaId}`} />
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
@@ -163,15 +166,17 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
   if (seEscribe(fila, 'porBanco', edicion)) {
     return (
       <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
-        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-        <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
-          camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
-        {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, maxWidth: '100%' }}>
+          <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
+            camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
+          {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
+          {s?.driveFileId && (
+            <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
+              title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
+          )}
+        </div>
         {marca}
-        {s?.driveFileId && (
-          <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
-            title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
-        )}
       </div>
     )
   }
@@ -182,13 +187,16 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
   return (
     <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
       style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
-      {pesos(l.porBanco)}{estimado && <Est />}{marca}
-      {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
-      <MarcaDeOrigen origen={l.origen.porBanco} compacta />
-      {s?.driveFileId && (
-        <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
-          title="Abrir el recibo" style={{ marginLeft: 4, fontSize: '10.5px', color: V.apagado, fontStyle: 'normal' }}>↗</a>
-      )}
+      <div>
+        {pesos(l.porBanco)}{estimado && <Est />}
+        {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
+        <MarcaDeOrigen origen={l.origen.porBanco} compacta />
+        {s?.driveFileId && (
+          <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
+            title="Abrir el recibo" style={{ marginLeft: 4, fontSize: '10.5px', color: V.apagado, fontStyle: 'normal' }}>↗</a>
+        )}
+      </div>
+      {marca}
     </div>
   )
 }

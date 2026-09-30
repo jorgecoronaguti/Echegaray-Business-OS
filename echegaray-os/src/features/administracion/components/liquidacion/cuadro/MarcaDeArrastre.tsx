@@ -18,6 +18,6 @@ export function MarcaDeArrastre({ l, testid }: { l: LineaConOverrides; testid: s
   const color = a?.estado === 'no_alcanza' ? V.warn : V.apagado
   return (
     <span data-testid={testid} data-arrastre={a?.estado ?? 'saliente'} title={titulo}
-      style={{ marginLeft: 4, fontSize: '10.5px', color, whiteSpace: 'nowrap' }}>{texto}</span>
+      style={{ display: 'block', fontSize: '10.5px', lineHeight: '14px', color, whiteSpace: 'nowrap', fontStyle: 'normal' }}>{texto}</span>
   )
 }
