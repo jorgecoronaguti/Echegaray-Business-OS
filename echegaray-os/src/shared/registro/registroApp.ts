@@ -114,14 +114,27 @@ type Cabeceras = { get(nombre: string): string | null }
 
 /**
  * Si el pedido merece fila. Fuera: prefetch (el navegador adelanta enlaces que nadie tocó: sería
- * ruido y volumen), estáticos, `/_next`, y el propio `/api/registro-error` (lo escribe él).
+ * ruido y volumen), estáticos, `/_next`, el propio `/api/registro-error` (lo escribe él) y
+ * `/api/version` (la consulta de versión que acompaña cada pantalla: una fila por pantalla, sin datos).
+ * OJO: Next borra `rsc` y `next-router-prefetch` antes del middleware (medido 30/09 en producción), así
+ * que el prefetch del router casi nunca se ve acá; se distingue con `fondo` (ver `esDeFondo`).
  */
 export function debeRegistrar(pathname: string, metodo: string, h: Cabeceras): boolean {
   if (metodo === 'OPTIONS' || metodo === 'HEAD') return false
-  if (pathname.startsWith('/_next/') || pathname === RUTA_REGISTRO_ERROR) return false
+  if (pathname.startsWith('/_next/') || pathname === RUTA_REGISTRO_ERROR || pathname === '/api/version') return false
   if (/\.(?:png|jpe?g|gif|svg|ico|webp|avif|css|js|map|txt|xml|woff2?|ttf|webmanifest)$/i.test(pathname)) return false
   if (h.get('next-router-prefetch') || h.get('purpose') === 'prefetch' || h.get('sec-purpose')?.includes('prefetch')) return false
   return true
+}
+
+/**
+ * Pedido de fondo: lo pidió el código de la página (navegación interna, prefetch, acción), no la barra
+ * del navegador. `sec-fetch-dest` es `document` sólo en una carga de pantalla entera. Sin la cabecera
+ * (navegadores viejos, scripts) no se afirma nada.
+ */
+export function esDeFondo(h: Cabeceras): boolean {
+  const d = h.get('sec-fetch-dest')
+  return d != null && d !== 'document'
 }
 
 export const RUTA_REGISTRO_ERROR = '/api/registro-error'

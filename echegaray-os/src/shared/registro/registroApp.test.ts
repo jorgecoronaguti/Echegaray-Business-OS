@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clasificar, debeRegistrar, normalizar, pilaCorta, registrar, uidDeCookies } from './registroApp.ts'
+import { clasificar, debeRegistrar, esDeFondo, normalizar, pilaCorta, registrar, uidDeCookies } from './registroApp.ts'
 
 const h = (o: Record<string, string> = {}) => ({ get: (n: string) => o[n] ?? null })
 const UID = '543b2008-7540-494f-bfd6-5e30bc601ac8'
@@ -29,6 +29,13 @@ test('debeRegistrar: fuera prefetch, estáticos, _next y el propio registro de e
   assert.equal(debeRegistrar('/api/registro-error', 'POST', h()), false)
   assert.equal(debeRegistrar('/obras/hoy', 'HEAD', h()), false)
   assert.equal(debeRegistrar('/obras/hoy', 'POST', h()), true)
+  assert.equal(debeRegistrar('/api/version', 'GET', h()), false)
+})
+
+test('esDeFondo: carga de pantalla entera no, fetch del router sí, sin cabecera no se afirma', () => {
+  assert.equal(esDeFondo(h({ 'sec-fetch-dest': 'document' })), false)
+  assert.equal(esDeFondo(h({ 'sec-fetch-dest': 'empty' })), true)
+  assert.equal(esDeFondo(h()), false)
 })
 
 test('uidDeCookies: cookie entera, partida en trozos, en base64 y basura', () => {

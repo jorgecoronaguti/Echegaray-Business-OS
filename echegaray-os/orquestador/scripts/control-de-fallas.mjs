@@ -118,7 +118,7 @@ export function textoDeFila(f) {
   const que = f.tipo === 'redireccion' ? `→ ${f.destino ?? '?'} (${f.estado})`
     : f.tipo.startsWith('error') ? `✖ ${String(f.mensaje ?? '').slice(0, 160)}${f.digest ? ` [${f.digest}]` : ''}`
     : f.estado ? `${f.estado}` : ''
-  const marcas = [f.dispositivo, f.prestada ? 'PRESTADA' : null, f.detalle?.ver_como ? 'ver-como' : null, f.detalle?.accion ? 'acción' : null].filter(Boolean).join(' ')
+  const marcas = [f.dispositivo, f.prestada ? 'PRESTADA' : null, f.detalle?.ver_como ? 'ver-como' : null, f.detalle?.accion ? 'acción' : null, f.detalle?.fondo ? 'fondo' : null].filter(Boolean).join(' ')
   return `${f.hora}  ${f.tipo.padEnd(14)} ${(f.metodo ?? '').padEnd(4)} ${f.ruta}${f.consulta ?? ''}  ${que}  (${marcas})`
 }
 

@@ -13,7 +13,7 @@ import { trazar } from '@/lib/supabase/traza'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
 import { destinoPermanente } from '@/shared/auth/rutasViejas'
-import { clasificar, debeRegistrar, registrar } from '@/shared/registro/registroApp'
+import { clasificar, debeRegistrar, esDeFondo, registrar, uidDeCookies } from '@/shared/registro/registroApp'
 import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe, caraDeTelefonoDelJefe, obraQueSeMira } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
@@ -57,15 +57,16 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
         tipo: estado === null ? (request.method === 'GET' ? 'navegacion' : 'accion') : clasificar(request.method, estado),
         ruta: pathname,
         consulta: search,
-        perfil_id: quien?.uid ?? null,
+        // Sin `quien` la puerta decidió antes de leer la sesión (URL vieja, 308): la cookie dice quién era.
+        perfil_id: quien?.uid ?? uidDeCookies(request.headers.get('cookie')),
         rol: quien?.rol ?? null,
         prestada: request.cookies.has(COOKIE_ENTRAR_COMO),
         metodo: request.method,
         estado,
         destino: respuesta.headers.get('location'),
         dispositivo: pareceTelefonoSegun(request.headers) ? 'telefono' : 'pc',
-        detalle: accion || verComo || request.headers.has('rsc')
-          ? { ...(accion ? { accion } : {}), ...(verComo ? { ver_como: true } : {}), ...(request.headers.has('rsc') ? { rsc: true } : {}) }
+        detalle: accion || verComo || esDeFondo(request.headers)
+          ? { ...(accion ? { accion } : {}), ...(verComo ? { ver_como: true } : {}), ...(esDeFondo(request.headers) ? { fondo: true } : {}) }
           : null,
       }))
     }
