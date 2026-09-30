@@ -11,7 +11,7 @@
 
 import type { ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
-import { horas as nHoras, pesos } from '../formato'
+import { pesos } from '../formato'
 import { CANAL_SCROLL } from '../solapas/tabla'
 import { cierreDeTotales } from '../../../services/cuadroDeJornales'
 import type { TotalGeneral, TotalesDeJornaleros, TotalesDeMensuales } from '../../../services/liquidacionPorTipo'
@@ -37,6 +37,28 @@ const Aviso = ({ children, tono }: { children: ReactNode; tono: string }) => (
   <span style={{ fontSize: '11.5px', color: tono }}>{children}</span>
 )
 
+// LA PLATA COMO DECISIÓN DE PAGO (dueño, 30/09/2026: «esto así no me sirve, es inentendible… quiero lo de plata»).
+// Una tira con ~20 cifras corridas obligaba a leer todo para responder una sola pregunta: ¿cuánto pongo hoy en el
+// banco y cuánto en mano? Ahora arriba va esa respuesta y abajo, canal × (Total, Pagado, Saldo). Horas, presentismo
+// y «con blanco estimado» salieron de ESTE resumen (siguen en la tabla y en el panel de la persona). Los valores son
+// los mismos de `TotalesDeJornaleros`; acá no se calcula nada, y los redondeados sólo van donde deciden (en mano).
+const ROT = { color: V.tenue, fontSize: '11px', fontWeight: 500 } as const
+const NUM = { textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const
+
+const APagar = ({ rotulo, valor, testid }: { rotulo: string; valor: number | null; testid: string }) => (
+  <div data-testid={testid} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+    <span style={ROT}>{rotulo}</span>
+    <strong style={{ fontSize: '18px', lineHeight: '24px', fontVariantNumeric: 'tabular-nums', color: V.tinta }}>{pesos(valor)}</strong>
+  </div>
+)
+
+const Celda = ({ valor, testid, nota, fuerte }: { valor: number | null; testid: string; nota?: string; fuerte?: boolean }) => (
+  <div style={NUM}>
+    <span data-testid={testid} style={{ fontWeight: fuerte ? 600 : 400 }}>{pesos(valor)}</span>
+    {nota && <div title="Redondeado para pagar en mano" style={{ ...ROT, fontSize: '10.5px' }}>{nota}</div>}
+  </div>
+)
+
 export function ResumenJornaleros({ t, sellada = false }: { t: TotalesDeJornaleros; sellada?: boolean }) {
   const cierre = cierreDeTotales(t)
   const avisos: string[] = []
@@ -45,29 +67,45 @@ export function ResumenJornaleros({ t, sellada = false }: { t: TotalesDeJornaler
   if (t.pago.sinSaldo > 0) avisos.push(sellada ? `${t.pago.sinSaldo} con el pago sin registrar: no se afirma saldo` : `${t.pago.sinSaldo} sin saldo`)
   if (t.sinNeto > 0) avisos.push(`${t.sinNeto} sin neto`)
   if (t.sinTarifa > 0) avisos.push(`${t.sinTarifa} sin retribución`)
-  if (t.estimados > 0) avisos.push(`${t.estimados} con blanco estimado`)
+  const redEfe = t.redondeo > 0 ? `≈ ${pesos(t.redondeo)}` : undefined
+  const redSaldo = t.saldoRedondeado > 0 ? `≈ ${pesos(t.saldoRedondeado)}` : undefined
+  // Columna de rótulo angosta y tres de cifras iguales: en 390 px cada cifra («$3.536.928,84») entra sin partirse.
+  const fila = { display: 'grid', gridTemplateColumns: 'minmax(56px, auto) repeat(3, minmax(0, 1fr))', columnGap: 12, alignItems: 'baseline', padding: '6px 0', borderTop: `1px solid ${V.linea}` } as const
   return (
-    <Tira testid="espejo-pie">
-      <Cifra rotulo="Horas" valor={nHoras(t.horasPagas)} testid="pie-horas" />
-      <Cifra rotulo="Banco" valor={pesos(t.netoBandas)} testid="pie-neto" />
-      <Cifra rotulo="Pagado banco" valor={pesos(t.pago.pagadoBanco)} testid="pie-pagado-banco" />
-      <Cifra rotulo="Saldo banco" valor={pesos(t.pago.saldoBanco)} testid="pie-saldo-banco" />
-      <Cifra rotulo="Negro" valor={pesos(t.negro)} testid="pie-negro" />
-      <Cifra rotulo="Pagado efectivo" valor={pesos(t.pago.pagadoEfectivo)} testid="pie-pagado-efectivo" />
-      <Cifra rotulo="Saldo efectivo" valor={pesos(t.pago.saldoEfectivo)} testid="pie-saldo-efectivo" />
-      <Cifra rotulo="Presentismo en juego" valor={pesos(t.presentismoEnJuego)} testid="pie-presentismo" />
-      {t.presentismoPerdidos > 0 && (
-        <Cifra rotulo={`perdido (${t.presentismoPerdidos})`} valor={`−${pesos(t.presentismoPerdido)}`} testid="pie-presentismo-perdido" tono={V.warn} />
-      )}
-      <Cifra rotulo="Efectivo redondeado" valor={pesos(t.redondeo > 0 ? t.redondeo : null)} testid="pie-redondeo" />
-      <Cifra rotulo="Total" valor={pesos(t.cobra)} testid="pie-total" />
-      <Cifra rotulo="Pagado" valor={pesos(t.pago.pagado)} testid="pie-pagado" />
-      <Cifra rotulo="Saldo" valor={pesos(t.pago.saldoTotal)} testid="pie-saldo" />
-      <Cifra rotulo="Saldo redondeado" valor={pesos(t.saldoRedondeado > 0 ? t.saldoRedondeado : null)} testid="pie-saldo-redondeado" />
+    <div data-testid="espejo-pie" style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: '12px', color: V.tinta }}>
       {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro, así que suman el saldo y no más. */}
-      <Cifra rotulo="A pagar hoy:" valor={`efectivo ${pesos(t.pago.aPagarEfectivo)} · banco ${pesos(t.pago.aPagarBanco)}`} testid="pie-a-pagar" />
+      <div data-testid="pie-a-pagar" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 32, rowGap: 8 }}>
+        <APagar rotulo="A pagar hoy · banco" valor={t.pago.aPagarBanco} testid="pie-a-pagar-banco" />
+        <APagar rotulo="A pagar hoy · efectivo" valor={t.pago.aPagarEfectivo} testid="pie-a-pagar-efectivo" />
+      </div>
+      <div style={{ maxWidth: 560 }}>
+        <div style={{ ...fila, borderTop: 'none', paddingTop: 0 }}>
+          <span />
+          <span style={{ ...ROT, ...NUM }}>Total</span>
+          <span style={{ ...ROT, ...NUM }}>Pagado</span>
+          <span style={{ ...ROT, ...NUM }}>Saldo</span>
+        </div>
+        <div style={fila}>
+          <span style={ROT}>Banco</span>
+          <Celda valor={t.netoBandas} testid="pie-neto" />
+          <Celda valor={t.pago.pagadoBanco} testid="pie-pagado-banco" />
+          <Celda valor={t.pago.saldoBanco} testid="pie-saldo-banco" />
+        </div>
+        <div style={fila}>
+          <span style={ROT}>Efectivo</span>
+          <Celda valor={t.negro} testid="pie-negro" nota={redEfe} />
+          <Celda valor={t.pago.pagadoEfectivo} testid="pie-pagado-efectivo" />
+          <Celda valor={t.pago.saldoEfectivo} testid="pie-saldo-efectivo" />
+        </div>
+        <div style={{ ...fila, borderTop: `1px solid ${V.grafito}` }}>
+          <span style={{ ...ROT, color: V.tinta, fontWeight: 600 }}>Total</span>
+          <Celda valor={t.cobra} testid="pie-total" fuerte />
+          <Celda valor={t.pago.pagado} testid="pie-pagado" fuerte />
+          <Celda valor={t.pago.saldoTotal} testid="pie-saldo" fuerte nota={redSaldo} />
+        </div>
+      </div>
       {avisos.length > 0 && <Aviso tono={cierre?.cierra === false ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}
-    </Tira>
+    </div>
   )
 }
 

@@ -72,8 +72,8 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () =
   const PANEL = fuente('./PanelDeLaPersona.tsx')
   assert.match(COLUMNAS, /clave: 'total', rotulo: 'Total'/)
   assert.match(COLUMNAS, /clave: 'saldo', rotulo: 'Saldo'/)
-  assert.match(PIE, /rotulo="Total" valor=\{pesos\(t\.cobra\)\}/)
-  assert.match(PIE, /rotulo="Saldo" valor=\{pesos\(t\.pago\.saldoTotal\)\}/)
+  assert.match(PIE, /<Celda valor=\{t\.cobra\} testid="pie-total"/)
+  assert.match(PIE, /<Celda valor=\{t\.pago\.saldoTotal\} testid="pie-saldo"/)
   // Las tres cadenas del panel: blanco + negro, mensual y sin modelo.
   assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 3, 'las tres cadenas del panel')
   const todo = GRILLA + TABLA + JORNALEROS + MENSUALES

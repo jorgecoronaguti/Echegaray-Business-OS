@@ -237,7 +237,7 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
     expect(i('Importe'), 'el negro va antes que el presentismo').toBeLessThan(i('Presentismo'))
     expect(i('Presentismo'), 'presentismo va antes que el total').toBeLessThan(i('Total'))
-    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
+    for (const p of ['A pagar hoy · banco', 'A pagar hoy · efectivo', 'Banco', 'Efectivo', 'Total', 'Pagado', 'Saldo']) {
       await expect(page.getByTestId('espejo-pie')).toContainText(p)
     }
 

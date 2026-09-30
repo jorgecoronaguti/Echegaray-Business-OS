@@ -131,12 +131,19 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(PIE, /const cierre = cierreDeTotales\(t\)/)
   assert.match(JORNALEROS, /const cierre = cierreDeTotales\(t\)/)
-  for (const r of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo',
-    'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
-    assert.match(PIE, new RegExp(`rotulo="${r}"`), `el pie publica ${r}`)
+  // EL RESUMEN ES PLATA (dueño 30/09/2026): cada cifra de dinero del resumen de jornaleros sigue publicada con su
+  // testid, y salieron Horas, Presentismo y «con blanco estimado». Si vuelven a la tira, este test se pone rojo.
+  const RESUMEN = PIE.slice(PIE.indexOf('export function ResumenJornaleros'), PIE.indexOf('export function ResumenMensuales'))
+  for (const id of ['pie-neto', 'pie-pagado-banco', 'pie-saldo-banco', 'pie-negro', 'pie-pagado-efectivo',
+    'pie-saldo-efectivo', 'pie-total', 'pie-pagado', 'pie-saldo', 'pie-a-pagar-banco', 'pie-a-pagar-efectivo']) {
+    assert.match(RESUMEN, new RegExp(`testid="${id}"`), `el resumen publica ${id}`)
   }
-  // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO, y el total general que dice si cierra.
-  assert.match(PIE, /rotulo="A pagar hoy:"/)
+  for (const fuera of ['pie-horas', 'pie-presentismo', 'blanco estimado', 'presentismoEnJuego', 'horasPagas']) {
+    assert.doesNotMatch(RESUMEN, new RegExp(fuera), `el resumen de plata no lleva ${fuera}`)
+  }
+  assert.match(RESUMEN, /t\.redondeo/)
+  assert.match(RESUMEN, /t\.saldoRedondeado/)
+  assert.match(RESUMEN, /rotulo="A pagar hoy · efectivo"/)
   assert.match(PIE, /t\.sinNeto/)
   assert.match(PIE, /el total cierra: total − pagado = saldo/)
   assert.match(PIE, /no cierra por \$\{pesos\(g\.descuadre\)\}: \$\{g\.causas/)
