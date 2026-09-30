@@ -123,3 +123,33 @@ test('sin ningún recibo real anterior, el blanco estimado cae al piso de la cat
   assert.equal(s.estado, 'estimado')
   assert.equal(s.valorHoraCategoria, 7420)
 })
+
+// ═══ RECATEGORIZACIÓN (dueño 30/09) ═══ El legajo dice una categoría nueva: el $/h del blanco es el que el estudio pagó
+// por ESA categoría en la última quincena liquidada, no el del recibo viejo de la persona.
+const CON_CATEGORIAS: BaseDelEstimado = {
+  ...BASE,
+  recibos: [
+    ...RECIBOS.map((r) => ({ ...r, categoria: r.persona === CUIL_ROSALES ? 'OFICIAL' : null })),
+    { persona: 'otro', periodo: 'Q1-08/2026', valorHora: 7300, categoria: 'OFICIAL ESPECIALIZADO', horasNormales: 96, horasFeriado: 0, horasOtras: 0, conceptos: [] },
+    { persona: 'otro', periodo: 'Q2-08/2026', valorHora: 7420, categoria: 'Oficial especializado', horasNormales: 96, horasFeriado: 0, horasOtras: 0, conceptos: [] },
+  ],
+}
+const BASE_Q1_09: BaseDelEstimado = { ...CON_CATEGORIAS, periodo: 'Q1-09/2026' }
+
+test('recategorizada: el $/h del blanco es el de la categoría nueva en la última quincena liquidada', () => {
+  const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'oficial_especializado', pisoCategoria: 7000 }))
+  assert.equal(s.estado, 'estimado')
+  assert.equal(s.valorHoraCategoria, 7420)
+  assert.equal(s.categoriaRecibo, 'OFICIAL')
+  assert.equal(s.reciboEstimado?.valorHora, 7420)
+})
+
+test('misma categoría en legajo y recibo: sigue el $/h del último recibo real', () => {
+  const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'Oficial', pisoCategoria: 7000 }))
+  assert.equal(s.valorHoraCategoria, 6348)
+})
+
+test('recategorizada sin ningún recibo de la categoría nueva: cae al piso de plataforma', () => {
+  const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'medio_oficial', pisoCategoria: 5866 }))
+  assert.equal(s.valorHoraCategoria, 5866)
+})

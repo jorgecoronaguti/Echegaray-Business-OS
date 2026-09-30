@@ -394,7 +394,7 @@ export async function getLiquidacionDeLaQuincena(
     : entradaDeBlanco({
       personaId: l.personaId, cuil: cuilPorPersona.get(l.personaId) ?? null, periodo,
       recibos: exposicion.recibos, pisoCategoria: pisoDe.get(l.personaId) ?? null, netoDeNomina: l.reciboNeto,
-      base: baseEstimado,
+      base: baseEstimado, categoriaLegajo: categoriaDe.get(l.personaId) ?? null,
     })
 
   return {

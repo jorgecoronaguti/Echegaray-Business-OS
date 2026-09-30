@@ -31,6 +31,7 @@
 // Puro: sin base, sin React. Lo usa `aplicarOverrides`, y se prueba en `sueldoBlancoNegro.test.ts`.
 
 import { cuilNormalizado, mismoCuil } from './cuil.ts'
+import { mismaCategoria } from './vocabularioPersona.ts'
 import { compararConElPiso, type ComparacionConElPiso } from './exposicionConvenio.ts'
 import { estimarRecibo, type ReciboEstimado } from './reciboEstimado.ts'
 import { periodoOrdenable, type ConceptoDeRecibo, type ReciboParaReglas, type ReglasDelRecibo } from './reglasDelRecibo.ts'
@@ -88,6 +89,12 @@ export interface EntradaDeBlanco {
   netoDeNomina: number | null
   /** El piso vigente de su categoría y convenio (`pisoVigente`, vía la exposición al convenio). */
   pisoCategoria: number | null
+  /**
+   * La categoría del legajo (`personas.categoria`). Si difiere de la del último recibo real, la persona fue
+   * RECATEGORIZADA desde esta quincena y el $/h del blanco ya no es el de ese recibo (dueño 30/09: las 4
+   * recategorizaciones pedidas al estudio el 18/09 salían con el $/h de la categoría vieja).
+   */
+  categoriaLegajo?: string | null
   /** El cociente neto/bruto para el neto estimado (`proporcionDelNeto`). */
   proporcion: ProporcionDelNeto | null
   /** El recibo estimado por conceptos. Ausente o `null`: sin base, el blanco es el de la mediana. */
@@ -192,7 +199,30 @@ export function valorHoraDelUltimoRecibo(e: EntradaDeBlanco): number | null {
  * seguía con el piso de plataforma y Zogbe mostraba 0425 a $6.468/h en el recibo y el bloque a $6.348/h.
  */
 export function valorHoraDelBlanco(e: EntradaDeBlanco, valorHoraManual: number | null = null): number | null {
-  return num(valorHoraManual) ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria)
+  return num(valorHoraManual) ?? (recategorizada(e) ? valorHoraDeLaCategoriaNueva(e) : valorHoraDelUltimoRecibo(e)) ?? num(e.pisoCategoria)
+}
+
+/** ¿El legajo dice una categoría distinta de la del último recibo real? Entonces el $/h de ese recibo ya no sirve. */
+export function recategorizada(e: EntradaDeBlanco): boolean {
+  const ultimo = ultimoReciboReal(e)
+  return !!ultimo?.categoria && !!e.categoriaLegajo && !mismaCategoria(ultimo.categoria, e.categoriaLegajo)
+}
+
+/**
+ * EL $/H DE LA CATEGORÍA NUEVA: lo que el estudio pagó por esa categoría en la quincena más reciente ya liquidada
+ * (los recibos de los compañeros de la misma categoría), porque ése es el valor vigente real —la escala cargada en
+ * `uocra_escala` puede ir un tramo atrás—. Sin ningún recibo de esa categoría, cae al piso de plataforma.
+ */
+export function valorHoraDeLaCategoriaNueva(e: EntradaDeBlanco): number | null {
+  const est = e.estimacion
+  if (!est || !e.categoriaLegajo) return null
+  const tope = periodoOrdenable(est.base.periodo)
+  const pares = est.base.recibos
+    .filter((r) => r.valorHora != null && r.valorHora > 0 && mismaCategoria(r.categoria, e.categoriaLegajo))
+    .filter((r) => { const o = periodoOrdenable(r.periodo); return o !== '' && o < tope })
+  if (pares.length === 0) return null
+  const ultimoPeriodo = pares.map((r) => periodoOrdenable(r.periodo)).sort().at(-1)
+  return Math.max(...pares.filter((r) => periodoOrdenable(r.periodo) === ultimoPeriodo).map((r) => r.valorHora as number))
 }
 
 /** El último recibo real anterior al período, con $/h: el que le presta el $/h y la categoría al blanco estimado. */
@@ -237,9 +267,10 @@ function blancoDe(e: EntradaDeSueldo): Blanco {
       totalesReales: { haberes: num(r.bruto), descuentos: num(r.descuentos), neto: num(r.neto) },
     }
   }
-  // El $/h del blanco estimado: el de su último recibo real; el piso de plataforma sólo si nunca tuvo recibo.
+  // El $/h del blanco estimado: el de su último recibo real —o el de la categoría nueva si fue recategorizada—;
+  // el piso de plataforma sólo si no hay recibo del que tomarlo (`valorHoraDelBlanco`, un solo lado).
   const ultimo = ultimoReciboReal(e)
-  const piso = num(ultimo?.valorHora) ?? num(e.pisoCategoria)
+  const piso = valorHoraDelBlanco(e)
   const estimado = estimadoDe(e)
   const horasBlanco = estimado ? r2(estimado.horasNormales + estimado.horasFeriado) : e.horas == null ? null : r2(e.horas / 2)
   const bruto = estimado?.remunerativo ?? (horasBlanco == null || piso == null ? null : r2(horasBlanco * piso))
@@ -411,12 +442,12 @@ export function ultimoReciboHasta(
  */
 export function entradaDeBlanco(d: {
   personaId: string; cuil: string | null; periodo: string; recibos: readonly ReciboDeSueldo[]
-  pisoCategoria: number | null; netoDeNomina: number | null; base?: BaseDelEstimado | null
+  pisoCategoria: number | null; netoDeNomina: number | null; base?: BaseDelEstimado | null; categoriaLegajo?: string | null
 }): EntradaDeBlanco {
   const actual = periodoOrdenable(d.periodo)
   const recibo = d.recibos.find((r) => esDe(r, d.personaId, d.cuil) && periodoOrdenable(r.periodo) === actual) ?? null
   return {
-    recibo, netoDeNomina: d.netoDeNomina, pisoCategoria: d.pisoCategoria,
+    recibo, netoDeNomina: d.netoDeNomina, pisoCategoria: d.pisoCategoria, categoriaLegajo: d.categoriaLegajo ?? null,
     proporcion: proporcionDelNeto(d),
     estimacion: d.base ? { base: d.base, persona: cuilNormalizado(d.cuil) } : null,
   }
