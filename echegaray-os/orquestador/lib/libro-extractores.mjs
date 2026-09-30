@@ -56,6 +56,7 @@ import { clienteCanonico } from './libro-clientes.mjs'
 import { instrumentoDePago, estadoDeEgreso, FUERA_DE_CAJA } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { columnasObligatorias } from './compras-columnas.mjs'
+import { columnaFechaEmision } from './libro-cheques-debitados.mjs'
 // EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
 // (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
 import { columnasDeCompras, estaPagada, estaAnulada, esFacturaCargada, pendienteDeCompra, cuotasEnCheque, fechaDeCajaDeCompra } from './libro-extractores-compras.mjs'
@@ -297,6 +298,7 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
     tipo: 'Tipo', numero: 'Nro', proveedor: 'Proveedor', importe: 'Monto',
     fechaPago: 'fecha de pago', debitado: 'DEBITADO',
   }, 'Cheques Emitidos')
+  const cEmision = columnaFechaEmision(enc)
   const out = []
   for (let i = fila0 - 1; i < filas.length; i++) {
     const f = filas[i] ?? []
@@ -340,6 +342,7 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
       estado: estadoContraCorte('COMPROMETIDO', fechaPago, corte),
       instrumento: esEcheq ? 'echeq' : 'cheque',
       numeroCheque: txt(f[c.numero]),
+      fechaEmision: cEmision === null ? null : num(f[cEmision]),
       origen: { pestana: 'Cheques Emitidos', fila: i + 1 },
     }))
   }

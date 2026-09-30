@@ -116,6 +116,8 @@ export function movimiento(m = {}) {
     importeOrigen: Number.isFinite(m.importeOrigen) ? Math.abs(m.importeOrigen) : importe,
     tipoCambio: Number.isFinite(m.tipoCambio) ? m.tipoCambio : 1,
     concepto: norm(m.concepto),
+    // Cuándo se libró el cheque: un débito anterior no puede ser suyo (lo usa chequesCubiertosPorBanco).
+    fechaEmision: Number.isFinite(m.fechaEmision) ? m.fechaEmision : null,
     rubro: norm(m.rubro) || SIN_CLASIFICAR,
     actividad,
     estado: m.estado,
