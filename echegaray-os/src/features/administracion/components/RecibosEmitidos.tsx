@@ -71,7 +71,7 @@ export function RecibosEmitidos({ datos }: { datos: RecibosDelLegajo }) {
   )
 }
 
-function Fila({ r, abierto, alternar }: { r: ReciboEnElLegajo; abierto: boolean; alternar: () => void }) {
+export function Fila({ r, abierto, alternar }: { r: ReciboEnElLegajo; abierto: boolean; alternar: () => void }) {
   const hoja = useRef<HTMLDivElement>(null)
   const [bloqueada, setBloqueada] = useState(false)
   return (
