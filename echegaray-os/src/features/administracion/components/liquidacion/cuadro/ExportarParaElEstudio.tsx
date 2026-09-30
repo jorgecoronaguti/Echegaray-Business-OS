@@ -43,10 +43,10 @@ export function ExportarParaElEstudio({ quincenas, actual }: {
       a.click()
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      const fuera = Number(res.headers.get('X-Novedades-Excluidos') ?? 0)
+      const sinRecibo = Number(res.headers.get('X-Novedades-Sin-Recibo') ?? 0)
       setMensaje({
         tono: 'ok',
-        texto: `${res.headers.get('X-Novedades-Personas') ?? '?'} personas en el archivo${fuera > 0 ? ` · ${fuera} sin blanco estimable quedaron fuera` : ''}`,
+        texto: `${res.headers.get('X-Novedades-Personas') ?? '?'} personas en el archivo${sinRecibo > 0 ? ` · ${sinRecibo} sin recibo previo (importes vacíos)` : ''}`,
       })
     } catch (e) {
       setMensaje({ tono: 'error', texto: `No se pudo generar el archivo: ${e instanceof Error ? e.message : 'error desconocido'}` })

@@ -13,6 +13,7 @@
 //
 // En el teléfono no hay grilla: «Esta planilla se usa en computadora» y la puerta al Parte diario.
 
+import { LogoParaImprimir } from '../../../../shared/exportar/LogoParaImprimir'
 import Link from 'next/link'
 import { useMemo, useState, type CSSProperties } from 'react'
 import { C, MONO } from '../canon/tokens'
@@ -119,6 +120,8 @@ export function PlanillaGrilla({
           No se pudo leer parte de la planilla: {fallas.join(' · ')}
         </div>
       )}
+
+      <LogoParaImprimir />
 
       {/* ── TOOLBAR ── */}
       <div className="no-imprimir" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>

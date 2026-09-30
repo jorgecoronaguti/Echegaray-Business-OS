@@ -14,12 +14,14 @@ export interface ColumnaDeSalida {
   valor: (f: FilaDeNovedades) => Valor
   /** Va en la hoja resumen del PDF; las demás (una por concepto) van en el detalle. */
   resumen: boolean
+  /** Un valor por unidad (el $/h): sumarlo por columna no significa nada, el pie va vacío. */
+  sinTotal?: true
   /** Un renglón de concepto del recibo (no un subtotal): va en las tablas de detalle del PDF. */
   concepto?: true
 }
 
-const texto = (titulo: string, valor: (f: FilaDeNovedades) => Valor): ColumnaDeSalida =>
-  ({ titulo, tipo: 'texto', valor, resumen: true })
+const texto = (titulo: string, valor: (f: FilaDeNovedades) => Valor, resumen = true): ColumnaDeSalida =>
+  ({ titulo, tipo: 'texto', valor, resumen })
 const num = (titulo: string, tipo: 'horas' | 'dias' | 'plata', valor: (f: FilaDeNovedades) => Valor, resumen = true): ColumnaDeSalida =>
   ({ titulo, tipo, valor, resumen })
 
@@ -32,21 +34,25 @@ export function columnasDeSalida(r: ReporteDeNovedades): ColumnaDeSalida[] {
     subtotal,
   ]
   return [
-    texto('Legajo', (f) => f.legajo),
+    texto('Legajo N.º', (f) => f.legajo),
     texto('Apellido y nombre', (f) => f.apellidoYNombre),
     texto('CUIL', (f) => f.cuil),
-    texto('Categoría', (f) => f.categoria),
-    texto('Obra', (f) => f.obra),
-    num('Días trabajados', 'dias', (f) => f.diasTrabajados),
-    num('Hs normales', 'horas', (f) => f.horasNormales),
-    num('Hs extra 50%', 'horas', (f) => f.horasExtra50),
-    num('Hs extra 100%', 'horas', (f) => f.horasExtra100),
-    num('Hs trabajadas', 'horas', (f) => f.horasTrabajadas, false),
+    // La marca «*» dice que la categoría y el $/h son los del legajo: la persona nunca tuvo recibo.
+    texto('Categoría', (f) => (f.categoria == null ? null : `${f.categoria}${f.categoriaDelLegajo ? ' *' : ''}`)),
+    { ...num('Valor hora', 'plata', (f) => f.valorHora), sinTotal: true },
+    texto('Obra', (f) => f.obra, false),
+    num('Hs de la quincena', 'horas', (f) => f.horasTrabajadas),
+    num('Hs normales', 'horas', (f) => f.horasNormales, false),
+    num('Hs extra 50%', 'horas', (f) => f.horasExtra50, false),
+    num('Hs extra 100%', 'horas', (f) => f.horasExtra100, false),
+    num('Total hs a considerar', 'horas', (f) => f.horasAConsiderar),
+    texto('Presentismo', (f) => f.presentismo),
+    num('Días trabajados', 'dias', (f) => f.diasTrabajados, false),
     num('Días ausencia', 'dias', (f) => f.diasAusencia),
     num('Ausencias sin motivo', 'dias', (f) => f.diasAusenciaSinMotivo, false),
     num('Días licencia', 'dias', (f) => f.diasLicencia),
     num('Hs licencia', 'horas', (f) => f.horasLicencia, false),
-    texto('Origen del importe', (f) => (f.origen === 'recibo' ? 'Recibo del estudio' : 'Estimado')),
+    texto('Origen del importe', (f) => (f.origen === 'recibo' ? 'Recibo del estudio' : f.origen === 'estimado' ? 'Estimado' : 'Sin recibo')),
     ...deSeccion('remunerativo', num('Total remunerativo', 'plata', (f) => f.totalRemunerativo)),
     ...deSeccion('no_remunerativo', num('Total no remunerativo', 'plata', (f) => f.totalNoRemunerativo)),
     ...deSeccion('descuento', num('Total descuentos', 'plata', (f) => f.totalDescuentos)),
@@ -56,12 +62,12 @@ export function columnasDeSalida(r: ReporteDeNovedades): ColumnaDeSalida[] {
 }
 
 /**
- * EL TOTAL DEL PIE ES LA SUMA DE LA COLUMNA QUE SE VE. Una sola cuenta para las dos salidas: el pie del Excel y
- * el del PDF no pueden separarse de las filas de arriba. Un renglón sin número (regla dudosa) no suma.
+ * EL TOTAL DEL PIE ES LA SUMA DE LA COLUMNA QUE SE VE. Una sola cuenta para las dos salidas y para cada sección
+ * (subtotal) y el total general: el pie del Excel y el del PDF no pueden separarse de las filas de arriba. Un renglón sin número (regla dudosa) no suma.
  */
-export function totalDeColumna(r: ReporteDeNovedades, c: ColumnaDeSalida): number | null {
-  if (c.tipo === 'texto') return null
-  const t = r.filas.reduce((a, f) => a + (Number(c.valor(f)) || 0), 0)
+export function totalDeColumna(filas: readonly FilaDeNovedades[], c: ColumnaDeSalida): number | null {
+  if (c.tipo === 'texto' || c.sinTotal) return null
+  const t = filas.reduce((a, f) => a + (Number(c.valor(f)) || 0), 0)
   return Math.round(t * 100) / 100
 }
 

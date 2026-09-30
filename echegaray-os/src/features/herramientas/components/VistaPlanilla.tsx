@@ -10,6 +10,7 @@
 // observacion pueda ser editable para hacer anotaciones e imprimir»). Son notas de la hoja, no un dato
 // del activo: quedan en ESTE navegador para esa obra (sobreviven a una recarga) y no van a la base.
 
+import { LogoParaImprimir } from '../../../shared/exportar/LogoParaImprimir'
 import Link from 'next/link'
 import { useSyncExternalStore, type CSSProperties } from 'react'
 import { controlDeUbicacion, textoEstado, type FilaControl } from '../logica/planilla'
@@ -52,6 +53,7 @@ function Planilla({ parque, u }: { parque: Parque; u: NonNullable<ReturnType<Par
         [data-planilla-bloque] { break-inside: avoid; }
       }`}</style>
 
+      <LogoParaImprimir />
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, borderBottom: '2px solid #1F1F1E', paddingBottom: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: '11px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.apagado }}>Echegaray Construcciones · Control de herramientas</div>

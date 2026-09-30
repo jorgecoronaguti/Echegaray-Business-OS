@@ -49,10 +49,10 @@ export async function GET(req: Request) {
       'Content-Type': TIPOS[p.data.formato],
       'Content-Disposition': `attachment; filename="${nombre}"`,
       'Cache-Control': 'no-store',
-      // Para la pantalla, no para el archivo: cuántas personas quedaron fuera por no tener blanco estimable.
-      'X-Novedades-Excluidos': String(reporte.excluidos),
+      // Para la pantalla, no para el archivo: cuántas van sin recibo previo (entran igual, con importes vacíos).
+      'X-Novedades-Sin-Recibo': String(reporte.sinRecibo),
       'X-Novedades-Personas': String(reporte.totales.personas),
-      'Access-Control-Expose-Headers': 'X-Novedades-Excluidos, X-Novedades-Personas, Content-Disposition',
+      'Access-Control-Expose-Headers': 'X-Novedades-Sin-Recibo, X-Novedades-Personas, Content-Disposition',
     },
   })
 }

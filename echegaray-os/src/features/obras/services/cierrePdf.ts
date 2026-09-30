@@ -1,6 +1,7 @@
 // Z01 · EL PDF DE CIERRE — dibuja las secciones de `cierreObra.ts` con pdf-lib (A4, Helvetica). No
 // calcula nada: si una cifra falta, la sección ya trae «sin dato».
 
+import { dibujarLogoPdf } from '../../../shared/exportar/logoPdf.ts'
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { aWinAnsi, type SeccionCierre } from './cierreObra.ts'
 
@@ -28,6 +29,9 @@ export async function pdfDeCierre(titulo: string, subtitulo: string, secciones: 
   const nuevaPagina = () => { page = doc.addPage(A4); y = A4[1] - MARGEN }
   const espacio = (h: number) => { if (y - h < MARGEN + 20) nuevaPagina() }
 
+  // Regla del dueño: todo lo que se exporta lleva el logo. La raya amarilla de antes queda debajo como acento.
+  await dibujarLogoPdf(doc, page, MARGEN, y + 8, 52)
+  y -= 50
   page.drawRectangle({ x: MARGEN, y: y - 4, width: 36, height: 4, color: MARCA })
   y -= 22
   texto('ECHEGARAY CONSTRUCCIONES · CIERRE DE OBRA', MARGEN, y, negrita, 9, SUAVE)
