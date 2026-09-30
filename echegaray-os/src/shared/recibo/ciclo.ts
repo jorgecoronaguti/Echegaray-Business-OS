@@ -32,11 +32,19 @@ export interface CicloDelRecibo {
   enviadoEn: string | null
   archivadoEn: string | null
   observacion: string | null
+  /** «Firmó en papel» marcado SIN foto: el papel queda en la oficina. Opcional: el teléfono no lo lee. */
+  papelSinFotoEn?: string | null
+  /** Nombre de quien lo marcó (ya resuelto), para decir «marcado por X». */
+  papelSinFotoPor?: string | null
 }
 
 /** ¿Alguien lo firmó, de la forma que sea? Las dos conviven (dueño, 22/09): no se elige una. */
-export const estaFirmado = (r: Pick<CicloDelRecibo, 'firmadoEn' | 'papelSubidoEn'>): boolean =>
-  Boolean(r.firmadoEn) || Boolean(r.papelSubidoEn)
+// `estado === 'firmado_papel'` también cuenta: el teléfono no lee el sello del papel sin foto, pero sí el
+// estado, y sin esto la persona seguiría viendo «Firmar» en un recibo que Administración ya dio por firmado.
+export const estaFirmado = (
+  r: Pick<CicloDelRecibo, 'firmadoEn' | 'papelSubidoEn'> & Partial<Pick<CicloDelRecibo, 'papelSinFotoEn' | 'estado'>>,
+): boolean =>
+  Boolean(r.firmadoEn) || Boolean(r.papelSubidoEn) || Boolean(r.papelSinFotoEn) || r.estado === 'firmado_papel'
 
 /** Se archiva lo firmado, y una sola vez. */
 export const sePuedeArchivar = (r: CicloDelRecibo): boolean =>
@@ -85,8 +93,17 @@ export function lecturaDelCiclo(r: CicloDelRecibo): LecturaDelCiclo {
   if (r.estado === 'archivado') return { rotulo: 'Archivado en el legajo', tono: 'pos' }
   if (r.estado === 'observado') return { rotulo: 'Observado: no coincide', tono: 'neg' }
   if (r.firmadoEn && r.papelSubidoEn) return { rotulo: 'Firmado · con el papel cargado', tono: 'pos' }
-  if (r.firmadoEn) return { rotulo: 'Firmado en el teléfono', tono: 'pos' }
+  if (r.firmadoEn) {
+    const cuando = momentoCorto(r.firmadoEn)?.split(' · ')[0]
+    return { rotulo: `Firmado en el teléfono${cuando ? ` el ${cuando}` : ''}`, tono: 'pos' }
+  }
   if (r.papelSubidoEn) return { rotulo: 'Firmado en papel · cargado', tono: 'pos' }
+  // EL PAPEL MARCADO SIN FOTO: lo firmó en la mano y el papel está en la oficina. Dice quién respondió por él.
+  if (r.papelSinFotoEn || r.estado === 'firmado_papel') {
+    const cuando = momentoCorto(r.papelSinFotoEn ?? null)?.split(' · ')[0]
+    const quien = r.papelSinFotoPor
+    return { rotulo: `Firmado en papel${cuando ? ` el ${cuando}` : ''}${quien ? ` · marcado por ${quien}` : ''}`, tono: 'pos' }
+  }
   if (r.estado === 'enviado') return { rotulo: 'Enviado a firmar, sin firmar', tono: 'warn' }
   return { rotulo: 'Emitido, sin firmar', tono: 'warn' }
 }

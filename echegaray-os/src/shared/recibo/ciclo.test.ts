@@ -23,7 +23,7 @@ test('las dos formas de firma conviven y las dos cuentan como firmado', () => {
   const papel = con({ estado: 'firmado_papel', papelSubidoEn: '2026-09-22T22:20:00Z' })
   assert.equal(estaFirmado(dedo), true)
   assert.equal(estaFirmado(papel), true)
-  assert.equal(lecturaDelCiclo(dedo).rotulo, 'Firmado en el teléfono')
+  assert.equal(lecturaDelCiclo(dedo).rotulo, 'Firmado en el teléfono el 22/09')
   assert.equal(lecturaDelCiclo(papel).rotulo, 'Firmado en papel · cargado')
   // El papel sobre una firma con el dedo NO borra la firma: se dicen las dos.
   assert.equal(lecturaDelCiclo({ ...dedo, papelSubidoEn: '2026-09-22T22:20:00Z' }).rotulo,
@@ -80,4 +80,18 @@ test('lo que no tiene forma de firma no se dibuja como firma', () => {
 test('un recibo observado se ve como observado aunque después se firme la versión nueva', () => {
   const obs = con({ estado: 'observado', observacion: 'las horas no son las que trabajé' })
   assert.deepEqual(lecturaDelCiclo(obs), { rotulo: 'Observado: no coincide', tono: 'neg' })
+})
+
+// ── «FIRMÓ EN PAPEL» SIN FOTO ────────────────────────────────────────────────────────────────────
+test('el papel marcado sin foto es firma, dice cuándo y quién, y no se ofrece firmarlo otra vez', () => {
+  const marcado = con({
+    estado: 'firmado_papel', papelSinFotoEn: '2026-09-30T15:10:00Z', papelSinFotoPor: 'Ana Laura',
+  })
+  assert.equal(estaFirmado(marcado), true)
+  assert.equal(lecturaDelCiclo(marcado).rotulo, 'Firmado en papel el 30/09 · marcado por Ana Laura')
+  assert.equal(sePuedeArchivar(marcado), true)
+  assert.equal(sePuedeFirmar(marcado), false)
+  // El teléfono no lee el sello, sólo el estado: igual tiene que verlo firmado.
+  assert.equal(sePuedeFirmar(con({ estado: 'firmado_papel' })), false)
+  assert.equal(personaPuedeObservar(marcado), false)
 })

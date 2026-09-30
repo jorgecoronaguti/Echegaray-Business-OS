@@ -78,10 +78,9 @@ export function ArmarRecibo({ fila, quincena }: {
     recibo,
   )
 
-  // D12 · ENVIAR A FIRMAR — el eslabón que faltaba: hasta hoy se pagaba la quincena, se imprimía un papel y
-  // de la conformidad NO quedaba ningún rastro digital. Esto emite el recibo y lo deja en el teléfono de la
-  // persona, que lo firma con el dedo o sube el papel firmado. No imprime: son dos gestos distintos y el
-  // de al lado sigue existiendo para quien entrega el papel en la mano.
+  // D12 · MANDAR AL TELÉFONO PARA FIRMAR — emite el recibo y lo deja en el teléfono de la persona, que lo
+  // firma con el dedo. No imprime: quien entrega el papel en la mano usa «Guardar e imprimir» y después marca
+  // «Firmó en papel» en el legajo.
   const enviarAFirmar = () => {
     if (nada || guardando) return
     const sellado = sellar()
@@ -148,31 +147,20 @@ export function ArmarRecibo({ fila, quincena }: {
       <HojaDelRecibo hoja={hoja} nombre={fila.nombre} categoria={categoria} quincena={quincena} recibo={recibo} />
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* D12: el botón oscuro del diseño es «Enviar a firmar». El de al lado es el que el dueño pidió a la
-            mañana —aceptar e imprimir— y no se quita: quien entrega el papel en la mano lo sigue usando. */}
+        {/* DOS ACCIONES, NO CUATRO (dueño, 30/09): «sólo quiero guardar e imprimir». Las dos variantes que
+            imprimían sin dejar rastro se quitaron: nadie sabía para qué servían, y el PDF es el mismo
+            diálogo de impresión. Un papel que sale sin quedar en el legajo es el problema que este gesto
+            resuelve, no una opción. `flex: 1 1 220px` apila los botones a ancho completo en 390 px. */}
+        <button type="button" disabled={nada || guardando} onClick={aceptarEImprimir} data-testid="recibo-guardar-imprimir"
+          style={{ ...BOTON, flex: '1 1 220px', border: 0, background: V.grafito, color: '#FFFFFF', fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
+          {guardando ? 'Guardando…' : 'Guardar e imprimir'}
+        </button>
         <button type="button" disabled={nada || guardando} onClick={enviarAFirmar} data-testid="recibo-enviar-a-firmar"
-          style={{ ...BOTON, border: 0, background: V.grafito, color: '#FFFFFF', fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
-          {guardando ? 'Guardando…' : 'Enviar a firmar'}
+          style={{ ...BOTON, flex: '1 1 220px', border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
+          {guardando ? 'Guardando…' : 'Mandar al teléfono para firmar'}
         </button>
-        <button type="button" disabled={nada || guardando} onClick={aceptarEImprimir} data-testid="recibo-aceptar"
-          style={{ ...BOTON, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
-          {guardando ? 'Guardando…' : 'Aceptar e imprimir'}
-        </button>
-        {/* LOS DOS QUE YA ESTABAN NO SE QUITAN (el dueño los pidió el 22/09 a la mañana), pero ahora dicen lo
-            que hacen: imprimen SIN dejar rastro. El que queda en el legajo es el de arriba. */}
-        <button type="button" disabled={nada} onClick={imprimir} data-testid="recibo-imprimir"
-          style={{ ...BOTON, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
-          Imprimir sin registrar
-        </button>
-        <button type="button" disabled={nada} onClick={imprimir} data-testid="recibo-pdf"
-          style={{ ...BOTON, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
-          Guardar PDF
-        </button>
-        {/* EL DISEÑO DICE «se guarda en Drive al emitir» Y ESO NO ESTÁ HECHO: el PDF lo arma el diálogo de
-            impresión del navegador, en esta máquina, y la app no lo ve. Lo que queda guardado son las cifras
-            selladas y la firma. Decirlo acá es más barato que un recibo que nadie encuentra en Drive. */}
-        <span style={{ fontSize: '11.5px', color: V.apagado }}>
-          Para el PDF, elegí «Guardar como PDF» en el diálogo. El archivo queda en esta máquina: a Drive no sube.
+        <span style={{ width: '100%', fontSize: '11.5px', color: V.apagado }}>
+          En el diálogo elegís la impresora o «Guardar como PDF». Si firma en papel, marcalo después en el legajo.
         </span>
         {aviso && (
           <div style={{ width: '100%', fontSize: '12.5px', color: aviso.tono === 'ok' ? V.tinta : V.warn, lineHeight: 1.5 }}

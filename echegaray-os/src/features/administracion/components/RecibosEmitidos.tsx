@@ -26,6 +26,7 @@ import {
   dondeSeFirmo, estaFirmado, lecturaDelCiclo, momentoCorto, sePuedeArchivar, trazoDibujable,
 } from '@/shared/recibo/ciclo'
 import { archivarRecibo, enviarReciboAFirmar, observarRecibo } from '../services/cicloDelReciboActions'
+import { FirmoEnPapel } from './FirmoEnPapel'
 import { pesos } from './liquidacion/formato'
 import {
   HojaDelRecibo, fechaCorta, imprimirHoja, tituloDelRecibo,
@@ -208,6 +209,11 @@ function Ciclo({ r }: { r: ReciboEnElLegajo }) {
           onClick={() => correr(() => enviarReciboAFirmar(r.id))}>
           {r.estado === 'enviado' ? 'Volver a enviarlo a firmar' : 'Enviar a firmar'}
         </button>
+      )}
+
+      {/* FIRMÓ EN PAPEL: sólo mientras nadie firmó y esté emitido o enviado (lo mismo que exige la base). */}
+      {(r.estado === 'emitido' || r.estado === 'enviado') && !estaFirmado(r) && (
+        <FirmoEnPapel reciboId={r.id} alTerminar={(x) => setAviso({ tono: x.ok ? 'ok' : 'mal', texto: x.texto })} />
       )}
 
       {sePuedeArchivar(r) && (
