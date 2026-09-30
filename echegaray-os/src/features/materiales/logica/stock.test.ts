@@ -87,9 +87,11 @@ test('puedeAnularMaterial: sólo dirección y administración; el jefe de obra o
   for (const r of ['jefe_obra', 'campo', 'cliente', null, undefined, '']) assert.equal(puedeAnularMaterial(r), false, String(r))
 })
 
-test('solapaDeUrl: lo desconocido cae en Pedidos (la vista de hoy)', () => {
-  assert.equal(solapaDeUrl('stock'), 'stock')
-  assert.equal(solapaDeUrl('remitos'), 'remitos')
-  assert.equal(solapaDeUrl('x'), 'pedidos')
-  assert.equal(solapaDeUrl(null), 'pedidos')
+test('solapaDeUrl: sin `ver` es el Resumen; un filtro de pedidos viejo cae en Pedidos; «stock» es Ubicaciones', () => {
+  for (const s of ['resumen', 'inventario', 'ubicaciones', 'movimientos', 'pedidos', 'remitos']) assert.equal(solapaDeUrl(s), s)
+  assert.equal(solapaDeUrl('stock'), 'ubicaciones')
+  assert.equal(solapaDeUrl('x'), 'resumen')
+  assert.equal(solapaDeUrl(null), 'resumen')
+  assert.equal(solapaDeUrl(null, true), 'pedidos')
+  assert.equal(solapaDeUrl('inventario', true), 'inventario')
 })

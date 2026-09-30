@@ -29,6 +29,12 @@ export default async function StockCampoPage() {
         <Aviso tono="warn" titulo="Todavía no hay stock por lugar." testid="falta-migracion-stock">Falta la migración {MIGRACION_STOCK}.</Aviso>
       )}
       {stock.estado === 'error' && <Aviso tono="neg" titulo="No se pudo leer el stock." testid="stock-error">{stock.mensaje}</Aviso>}
+      {stock.estado === 'ok' && puedeOperarMaterial(perfil.data?.rol) && (
+        <Link href="/campo/material/ingresar" data-testid="ingresar-material"
+          className="flex min-h-[48px] w-full items-center justify-center rounded-control border border-line-strong text-[14px] font-semibold text-ink">
+          + Ingresar material sin pedido
+        </Link>
+      )}
       {stock.estado === 'ok' && (
         <StockPorLugar lugares={stock.lugares} existencias={stock.existencias} puedeOperar={puedeOperarMaterial(perfil.data?.rol)} cara="telefono" />
       )}

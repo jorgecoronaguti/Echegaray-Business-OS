@@ -16,3 +16,5 @@ done
 run supabase/pruebas/material_01_andamio.sql
 run "supabase/migrations/${MIG:-20260929T1500_material_stock_por_lugar_y_remito}.sql"
 run supabase/pruebas/material_02_casos.sql
+run supabase/migrations/20260930T1500_material_ingreso_sin_pedido.sql
+run supabase/pruebas/material_03_ingreso.sql

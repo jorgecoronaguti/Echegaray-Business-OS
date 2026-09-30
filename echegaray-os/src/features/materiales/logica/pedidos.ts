@@ -189,12 +189,15 @@ export const HREF_MATERIAL_ESCRITORIO = '/herramientas/material'
 /** El módulo en el teléfono, dentro de Campo. */
 export const HREF_MATERIAL_TELEFONO = '/campo/material'
 
+/**
+ * La lista de pedidos filtrada. Lleva `ver=pedidos` SIEMPRE: desde el 30/09 la entrada del módulo es el
+ * Resumen, y un enlace «Material pedido» que cayera ahí perdería el filtro que el usuario eligió.
+ */
 export function hrefMaterialEscritorio(filtro: Partial<Filtro>): string {
-  const q = new URLSearchParams()
+  const q = new URLSearchParams({ ver: 'pedidos' })
   if (filtro.obra) q.set('obra', filtro.obra)
   if (filtro.estado && filtro.estado !== 'sin_entregar') q.set('estado', filtro.estado)
-  const s = q.toString()
-  return s ? `${HREF_MATERIAL_ESCRITORIO}?${s}` : HREF_MATERIAL_ESCRITORIO
+  return `${HREF_MATERIAL_ESCRITORIO}?${q.toString()}`
 }
 
 export const hrefPedirTelefono = (obra?: string | null) =>

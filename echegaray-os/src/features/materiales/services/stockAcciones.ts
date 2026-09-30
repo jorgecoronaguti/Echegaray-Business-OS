@@ -138,6 +138,35 @@ export async function moverMaterialAction(input: {
   } catch (err) { return falla(err) }
 }
 
+const ingresoSchema = z.object({
+  nombre: z.string().trim().min(2, 'Escribí qué material es').max(160, 'El nombre es demasiado largo'),
+  unidad: z.string().trim().min(1, 'Elegí la unidad').max(20),
+  lugar: z.string().trim().min(1, 'Elegí dónde queda'),
+  cantidad,
+  origen: z.string().trim().min(3, 'Decí de dónde viene (compra directa, stock inicial…)').max(400, 'El texto es demasiado largo'),
+})
+
+/**
+ * Ingreso SIN pedido: lo que ya está en el Taller o en una obra, o lo que se compró directo. Sin esta
+ * puerta el stock sólo nacía de un «Llegó» y el control no tenía por dónde arrancar. El origen es
+ * obligatorio (lo exige también la base): una entrada sin decir de dónde vino no se puede auditar.
+ */
+export async function ingresarMaterialAction(input: { nombre: string; unidad: string; lugar: string; cantidad: number; origen: string }): Promise<EstadoStock> {
+  const p = ingresoSchema.safeParse(input)
+  if (!p.success) return { error: p.error.issues[0].message }
+  try {
+    const supabase = await createClient()
+    const l = await resolverLugar(supabase, p.data.lugar)
+    if ('error' in l) return { error: l.error }
+    const { error } = await supabase.rpc('ingresar_material', {
+      p_nombre: p.data.nombre, p_unidad: p.data.unidad, p_ubicacion: l.id, p_cantidad: p.data.cantidad, p_origen: p.data.origen,
+    })
+    if (error) return { error: error.message }
+  } catch (err) { return falla(err) }
+  revalidar()
+  return { error: null, ok: true }
+}
+
 const ajusteSchema = z.object({
   material: id, lugar: id,
   contado: z.number({ message: 'Poné lo que contaste' }).min(0, 'Lo contado no puede ser negativo').max(1_000_000),

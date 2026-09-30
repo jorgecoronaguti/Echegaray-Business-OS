@@ -62,8 +62,8 @@ test('«sin entregar» deja afuera lo entregado y lo cancelado; el resto de filt
   assert.deepEqual(filtrarPedidos(filas, { obra: null, estado: 'comprado' }).map((f) => f.id_pedido), ['d'])
   assert.equal(contarSinEntregar(filas, ['quattropani']), 1)
   assert.equal(filtroEstadoDeUrl('cualquiera'), 'sin_entregar', 'un valor desconocido en la URL abre lo pendiente')
-  assert.equal(hrefMaterialEscritorio({ obra: 'quattropani', estado: 'todos' }), '/herramientas/material?obra=quattropani&estado=todos')
-  assert.equal(hrefMaterialEscritorio({ estado: 'sin_entregar' }), '/herramientas/material')
+  assert.equal(hrefMaterialEscritorio({ obra: 'quattropani', estado: 'todos' }), '/herramientas/material?ver=pedidos&obra=quattropani&estado=todos')
+  assert.equal(hrefMaterialEscritorio({ estado: 'sin_entregar' }), '/herramientas/material?ver=pedidos')
 })
 
 test('el vocabulario: los cuatro pasos de la app y lo que trae el Sheet leen igual', () => {

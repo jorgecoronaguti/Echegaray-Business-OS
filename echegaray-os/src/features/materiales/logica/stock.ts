@@ -136,11 +136,27 @@ export const puedeOperarMaterial = (rol: string | null | undefined): boolean =>
 export const puedeAnularMaterial = (rol: string | null | undefined): boolean =>
   rol === 'direccion' || rol === 'administracion'
 
-export type SolapaMaterial = 'pedidos' | 'stock' | 'remitos'
+// Las solapas calcan Herramientas (dueño, 29/09/2026: «el inventario como en herramientas… no solo como
+// gestión de pedidos sino también de control de stock»): Resumen → Inventario → Ubicaciones →
+// Movimientos, y lo propio de Material (Pedidos, Remitos) al final. Una sola fila: es el nivel 2.
+export type SolapaMaterial = 'resumen' | 'inventario' | 'ubicaciones' | 'movimientos' | 'pedidos' | 'remitos'
 export const SOLAPAS_MATERIAL: Array<{ id: SolapaMaterial; label: string }> = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'inventario', label: 'Inventario' },
+  { id: 'ubicaciones', label: 'Ubicaciones' },
+  { id: 'movimientos', label: 'Movimientos' },
   { id: 'pedidos', label: 'Pedidos' },
-  { id: 'stock', label: 'Stock' },
   { id: 'remitos', label: 'Remitos' },
 ]
-export const solapaDeUrl = (v: string | null | undefined): SolapaMaterial =>
-  v === 'stock' || v === 'remitos' ? v : 'pedidos'
+
+/**
+ * La solapa de la URL. Sin `ver` es el Resumen, salvo que la URL traiga un filtro de pedidos (`obra`,
+ * `estado`, `pedir`): un enlace viejo «Material pedido de tal obra» sigue cayendo en Pedidos. `stock`
+ * (la solapa del 29/09) es hoy Ubicaciones: el saldo por lugar.
+ */
+export function solapaDeUrl(v: string | null | undefined, conFiltroDePedidos = false): SolapaMaterial {
+  if (v === 'stock') return 'ubicaciones'
+  const hit = SOLAPAS_MATERIAL.find((s) => s.id === v)
+  if (hit) return hit.id
+  return conFiltroDePedidos ? 'pedidos' : 'resumen'
+}

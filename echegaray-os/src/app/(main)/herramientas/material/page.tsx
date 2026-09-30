@@ -8,8 +8,12 @@ import { MaterialEscritorio } from '@/features/materiales/components/MaterialEsc
 import { FiltroObra } from '@/features/materiales/components/FiltroObra'
 import { StockEscritorio } from '@/features/materiales/components/StockEscritorio'
 import { ListaRemitos } from '@/features/materiales/components/ListaRemitos'
+import { VistaResumenMaterial } from '@/features/materiales/components/VistaResumenMaterial'
+import { VistaInventarioMaterial } from '@/features/materiales/components/VistaInventarioMaterial'
+import { VistaMovimientosMaterial } from '@/features/materiales/components/VistaMovimientosMaterial'
+import { tipoLibroDeUrl } from '@/features/materiales/logica/inventario'
 import { SOLAPAS_MATERIAL, puedeAnularMaterial, puedeOperarMaterial, solapaDeUrl } from '@/features/materiales/logica/stock'
-import { MIGRACION_STOCK, leerStock } from '@/features/materiales/services/stockService'
+import { MIGRACION_STOCK, leerMovimientos, leerStock } from '@/features/materiales/services/stockService'
 import { filtrarPedidos, filtroEstadoDeUrl, type Filtro } from '@/features/materiales/logica/pedidos'
 import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosService'
 
@@ -19,6 +23,12 @@ import { MIGRACION, leerMaterial } from '@/features/materiales/services/pedidosS
 // Es la MISMA lista que el teléfono (`/campo/material`) sin acotar por obra, para administrar: filtrar
 // por obra y estado, mover el estado, y pedir desde el panel lateral. Un solo módulo, un solo
 // nombre, en las dos caras. `/integraciones/pedidos-materiales` redirige acá.
+//
+// REHECHA (dueño, 29/09/2026: «rehacer Material tomando como modelo el inventario de Herramientas, no
+// sólo como gestión de pedidos sino también de control de stock»; 30/09: «rehacer materiales tal como
+// pedí ayer esa sección»). Las solapas calcan las de Herramientas: Resumen · Inventario · Ubicaciones ·
+// Movimientos, más Pedidos y Remitos, que son de Material. Todo en el mismo módulo. La URL sin `ver`
+// abre el Resumen; un enlace viejo con `obra`/`estado`/`pedir` sigue cayendo en Pedidos.
 //
 // No monta `Marco` de Herramientas a propósito: ese marco lee el parque entero (activos, ubicaciones,
 // movimientos…) para dibujar sus paneles, y esta pantalla no lo necesita. El nivel 2 es el mismo
@@ -33,8 +43,13 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams
   const filtro: Filtro = { obra: uno(sp.obra), estado: filtroEstadoDeUrl(uno(sp.estado)) }
   const supabase = await createClient()
-  const solapa = solapaDeUrl(uno(sp.ver))
-  const [lectura, stock, perfil] = await Promise.all([leerMaterial(supabase), leerStock(supabase), getPerfilActual(supabase)])
+  const solapa = solapaDeUrl(uno(sp.ver), !!(sp.obra || sp.estado || sp.pedir))
+  // El libro sólo lo necesitan Resumen, Inventario (último movimiento) y Movimientos.
+  const conLibro = solapa === 'resumen' || solapa === 'inventario' || solapa === 'movimientos'
+  const [lectura, stock, perfil, libro] = await Promise.all([
+    leerMaterial(supabase), leerStock(supabase), getPerfilActual(supabase), conLibro ? leerMovimientos(supabase) : Promise.resolve(null),
+  ])
+  const movimientos = libro?.estado === 'ok' ? libro.movimientos : null
   const puedeOperar = puedeOperarMaterial(perfil.data?.rol)
 
   const obras = lectura.estado === 'ok' ? lectura.obras : []
@@ -55,7 +70,7 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
         <Filtros
           testid="solapas-material"
           opciones={SOLAPAS_MATERIAL.map((s) => ({
-            label: s.label, href: s.id === 'pedidos' ? '/herramientas/material' : `/herramientas/material?ver=${s.id}`,
+            label: s.label, href: s.id === 'resumen' ? '/herramientas/material' : `/herramientas/material?ver=${s.id}`,
             activo: s.id === solapa, testid: `solapa-${s.id}`,
           }))}
         />
@@ -79,7 +94,21 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
         {solapa !== 'pedidos' && stock.estado === 'error' && (
           <Aviso tono="neg" titulo="No se pudo leer el stock." testid="stock-error">{stock.mensaje}</Aviso>
         )}
-        {solapa === 'stock' && stock.estado === 'ok' && (
+        {libro?.estado === 'error' && solapa === 'movimientos' && (
+          <Aviso tono="neg" titulo="No se pudo leer el libro de movimientos." testid="libro-error">{libro.mensaje}</Aviso>
+        )}
+        {/* Sin la lectura de pedidos no se dibuja el Resumen: «0 pedidos sin entregar» sería un cero falso (el aviso de arriba dice por qué). */}
+        {solapa === 'resumen' && stock.estado === 'ok' && lectura.estado === 'ok' && (
+          <VistaResumenMaterial pedidos={lectura.pedidos} existencias={stock.existencias} lugares={stock.lugares} movimientos={movimientos} />
+        )}
+        {solapa === 'inventario' && stock.estado === 'ok' && (
+          <VistaInventarioMaterial existencias={stock.existencias} lugares={stock.lugares} movimientos={movimientos ?? []} destinos={stock.destinos}
+            q={uno(sp.q)} lugar={uno(sp.lugar)} puedeOperar={puedeOperar} />
+        )}
+        {solapa === 'movimientos' && stock.estado === 'ok' && movimientos && (
+          <VistaMovimientosMaterial movimientos={movimientos} lugares={stock.lugares} remitos={stock.remitos} tipo={tipoLibroDeUrl(uno(sp.tipo))} lugar={uno(sp.lugar)} />
+        )}
+        {solapa === 'ubicaciones' && stock.estado === 'ok' && (
           <StockEscritorio lugares={stock.lugares} existencias={stock.existencias} destinos={stock.destinos} remitos={stock.remitos} puedeOperar={puedeOperar} />
         )}
         {solapa === 'remitos' && stock.estado === 'ok' && <ListaRemitos remitos={stock.remitos} cara="escritorio" />}
