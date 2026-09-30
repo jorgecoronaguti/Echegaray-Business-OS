@@ -225,7 +225,7 @@ export const especialista = {
     return null
   },
 
-  async atender({ texto, intencion, port, actor, commEventId = null, postId = null, log, registrar = registrarAdelanto, ahora = new Date() }) {
+  async atender({ texto, intencion, port, actor, commEventId = null, postId = null, log, registrar = registrarAdelanto, registrarDirecto = undefined, ahora = new Date() }) {
     const ruta = intencion ?? await this.reconoce(texto, { area: AREA, actor, port })
     if (!ruta) return { texto: TEXTO.CANAL, estado: 'ayuda', privado: false }
 
@@ -290,7 +290,17 @@ export const especialista = {
 
     // 4. DE QUÉ ENTREGA: la única abierta, o la que el mensaje nombra (ER-nnnn / obra). Si no, se pregunta.
     const { entrega, motivo } = elegirEntrega(yo.abiertas, textoEntrega)
-    if (motivo === 'ninguna') { recordarPendiente(actor, null); return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false } }
+    if (motivo === 'ninguna') {
+      // SIN ENTREGA NO ES UN RECHAZO (dueño, 30/09/2026: «hoy le pagué 150000 de adelanto a emiliano maldonado»
+      // contestaba «No tenés efectivo a rendir abierto»). Es un pago con la caja: va a la MISMA celda de
+      // Liquidación, sin rendir nada. Lo hace `efectivo-pagos`; la pregunta ya está resuelta (persona, fecha, importe).
+      recordarPendiente(actor, null)
+      const { especialista: pagos } = await import('./efectivo-pagos.mjs')
+      return pagos.pagarSueldo({
+        leido, port, idMensaje: commEventId ?? postId ?? actor?.root_post_id ?? null, actor, postId, perfilId: yo.perfilId, log,
+        registrar: registrarDirecto,
+      })
+    }
     if (!entrega) {
       recordarPendiente(actor, { falta: 'entrega', leido, texto: textoEntrega, clave })
       return { texto: `${textoAmbigua(yo.abiertas).replace('este ticket', 'este adelanto').replace('Mandalo de nuevo con el número', 'Contestá en este hilo con el número')}`, estado: 'pregunta_entrega', privado: false }
