@@ -292,6 +292,19 @@ export function textoYaTenes(t: Extract<TarjetaHoy, { tipo: 'recibir' }>): { tit
  * pregunta. Nunca se adivina entre dos obras: el gasto se imputa a la obra de la entrega, y elegir mal
  * es cargarle el corralón de Galpón 8 a otra obra.
  */
+/**
+ * ACCIONES DEL JEFE EN «MI EFECTIVO DE LA OBRA» — Rendir y Devolver existen mientras tenga ALGUNA entrega abierta,
+ * aunque la plata sea de otra obra o de Estructura. La pantalla filtraba por la obra elegida y a Maldonado
+ * (30/09/2026, jefe de obra en Quattropani con dos entregas de Estructura) le escondía el botón «Rendir un gasto»
+ * que Nievas sí veía: la misma función para los dos jefes, por orden del dueño. Con una sola abierta el botón va
+ * derecho a esa entrega; con varias, a elegir en /rendir.
+ */
+export function accionesDelJefe(todas: readonly EntregaSaldo[]): { rendir: string | null; devolver: boolean } {
+  const vivas = abiertas(todas)
+  if (!vivas.length) return { rendir: null, devolver: false }
+  return { rendir: vivas.length === 1 ? `/rendir?entrega=${vivas[0].id}` : '/rendir', devolver: true }
+}
+
 export function entregaParaRendir(entregas: readonly EntregaSaldo[], pedida: string | null | undefined): EntregaSaldo | null {
   const vivas = abiertas(entregas)
   if (pedida) return vivas.find((e) => e.id === pedida) ?? null

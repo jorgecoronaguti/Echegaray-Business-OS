@@ -10,7 +10,7 @@ import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
 import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import {
-  abiertas, conVuelta, destino, diaMes, pesos, resumenMiEfectivo, sufijoDeVuelta, tarjetaDeHoy,
+  accionesDelJefe, conVuelta, destino, diaMes, pesos, resumenMiEfectivo, sufijoDeVuelta, tarjetaDeHoy,
 } from '@/features/efectivo/campo/logica'
 import type { EntregaSaldo } from '@/features/efectivo/campo/tipos'
 import {
@@ -54,7 +54,8 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
   const r = resumenMiEfectivo(deLaObra, tickets)
   const hoy = tarjetaDeHoy(deLaObra, tickets)
   const suyos = tickets.filter((t) => deLaObra.some((e) => e.id === t.entrega_id))
-  const vivas = abiertas(deLaObra)
+  // Rendir/Devolver miran TODAS sus entregas, no sólo las de esta obra (Maldonado 30/09/2026).
+  const acciones = accionesDelJefe(todas)
   const enOtras = resumenMiEfectivo(otras, tickets)
 
   return (
@@ -97,15 +98,15 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {suyos.length > 0 && <FilaAcceso href={ruta('/rendiciones')} cuenta={r.piden.length}>Mis rendiciones</FilaAcceso>}
-              {vivas.length > 0 && <FilaAcceso href={ruta('/devolver')}>Devolver efectivo</FilaAcceso>}
+              {acciones.devolver && <FilaAcceso href={ruta('/devolver')}>Devolver efectivo</FilaAcceso>}
               {otras.some((e) => e.estado === 'abierta') && (
                 <FilaAcceso href={ruta('')} testid="jefe-otras-entregas">Mi efectivo de otras obras</FilaAcceso>
               )}
             </div>
 
-            {vivas.length > 0 && (
+            {acciones.rendir && (
               <Pie>
-                <Primario href={ruta(vivas.length === 1 ? `/rendir?entrega=${vivas[0].id}` : '/rendir')} icono="foto" testid="jefe-rendir">
+                <Primario href={ruta(acciones.rendir)} icono="foto" testid="jefe-rendir">
                   Rendir un gasto
                 </Primario>
               </Pie>

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, personaDePor, esRutaDeRendicion, estadoVisible, fraseTePiden,
+  accionesDelJefe, aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, personaDePor, esRutaDeRendicion, estadoVisible, fraseTePiden,
   pesos, resumenMiEfectivo, rutaDeRendicion, sufijoDeVuelta, tarjetaDeHoy, textoTengoQueRendir, textoYaTenes,
   totalDelTicket,
 } from './logica.ts'
@@ -198,4 +198,14 @@ test('«por» lleva a Administración a la ficha de la persona y sólo acepta un
   assert.equal(personaDePor('https://evil.com'), null)
   assert.equal(destinoDeVuelta(null, null, '../../x'), '/mi-informacion/efectivo')
   assert.equal(sufijoDeVuelta(null, null, "x' or 1=1"), '')
+})
+
+test('el jefe rinde y devuelve aunque su plata sea de Estructura u otra obra (Maldonado 30/09/2026)', () => {
+  // Dos entregas de Estructura abiertas, ninguna de la obra elegida: el botón tiene que existir igual.
+  const todas = [entrega({ id: 'e1', obra_id: null, obra: null, estructura: true }), entrega({ id: 'e2', obra_id: null, obra: null, estructura: true })]
+  assert.deepEqual(accionesDelJefe(todas), { rendir: '/rendir', devolver: true })
+  // Una sola abierta: derecho a esa entrega.
+  assert.deepEqual(accionesDelJefe([todas[0], entrega({ id: 'e3', estado: 'cerrada' })]), { rendir: '/rendir?entrega=e1', devolver: true })
+  // Sin abiertas: no hay qué rendir ni qué devolver.
+  assert.deepEqual(accionesDelJefe([entrega({ id: 'e4', estado: 'cerrada' })]), { rendir: null, devolver: false })
 })
