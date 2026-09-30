@@ -42,6 +42,9 @@ export const NOMBRES_PUENTE = Object.freeze({
 export const NOMBRES_NOMINA_BASE = Object.freeze({ total: 'NOMINA_MES_TOTAL', aportes: 'NOMINA_PARAM_APORTES', personas: 'NOMINA_PERSONAS' })
 
 export const ROTULO_PUENTE = '6 · LO QUE VA AL CASH FLOW · LO QUE FALTA PAGAR DE CADA MES'
+
+/** Primer mes (1–12) cuyas celdas por persona mandan sin guarda por «Proyectado»: octubre 2026. */
+export const MES_CELDAS_VIVAS = 10
 export const ROTULOS_FILAS_PUENTE = Object.freeze({
   jornales: 'Jornales de obra',
   oficina: 'Oficina y jefes (mensual)',
@@ -150,7 +153,7 @@ const COLS_MES = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
  * @param {{anio?:number}} [o]
  * @returns {{filas:Array<Array<string>>, rotulos:Array<string>}}
  */
-export function cuadroPuente(u, { anio = 2026, filasOficina = [] } = {}) {
+export function cuadroPuente(u, { anio = 2026, filasOficina = [], mesCeldasVivas = MES_CELDAS_VIVAS } = {}) {
   const p = u.filaParametros
   const $ = (col) => `$${col}$${p}`
   const personas = (X) => `${X}$${u.primeraPersona}:${X}$${u.ultimaPersona}`
@@ -169,8 +172,18 @@ export function cuadroPuente(u, { anio = 2026, filasOficina = [] } = {}) {
     // diga Nómina de ese mes es historia, no deuda. Sin esta guarda, febrero publicaba $665.000 «por
     // pagar» (los $3,6 M tipeados de los jefes contra lo que de verdad se pagó) y el libro lo emitía
     // VENCIDO. Agosto —pagado en parte, con el resto proyectado a mano— sigue abierto.
-    oficina: (X, m) => `=IF(AND(N(INDEX(OFICINA_PAGADO;${m};1))>0;N(INDEX(OFICINA_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1))))`,
-    direccion: (X, m) => `=IF(AND(N(INDEX(DIRECCION_PAGADO;${m};1))>0;N(INDEX(DIRECCION_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1))))`,
+    // DESDE `mesCeldasVivas` (octubre) NO HAY GUARDA POR «Proyectado» (30/09/2026). El dueño: «quiero
+    // ir modificando celda por celda de lo proyectado de cada uno y tiene que verse el impacto en
+    // todo». Ahí el mes lo dicen las celdas de las personas (jefes en las filas 25–26, «Oficina», y los
+    // retiros de Dirección) y el presupuesto H de la sección 8 ya no manda: con la guarda, subir un
+    // jefe por encima de lo pagado dejaba `Proyectado`=0 y el cuadro daba 0 —el cambio no se veía en
+    // ninguna parte—. El pagado del mes sigue restando: eso ya salió de la caja.
+    oficina: (X, m) => (m >= mesCeldasVivas
+      ? `=MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1)))`
+      : `=IF(AND(N(INDEX(OFICINA_PAGADO;${m};1))>0;N(INDEX(OFICINA_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1))))`),
+    direccion: (X, m) => (m >= mesCeldasVivas
+      ? `=MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1)))`
+      : `=IF(AND(N(INDEX(DIRECCION_PAGADO;${m};1))>0;N(INDEX(DIRECCION_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1))))`),
     // EL SEGURO DE VIDA UOCRA (Q, por trabajador, 25/09/2026) está en el total de cargas pero es
     // GREMIAL: sale del total antes de repartir, así cae entero en la línea de gremiales.
     f931: (X) => `=LET(t;N(${X}$${u.filaTotalCargas})-${$('Q')}*COUNTIF(${personas(X)};">0");s;${$('H')}*COUNTIF(${personas(X)};">0");`
@@ -287,4 +300,27 @@ export function filasDeOficina(personas = [], deOficina = []) {
     return restoA.some((x) => restoB.some((y) => x.startsWith(y) || y.startsWith(x)))
   }
   return personas.filter((p) => deOficina.some((o) => casa(p.nombre, o))).map((p) => p.fila)
+}
+
+/**
+ * LA FILA «Oficina» DEL CUADRO 1, SIN REPETIR A LOS JEFES QUE YA ESTÁN POR NOMBRE. PURO.
+ *
+ * Envuelve cada FÓRMULA en `=MAX(0;IFERROR(base;0)-(N(X$25)+N(X$26)))` y es idempotente (si ya resta, no
+ * la toca). UN NÚMERO TIPEADO NO SE ENVUELVE (30/09/2026): octubre–diciembre son celdas literales del
+ * dueño —«modificar celda por celda de lo proyectado»— y envolverlas cambiaba su valor y las volvía
+ * fórmula, pisando lo que él escribió.
+ *
+ * @param {any[]} actual la fila en FORMULA (D..O)
+ * @param {number[]} filasOficina filas de los jefes en el cuadro 1
+ * @param {string[]} cols letras de columna de `actual`
+ */
+export function restarJefesDeOficina(actual, filasOficina, cols) {
+  return cols.map((X, i) => {
+    if (typeof actual[i] === 'number') return actual[i]
+    const f = String(actual[i] ?? '')
+    const resta = filasOficina.map((r) => `N(${X}$${r})`).join('+')
+    if (!f || f.includes(`-(${resta})`)) return f
+    const base = f.startsWith('=') ? f.slice(1) : (f === '' ? '0' : f)
+    return `=MAX(0;IFERROR(${base};0)-(${resta}))`
+  })
 }

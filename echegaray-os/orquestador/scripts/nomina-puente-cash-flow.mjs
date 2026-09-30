@@ -15,7 +15,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { bloquear, desbloquear, estaBloqueada } from '../lib/pestana-bloqueada.mjs'
 import { pedidos } from '../lib/rangos-nombrados.mjs'
-import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente, filasDeOficina } from '../lib/nomina-puente.mjs'
+import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente, filasDeOficina, restarJefesDeOficina } from '../lib/nomina-puente.mjs'
 import { formatearNomina } from '../lib/nomina-formato.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -54,14 +54,8 @@ async function main() {
     if (filasOficina.length) {
       const COLS = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
       const actual = (await google.readSheetValues(ID, `'${PESTAÑA}'!D${u.filaOficina}:O${u.filaOficina}`, { render: 'FORMULA' }))?.[0] ?? []
-      const nueva = COLS.map((X, i) => {
-        const f = String(actual[i] ?? '')
-        const resta = filasOficina.map((r) => `N(${X}$${r})`).join('+')
-        if (!f || f.includes(`-(${resta})`)) return f
-        const base = f.startsWith('=') ? f.slice(1) : (f === '' ? '0' : f)
-        return `=MAX(0;IFERROR(${base};0)-(${resta}))`
-      })
-      if (nueva.some((f, i) => f !== String(actual[i] ?? ''))) {
+      const nueva = restarJefesDeOficina(actual, filasOficina, COLS)
+      if (nueva.some((f, i) => String(f) !== String(actual[i] ?? ''))) {
         const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
         console.log(`  snapshot → ${await tomarSnapshot({ google, fileId: ID, pestana: PESTAÑA, tool: 'nomina-puente-cash-flow', directive: 'fila Oficina sin repetir a los jefes (doble conteo)' }) ?? 'no se pudo'}`)
         const r0 = await google.updateSheetValues(ID, `'${PESTAÑA}'!D${u.filaOficina}:O${u.filaOficina}`, [nueva], { yaGuardado: true })

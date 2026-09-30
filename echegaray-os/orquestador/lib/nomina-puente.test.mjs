@@ -150,3 +150,31 @@ test('cuadro 6 · el seguro de vida UOCRA por trabajador ($Q$) sale del F931 y q
   assert.match(f931, /^=LET\(t;N\(D\$54\)-\$Q\$5\*COUNTIF\(D\$10:D\$26;">0"\);s;\$H\$5\*COUNTIF/)
   assert.doesNotMatch(f931, /,/, 'es-AR')
 })
+
+test('cuadro 6 · desde octubre no hay guarda por «Proyectado»: la celda de cada persona manda (30/09)', async () => {
+  const { cuadroPuente, ubicarNomina, MES_CELDAS_VIVAS } = await import('./nomina-puente.mjs')
+  const g = []
+  g[3] = ['Parámetros']; g[7] = ['1 · NÓMINA 2026']; g[8] = ['Persona']; g[26] = ['Desvinculados en el año']; g[27] = ['Oficina']; g[28] = ['TOTAL']
+  g[33] = ['2 · CARGAS']; g[55] = ['TOTAL']; g[75] = ['TOTAL DIRECCIÓN']
+  const c = cuadroPuente(ubicarNomina(g), { filasOficina: [25, 26] })
+  assert.equal(MES_CELDAS_VIVAS, 10)
+  // septiembre (columna 11) conserva la guarda; octubre, noviembre y diciembre (12–14) no la tienen
+  assert.match(c.filas[3][11], /OFICINA_PROYECTADO;9;1/)
+  assert.match(c.filas[4][11], /DIRECCION_PROYECTADO;9;1/)
+  for (const [i, m] of [[12, 10], [13, 11], [14, 12]]) {
+    assert.doesNotMatch(c.filas[3][i], /PROYECTADO|IF\(AND/)
+    assert.doesNotMatch(c.filas[4][i], /PROYECTADO|IF\(AND/)
+    assert.match(c.filas[3][i], new RegExp(`-N\\(INDEX\\(OFICINA_PAGADO;${m};1\\)\\)\\)$`)) // el pagado del mes sigue restando
+    assert.match(c.filas[3][i], /\+\(N\([MNO]\$25\)\+N\([MNO]\$26\)\)/) // los jefes suman en Oficina
+    assert.match(c.filas[4][i], new RegExp(`^=MAX\\(0;N\\([MNO]\\$\\d+\\)-N\\(INDEX\\(DIRECCION_PAGADO;${m};1\\)\\)\\)$`))
+  }
+})
+
+test('la fila «Oficina» no envuelve un número tipeado, sí las fórmulas, y es idempotente (30/09)', async () => {
+  const { restarJefesDeOficina } = await import('./nomina-puente.mjs')
+  const cols = ['L', 'M', 'N']
+  const r = restarJefesDeOficina(['=IFERROR(N(INDEX(C))+N(INDEX(H));0)', 0, 6800], [25, 26], cols)
+  assert.equal(r[1], 0); assert.equal(r[2], 6800) // literales intactos, siguen siendo números
+  assert.match(r[0], /^=MAX\(0;.*-\(N\(L\$25\)\+N\(L\$26\)\)\)$/)
+  assert.deepEqual(restarJefesDeOficina(r, [25, 26], cols), r) // una segunda pasada no cambia nada
+})
