@@ -25,7 +25,7 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
 import { saldoRedondeado } from '../../../services/efectivoRedondeado'
-import { arrastreAplicado, conNetoDelRecibo } from '../../../services/liquidacionArrastre'
+import { arrastreAplicado, conNetoDelRecibo, sumaDelBanco, textoDelArrastre } from '../../../services/liquidacionArrastre'
 import { MarcaDeArrastre } from './MarcaDeArrastre'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
@@ -148,14 +148,19 @@ export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edi
 
 export const AVISO_NETO_NO_RECALCULADO = 'el neto es del recibo del estudio y no se recalcula: editá Banco si cambió'
 
-/** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe. */
+/**
+ * NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe.
+ *
+ * CON RESTA DE OTRO RECIBO LA CELDA SUMA ADENTRO Y DA EL RESULTADO (dueño, 30/09/2026: «te lo pedí que sume dentro de la
+ * celda, pero sumando y que dé el resultado, no como número directamente»): «234.963,32 + 54.580,48» en chico y
+ * «= $289.543,80» como número principal. Lo que se escribe es el neto del recibo: si el campo tomara la suma, guardarlo
+ * la volvería manual y la resta se sumaría dos veces. Todo debajo del campo, nunca al lado («mirá ese destrozo»): la
+ * celda mide 124 px y la fila 58 px, entran el campo y dos renglones.
+ */
 export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
-  // EL NETO DEL RECIBO, SIN LA RESTA DE OTRO: la resta va en la marca, y escribir la celda escribe el neto.
   const fila = conNetoDelRecibo(conResta)
   const l = fila.linea
-  // LA MARCA VA DEBAJO DEL NÚMERO, NUNCA AL LADO (dueño, 30/09/2026: «mirá ese destrozo»): «$241.507,76 +$16.558,72» más
-  // el campo escribible no entran en 124 px y la celda se derramaba sobre el $/h de la izquierda. La fila mide 58 px: hay
-  // lugar para dos renglones.
+  const suma = sumaDelBanco(conResta.linea, pesos)
   const marca = <MarcaDeArrastre l={conResta.linea} testid={`neto-arrastre-${fila.personaId}`} />
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
@@ -184,6 +189,28 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
     return <div data-testid={testid} title={origenDelBlanco(s)} style={{ ...DERECHA, color: V.tenue }}>sin neto</div>
   }
   const estimado = s != null && s.origenNeto === 'estimado' && !l.manual.porBanco
+  if (suma) {
+    // SÓLO LECTURA CON RESTA: los operandos arriba, en chico; el resultado es el número de la celda.
+    return (
+      <div data-testid={testid} data-arrastre="aplicado" data-resultado={suma.resultado} data-neto-no-recalculado={aviso ? '1' : undefined}
+        title={[titulo, textoDelArrastre(conResta.linea, pesos)].filter(Boolean).join(' · ') || undefined}
+        style={{ ...DERECHA, color: V.tinta }}>
+        <div data-testid={`neto-arrastre-${fila.personaId}`}
+          style={{ fontSize: '10.5px', lineHeight: '14px', color: V.apagado, fontVariantNumeric: 'tabular-nums', ...(estimado ? { fontStyle: 'italic' } : {}) }}>
+          {suma.operandos}{estimado && <Est />}
+        </div>
+        <div style={{ fontWeight: 600, lineHeight: '16px', fontVariantNumeric: 'tabular-nums' }}>
+          {suma.resultado_texto}
+          {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
+          <MarcaDeOrigen origen={l.origen.porBanco} compacta />
+          {s?.driveFileId && (
+            <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
+              title="Abrir el recibo" style={{ marginLeft: 4, fontSize: '10.5px', color: V.apagado, fontStyle: 'normal', fontWeight: 400 }}>↗</a>
+          )}
+        </div>
+      </div>
+    )
+  }
   return (
     <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
       style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>

@@ -139,6 +139,27 @@ export function conNetoDelRecibo<T extends { linea: LineaConOverrides }>(fila: T
 
 type Pesos = (n: number | null) => string
 
+/**
+ * LA CELDA BANCO SUMA ADENTRO Y DA EL RESULTADO (dueño, 30/09/2026: *«te lo pedí que sume dentro de la celda, pero
+ * sumando y que dé el resultado, no como número directamente»*). Como una celda de planilla: los operandos —el neto
+ * del recibo y la resta arrastrada— se ven, y el número principal es la suma. `null` sin resta aplicada: la celda es
+ * el neto solo.
+ */
+export function sumaDelBanco(l: Pick<LineaConOverrides, 'arrastre' | 'porBanco'>, pesos: Pesos): {
+  neto: number; resta: number; resultado: number
+  /** «234.963,32 + 54.580,48»: sin signo, para que entre en la celda. */
+  operandos: string
+  /** «= $289.543,80». */
+  resultado_texto: string
+} | null {
+  const resta = arrastreAplicado(l)
+  if (!resta) return null
+  const resultado = r2(l.porBanco)
+  const neto = r2(resultado - resta)
+  const sinSigno = (n: number) => pesos(n).replace(/^\$\s?/, '')
+  return { neto, resta, resultado, operandos: `${sinSigno(neto)} + ${sinSigno(resta)}`, resultado_texto: `= ${pesos(resultado)}` }
+}
+
 /** La explicación en una línea, para el `title` de la marca. `null` sin nada que decir. */
 export function textoDelArrastre(l: Pick<LineaConOverrides, 'arrastre' | 'arrastradoA' | 'porBanco'>, pesos: Pesos): string | null {
   const a = l.arrastre

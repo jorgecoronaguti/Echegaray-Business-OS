@@ -156,9 +156,9 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
             style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
         )}
-        {/* EL NETO SIN LA RESTA DE OTRO RECIBO: la resta va en la marca; escribir acá escribe el neto. */}
+        {/* SE ESCRIBE EL NETO DEL RECIBO; al lado, «+ resta = resultado» (dueño, 30/09/2026: la celda suma y da el resultado). */}
         <Escribible campo="porBanco" fila={conNetoDelRecibo(fila)} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" />
+        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" forma="linea" />
       </Renglon>
       {/* EL RECIBO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el estimado cuyo neto es el Banco preliminar, o el real
           contra el estimado cuando llegó el del estudio. */}
@@ -318,9 +318,9 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={l.total} medio origen={l.origen.total} />
       </Renglon>
       <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
-        {/* EL NETO SIN LA RESTA DE OTRO RECIBO: la resta va en la marca; escribir acá escribe el neto. */}
+        {/* SE ESCRIBE EL NETO DEL RECIBO; al lado, «+ resta = resultado» (dueño, 30/09/2026: la celda suma y da el resultado). */}
         <Escribible campo="porBanco" fila={conNetoDelRecibo(fila)} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" />
+        <MarcaDeArrastre l={fila.linea} testid="panel-arrastre" forma="linea" />
       </Renglon>
       <Renglon rotulo="Efectivo">
         <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />

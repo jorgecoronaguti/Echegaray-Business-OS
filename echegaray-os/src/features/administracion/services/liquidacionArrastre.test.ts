@@ -17,7 +17,7 @@ import { aplicarOverrides, type LineaConOverrides } from './liquidacionOverrides
 import { liquidarLinea } from './liquidacionQuincena.ts'
 import { cierreDeLaFila, cierreDeTotales } from './cuadroDeJornales.ts'
 import { totalesDelEspejo, type FilaDelEspejo } from './espejoDeJornales.ts'
-import { conArrastre, conArrastres, conNetoDelRecibo, textoDelArrastre, type ArrastresDeLaQuincena } from './liquidacionArrastre.ts'
+import { conArrastre, conArrastres, conNetoDelRecibo, sumaDelBanco, textoDelArrastre, type ArrastresDeLaQuincena } from './liquidacionArrastre.ts'
 
 const RECIBOS: ReciboParaReglas[] = [
   { persona: 'Z', periodo: 'Q1-09/2026', valorHora: 6468, horasNormales: 50, horasFeriado: 0, horasOtras: 0, conceptos: [] },
@@ -33,6 +33,23 @@ const linea = (pagadoEfectivo = 0): LineaConOverrides => aplicarOverrides(liquid
 }, 'obreros', null), pagadoEfectivo ? { pagadoEfectivo } : {}, 'obreros', null, BLANCO, null)
 const RESTA = { importe: 54580.48, motivo: 'Resta recibo Q1-09', periodoOrigen: 'Q1-09/2026' }
 const pesos = (n: number | null) => String(n)
+
+// LA CELDA SUMA ADENTRO Y DA EL RESULTADO (dueño, 30/09/2026): operandos visibles, número principal = neto + resta.
+test('la celda Banco expresa la suma y su resultado; sin resta no hay suma', () => {
+  const pesosAR = (n: number | null) => n == null ? '—' : `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+  const l = linea()
+  assert.equal(sumaDelBanco(l, pesosAR), null)
+  const r = conArrastre(l, RESTA)
+  const s = sumaDelBanco(r, pesosAR)
+  assert.ok(s)
+  assert.equal(s.neto, l.porBanco)
+  assert.equal(s.resta, 54580.48)
+  assert.equal(s.resultado, r.porBanco)
+  assert.equal(s.resultado, Math.round((s.neto + s.resta) * 100) / 100)
+  assert.equal(s.operandos, `${pesosAR(l.porBanco).slice(1)} + 54.580,48`)
+  assert.equal(s.resultado_texto, `= ${pesosAR(r.porBanco)}`)
+  assert.ok(!s.operandos.includes('$'))
+})
 
 test('traslada del efectivo al banco sin cambiar el total', () => {
   const l = linea()
