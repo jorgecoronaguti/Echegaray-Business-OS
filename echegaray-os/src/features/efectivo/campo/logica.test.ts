@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, esRutaDeRendicion, estadoVisible, fraseTePiden,
+  aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, personaDePor, esRutaDeRendicion, estadoVisible, fraseTePiden,
   pesos, resumenMiEfectivo, rutaDeRendicion, sufijoDeVuelta, tarjetaDeHoy, textoTengoQueRendir, textoYaTenes,
   totalDelTicket,
 } from './logica.ts'
@@ -188,4 +188,14 @@ test('la flecha vuelve a donde se entró, sin redirección abierta', () => {
   assert.equal(conVuelta('/mi-informacion/efectivo/rendir?entrega=x', sufijoDeVuelta('obra', 'g8')),
     '/mi-informacion/efectivo/rendir?entrega=x&desde=obra&obra=g8')
   assert.equal(conVuelta('/a', sufijoDeVuelta(null, 'g8')), '/a')
+})
+
+test('«por» lleva a Administración a la ficha de la persona y sólo acepta un uuid', () => {
+  const p = '0b6f4a4e-9c7e-4d11-8a55-2a8c0d9e1f00'
+  assert.equal(sufijoDeVuelta('obra', 'g8', p), `por=${p}`)
+  assert.equal(destinoDeVuelta(null, null, p), `/administracion/compras?vista=a-rendir&persona=${p}`)
+  // Un valor libre no entra a un href: sin uuid, se comporta como si no hubiera «por».
+  assert.equal(personaDePor('https://evil.com'), null)
+  assert.equal(destinoDeVuelta(null, null, '../../x'), '/mi-informacion/efectivo')
+  assert.equal(sufijoDeVuelta(null, null, "x' or 1=1"), '')
 })

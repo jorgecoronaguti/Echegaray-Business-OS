@@ -320,14 +320,24 @@ export function esRutaDeRendicion(ruta: string, uid: string): boolean {
     && /^[0-9a-f-]{36}\.[a-z0-9]{2,5}$/i.test(archivo)
 }
 
+/** El id de persona que viaja en `por=`: un uuid y nada más (un parámetro libre en un `href` es una redirección abierta). */
+export function personaDePor(por: string | null | undefined): string | null {
+  return por && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(por) ? por.toLowerCase() : null
+}
+
 /**
  * ADÓNDE VUELVE LA FLECHA DE LAS PANTALLAS COMPARTIDAS (firmar, rendir, rendiciones, devolver).
  *
  * El jefe de obra entra desde `/obra/efectivo` y la persona desde `/mi-informacion/efectivo`; las
  * pantallas del medio son las mismas. El destino viaja en la URL (`?desde=obra&obra=…`) y se valida:
  * un parámetro libre en un `href` es una redirección abierta.
+ *
+ * `por` (30/09/2026): Administración rinde A NOMBRE de otra persona con estas mismas pantallas; su vuelta no es
+ * «Mi efectivo» (vacío o ajeno) sino la ficha de esa persona en la gestión.
  */
-export function destinoDeVuelta(desde: string | null | undefined, obra: string | null | undefined): string {
+export function destinoDeVuelta(desde: string | null | undefined, obra: string | null | undefined, por?: string | null): string {
+  const persona = personaDePor(por)
+  if (persona) return `/administracion/compras?vista=a-rendir&persona=${persona}`
   if (desde === 'obra') {
     return obra && /^[\w-]{1,80}$/.test(obra) ? `/obra/efectivo?obra=${obra}` : '/obra/efectivo'
   }
@@ -335,7 +345,9 @@ export function destinoDeVuelta(desde: string | null | undefined, obra: string |
 }
 
 /** Los parámetros que las pantallas compartidas se pasan entre sí para no perder la vuelta. */
-export function sufijoDeVuelta(desde: string | null | undefined, obra: string | null | undefined): string {
+export function sufijoDeVuelta(desde: string | null | undefined, obra: string | null | undefined, por?: string | null): string {
+  const persona = personaDePor(por)
+  if (persona) return `por=${persona}`
   if (desde !== 'obra') return ''
   return obra && /^[\w-]{1,80}$/.test(obra) ? `desde=obra&obra=${obra}` : 'desde=obra'
 }

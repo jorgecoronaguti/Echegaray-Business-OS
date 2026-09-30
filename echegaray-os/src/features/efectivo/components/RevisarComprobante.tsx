@@ -91,6 +91,13 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
             <Link href={siguiente ? urlEfectivo({ entrega: e.codigo, comprobante: siguiente.id }) : volver} prefetch={false} style={botonOscuroGrande} data-testid="revisar-seguir">
               {siguiente ? 'Seguir' : 'Volver a la entrega'}
             </Link>
+            {/* El teléfono de la persona confirma «lo que se leyó»; cuando no puede (o no contesta) lo confirma
+                Administración por ella, por la misma pantalla. */}
+            {c.estado === 'a_confirmar' && (
+              <Link href={`/mi-informacion/efectivo/rendir/confirmar?ticket=${c.id}&por=${e.persona_id}`} prefetch={false} style={botonOscuroGrande} data-testid="confirmar-por-otro">
+                Confirmar lo leído por {quien}
+              </Link>
+            )}
             {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={quien} />}
             {esperando(c) && <DescartarComprobante id={c.id} alTerminar={volver} />}
             {siguiente && (

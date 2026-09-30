@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 
 type Props = {
   params: Promise<{ ticket: string }>
-  searchParams: Promise<{ desde?: string; obra?: string }>
+  searchParams: Promise<{ desde?: string; obra?: string; por?: string }>
 }
 
 export default async function TicketPage({ params, searchParams }: Props) {

@@ -33,12 +33,14 @@ import { ConfirmarLectura } from '@/features/efectivo/campo/components/Confirmar
 
 export const dynamic = 'force-dynamic'
 
-type Params = Promise<{ desde?: string; obra?: string; ticket?: string }>
+type Params = Promise<{ desde?: string; obra?: string; por?: string; ticket?: string }>
 
 export default async function ConfirmarPage({ searchParams }: { searchParams: Params }) {
   const sp = await searchParams
   const ctx = await contextoEfectivo(sp)
-  const volver = { href: conVuelta('/mi-informacion/efectivo', ctx.sufijo), label: 'Mi efectivo' }
+  const volver = ctx.porOtro
+    ? { href: ctx.volverA, label: 'Efectivo' }
+    : { href: conVuelta('/mi-informacion/efectivo', ctx.sufijo), label: 'Mi efectivo' }
 
   if (!ctx.personaId) {
     return (
@@ -130,7 +132,7 @@ export default async function ConfirmarPage({ searchParams }: { searchParams: Pa
           <Renglon rotulo="Fecha" valor={fecha ?? 'no se pudo leer'} numero={!!fecha} color={fecha ? C.ink : C.warn} testid="leido-fecha" />
           <Renglon
             rotulo="Obra"
-            valor={entrega ? `${destino(entrega)} · de tu entrega` : t.entrega}
+            valor={entrega ? `${destino(entrega)} · de ${ctx.porOtro ? `la entrega de ${entrega.persona}` : 'tu entrega'}` : t.entrega}
             testid="leido-obra"
           />
         </Caja>

@@ -137,6 +137,13 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 Imputar un comprobante ya cargado
               </Link>
             )}
+            {/* 30/09/2026: cargar el ticket A NOMBRE de quien recibió la plata, por la misma cámara que usa él en el
+                teléfono (`por=` sólo se honra para Dirección/Administración: lo confirma la base). */}
+            {puedeImputar && (
+              <Link href={`/mi-informacion/efectivo/rendir?entrega=${e.id}&por=${e.persona_id}`} prefetch={false} style={botonClaro} data-testid="rendir-por-otro">
+                Rendir un gasto por {e.persona}
+              </Link>
+            )}
             <Link href={urlEfectivo({ entrega: e.codigo, panel: 'devolucion' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-devolucion">
               Registrar devolución
             </Link>

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
-import { destinoDeVuelta, sufijoDeVuelta } from './logica'
+import { destinoDeVuelta, personaDePor, sufijoDeVuelta } from './logica'
 
 // LO QUE TODA PANTALLA DEL MÓDULO NECESITA ANTES DE LEER: quién es, qué persona es, y adónde vuelve.
 //
@@ -12,7 +12,10 @@ import { destinoDeVuelta, sufijoDeVuelta } from './logica'
 export interface ContextoEfectivo {
   supabase: Awaited<ReturnType<typeof createClient>>
   uid: string
+  /** La persona cuyo efectivo se mira: la propia, o —si es Dirección/Administración y vino `por=`— la de otro. */
   personaId: string | null
+  /** True cuando se actúa A NOMBRE de otra persona: los textos dejan de decir «tu». */
+  porOtro: boolean
   vinculoDisponible: boolean
   /** `desde=obra&obra=…` o vacío: se pega a cada enlace entre pantallas del módulo. */
   sufijo: string
@@ -20,17 +23,24 @@ export interface ContextoEfectivo {
   volverA: string
 }
 
-export async function contextoEfectivo(params: { desde?: string; obra?: string }): Promise<ContextoEfectivo> {
+export async function contextoEfectivo(params: { desde?: string; obra?: string; por?: string }): Promise<ContextoEfectivo> {
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
   const perfil = await getPerfilPropio(supabase, user.id)
+  // `por=` sólo se honra si la base confirma `ve_economia()`: es la misma puerta que aplican las funciones de
+  // rendir/confirmar (20260930T2200). Para cualquier otro nivel el parámetro se ignora, y la pantalla muestra lo
+  // propio: ni siquiera se insinúa que existe un «por otro». Un Jefe de obra no pasa (es_administracion ≠ ve_economia).
+  const por = personaDePor(params.por)
+  const { data: puede } = por ? await supabase.rpc('ve_economia') : { data: false }
+  const actuaPor = por && puede === true ? por : null
   return {
     supabase,
     uid: user.id,
-    personaId: perfil.data?.persona_id ?? null,
+    personaId: actuaPor ?? perfil.data?.persona_id ?? null,
+    porOtro: actuaPor !== null && actuaPor !== (perfil.data?.persona_id ?? null),
     vinculoDisponible: perfil.data?.vinculoDisponible !== false,
-    sufijo: sufijoDeVuelta(params.desde, params.obra),
-    volverA: destinoDeVuelta(params.desde, params.obra),
+    sufijo: sufijoDeVuelta(params.desde, params.obra, actuaPor),
+    volverA: destinoDeVuelta(params.desde, params.obra, actuaPor),
   }
 }
