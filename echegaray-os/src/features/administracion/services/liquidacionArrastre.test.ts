@@ -3,7 +3,7 @@
 //
 // MUTACIONES que estos tests ponen en rojo:
 // - `conArrastre` sin restar del efectivo, o cambiando el total → «traslada del efectivo al banco».
-// - quitar el `disponible < importe` → «no alcanza».
+// - volver a frenar cuando el efectivo no cubre → «se aplica aunque el efectivo pendiente no cubra».
 // - `conArrastres` aplicando lo entrante también en la cerrada → «la cerrada no lo vuelve a aplicar».
 // - `cierreDeLaFila` sin descontar el arrastre aplicado → «la fila sigue cerrando».
 // - `totalesDelEspejo` sumando la resta al neto → «el pie».
@@ -69,16 +69,20 @@ test('la fila sigue cerrando con la resta aplicada', () => {
   assert.equal(cierreDeLaFila(conArrastre(l, RESTA))?.cierra, true)
 })
 
-test('no alcanza: si el efectivo que falta no cubre la resta, no se traslada y se marca', () => {
+// ES UN ARREGLO CON LA PERSONA (dueño, 30/09/2026): la resta se suma al banco siempre, aunque el efectivo que le
+// falta cobrar no la cubra. El freno «no alcanza» (⚠) fue rechazado: la celda tiene que sumar y dar el resultado.
+test('se aplica aunque el efectivo pendiente no cubra la resta: el banco suma y el efectivo baja', () => {
   const l = linea()
   const casiTodo = (l.pago.negro ?? 0) - 10000
   const conPagado = linea(casiTodo)
   const r = conArrastre(conPagado, RESTA)
-  assert.equal(r.arrastre?.estado, 'no_alcanza')
+  assert.equal(r.arrastre?.estado, 'aplicado')
   assert.equal(r.arrastre?.efectivoDisponible, 10000)
-  assert.equal(r.porBanco, conPagado.porBanco)
-  assert.equal(r.enEfectivo, conPagado.enEfectivo)
-  assert.match(textoDelArrastre(r, pesos) ?? '', /SIN trasladar/)
+  assert.equal(r.porBanco, Math.round((conPagado.porBanco + 54580.48) * 100) / 100)
+  assert.equal(r.enEfectivo, Math.round(((conPagado.enEfectivo ?? 0) - 54580.48) * 100) / 100)
+  assert.equal(r.total, conPagado.total)
+  assert.ok(sumaDelBanco(r, pesos), 'la celda suma')
+  assert.doesNotMatch(textoDelArrastre(r, pesos) ?? '', /SIN trasladar/)
 })
 
 test('la cerrada no lo vuelve a aplicar; la de origen sabe a dónde se fue', () => {

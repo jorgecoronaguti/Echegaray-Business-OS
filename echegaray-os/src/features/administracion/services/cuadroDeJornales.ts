@@ -73,11 +73,8 @@ export interface CadenaParaCerrar {
   porBanco: number
   enEfectivo: number | null
   total: number | null
-  /**
-   * La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`). Sólo la `aplicado`
-   * está dentro de `porBanco`; `no_alcanza` no movió nada.
-   */
-  arrastre?: { importe: number; estado: 'aplicado' | 'no_alcanza' } | null
+  /** La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`); ya está dentro de `porBanco`. */
+  arrastre?: { importe: number; estado: 'aplicado' } | null
 }
 
 export interface Cierre {

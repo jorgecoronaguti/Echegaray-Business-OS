@@ -30,14 +30,13 @@ export interface ArrastreSaliente {
 }
 
 /**
- * Lo que la línea hizo con el arrastre.
- * `aplicado`: se sumó al banco y se restó del efectivo.
- * `no_alcanza`: el efectivo que le queda por cobrar no cubre la resta; no se fuerza (sería pagarle menos en mano de lo
- * que ya se le entregó) y la fila lo dice para que lo decida una persona.
+ * El arrastre ya trasladado: se sumó al banco y se restó del efectivo. SIEMPRE se aplica (dueño, 30/09/2026: *«es un
+ * arreglo con la persona»*): la plata ya se le entregó en mano en la quincena de origen, así que esta quincena la
+ * paga por banco y la descuenta del efectivo, aunque el efectivo pendiente no la cubra. No hay estado «no alcanza».
  */
 export interface ArrastreAplicado extends ArrastreDeLinea {
-  estado: 'aplicado' | 'no_alcanza'
-  /** El efectivo que le quedaba por cobrar antes del traslado: la cifra que decidió el estado. */
+  estado: 'aplicado'
+  /** El efectivo que le quedaba por cobrar antes del traslado, para explicarlo. `null` sin negro. */
   efectivoDisponible: number | null
 }
 
@@ -48,14 +47,11 @@ function efectivoDisponible(l: LineaConOverrides): number | null {
   return l.pago.negro == null ? null : r2(l.pago.negro - l.pago.pagadoEfectivo)
 }
 
-/** La línea con el arrastre trasladado del efectivo al banco, o marcado si no entra. Sin arrastre, la misma línea. */
+/** La línea con el arrastre trasladado del efectivo al banco. Sin arrastre, la misma línea. */
 export function conArrastre(l: LineaConOverrides, a: ArrastreDeLinea | null | undefined): LineaConOverrides {
   if (!a || !(a.importe > 0)) return l
   const importe = r2(a.importe)
   const disponible = efectivoDisponible(l)
-  if (disponible == null || disponible < importe) {
-    return { ...l, arrastre: { ...a, importe, estado: 'no_alcanza', efectivoDisponible: disponible } }
-  }
   const porBanco = r2(l.porBanco + importe)
   const enEfectivo = l.enEfectivo == null ? null : r2(l.enEfectivo - importe)
   return {
@@ -124,7 +120,7 @@ export function conArrastres(l: LineaConOverrides, a: ArrastresDeLaQuincena, abi
   return saliente ? { ...conEntrante, arrastradoA: saliente } : conEntrante
 }
 
-/** La parte del banco de la línea que es resta de otro recibo. 0 sin arrastre o si no alcanzó. */
+/** La parte del banco de la línea que es resta de otro recibo. 0 sin arrastre. */
 export const arrastreAplicado = (l: Pick<LineaConOverrides, 'arrastre'>): number =>
   l.arrastre?.estado === 'aplicado' ? l.arrastre.importe : 0
 
@@ -165,9 +161,6 @@ export function textoDelArrastre(l: Pick<LineaConOverrides, 'arrastre' | 'arrast
   const a = l.arrastre
   if (a?.estado === 'aplicado') {
     return `${a.motivo}: ${pesos(a.importe)} del recibo ${a.periodoOrigen} que no salió por banco. Se paga por banco en esta quincena (banco ${pesos(l.porBanco)}) y sale del efectivo: el total no cambia.`
-  }
-  if (a?.estado === 'no_alcanza') {
-    return `${a.motivo}: ${pesos(a.importe)} del recibo ${a.periodoOrigen} SIN trasladar: el efectivo que le falta cobrar (${pesos(a.efectivoDisponible)}) no alcanza. Lo decide una persona.`
   }
   if (l.arrastradoA) return `Resta del recibo (${pesos(l.arrastradoA.importe)}) que se paga por banco en la quincena del ${l.arrastradoA.desde}.`
   return null
