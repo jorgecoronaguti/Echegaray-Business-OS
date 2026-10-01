@@ -32,6 +32,24 @@ import { armarLote, avisoDelLote, textoDelLote, type AvisoDelLote, type ReciboDe
 
 type Tarea = 'imprimir' | 'pdf'
 
+const SIN_RESPUESTA = 'El servidor no contestó y no sé si los recibos quedaron guardados. No imprimí ni descargué nada. Mirá en la grilla quién figura «impreso» y volvé a intentar: lo ya guardado no se duplica.'
+
+/**
+ * Baja el PDF SIN SALIR DE LA PANTALLA (auditoría 01/10/2026): navegar a la ruta dejaba al usuario mirando un JSON
+ * de error si la ruta fallaba, con los recibos ya guardados. Devuelve el motivo si no se pudo, o `null`.
+ */
+async function bajarPdf(url: string): Promise<string | null> {
+  const r = await fetch(url, { cache: 'no-store' })
+  if (!r.ok) return `error ${r.status}`
+  const nombre = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'Recibos.pdf'
+  const enlace = document.createElement('a')
+  enlace.href = URL.createObjectURL(await r.blob())
+  enlace.download = nombre
+  enlace.click()
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 60_000)
+  return null
+}
+
 const aLaHoja = (r: ReciboDeLaFila): ReciboParaLaHoja =>
   ({ personaId: r.fila.personaId, nombre: r.fila.nombre, categoria: r.categoria, recibo: r.recibo })
 
@@ -104,11 +122,19 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
     }
     setTarea('imprimir')
     empezar(async () => {
-      const guardados = await guardar()
-      setTarea(null)
-      if (guardados.length === 0) { v.close(); return }
-      ventana.current = v
-      setParaImprimir(guardados.map((g) => aLaHoja(g.recibo)))
+      try {
+        const guardados = await guardar()
+        if (guardados.length === 0) { v.close(); return }
+        ventana.current = v
+        setParaImprimir(guardados.map((g) => aLaHoja(g.recibo)))
+      } catch {
+        // La acción no volvió (conexión cortada, error del servidor): la ventana en blanco no queda huérfana y los
+        // botones no quedan muertos en «Guardando…» (auditoría 01/10/2026).
+        v.close()
+        setAviso({ tono: 'mal', lineas: [SIN_RESPUESTA] })
+      } finally {
+        setTarea(null)
+      }
     })
   }
 
@@ -116,11 +142,17 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
     if (tarea) return
     setTarea('pdf')
     empezar(async () => {
-      const guardados = await guardar()
-      setTarea(null)
-      if (guardados.length === 0) return
-      // El PDF se arma con lo GUARDADO (la ruta lee los recibos por id), en el orden de la grilla.
-      window.location.assign(`/administracion/personas/recibos-lote?ids=${guardados.map((g) => g.id).join(',')}`)
+      try {
+        const guardados = await guardar()
+        if (guardados.length === 0) return
+        // El PDF se arma con lo GUARDADO (la ruta lee los recibos por id), en el orden de la grilla.
+        const falla = await bajarPdf(`/administracion/personas/recibos-lote?ids=${guardados.map((g) => g.id).join(',')}`)
+        if (falla) setAviso((a) => ({ tono: 'mal', lineas: [...(a?.lineas ?? []), `Los recibos quedaron guardados, pero no pude armar el PDF (${falla}). Tocá de nuevo «Guardar y descargar PDF»: no se duplican.`] }))
+      } catch {
+        setAviso({ tono: 'mal', lineas: [SIN_RESPUESTA] })
+      } finally {
+        setTarea(null)
+      }
     })
   }
 

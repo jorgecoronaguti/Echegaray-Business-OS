@@ -175,6 +175,11 @@ export async function guardarRecibosDelLote(
   const validos = leidos.flatMap((x) => (x.leido.ok ? [x.leido.recibo] : []))
   const quincenas = new Set(validos.map((r) => `${r.quincenaDesde}|${r.quincenaHasta}`))
   if (quincenas.size > 1) return { ok: false, error: 'Un lote es de una sola quincena.' }
+  // UNA PERSONA, UN RECIBO POR LOTE (auditoría 01/10/2026): la pantalla no puede mandar dos, pero esto es un
+  // endpoint; dos del mismo en una llamada pasarían los dos la comparación con «lo ya guardado» y se duplicarían.
+  if (new Set(validos.map((r) => r.personaId)).size !== validos.length) {
+    return { ok: false, error: 'El lote trae dos recibos de la misma persona. No guardé nada.' }
+  }
 
   const leidosDeLaBase = await ultimosGuardados(supabase, validos)
   if (!leidosDeLaBase.ok) return leidosDeLaBase
