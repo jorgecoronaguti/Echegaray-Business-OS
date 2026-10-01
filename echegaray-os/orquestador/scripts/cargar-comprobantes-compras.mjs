@@ -340,6 +340,8 @@ export async function prepararUno(c = {}, { lista = [], listas = null, porCuit =
     // La resolución puede venir en el propio fajo (el botón "Es otro, cargalo" del bot) o de la
     // bandera. Las dos dicen lo mismo: una persona ya miró la fila candidata.
     duplicadoResuelto: c.duplicadoResuelto ?? (cargarIgual ? 'otro' : null),
+    // La clave propia de un gasto sin papel (libreta, carga manual): con ella `faltantesDe` no exige proveedor.
+    clave: c.clave ?? undefined,
   }
   if (hallazgo?.que === HALLAZGO.CARGADO) item.yaCargado = hallazgo
   else if (hallazgo?.que === HALLAZGO.PROBABLE) item.posibleDuplicado = hallazgo

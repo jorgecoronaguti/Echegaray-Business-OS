@@ -41,7 +41,7 @@ async function cerrarEntradaWeb(port, fajo, r) {
   const estado = cargado ? ((r?.filas ?? []).some((f) => f?.fila != null) ? 'cargado' : 'ya_estaba') : 'error'
   const motivo = cargado ? null : recorte(r?.avisos?.[0] ?? r?.texto ?? 'la carga volvió a fallar')
   await port.query(
-    `update public.comprobante_entrada set estado = $2, motivo = $3, procesado_at = now()
+    `update public.comprobante_entrada set estado = $2, motivo = $3, cerrado_at = now()
       where fajo_id = $1 and estado = 'en_espera'`,
     [fajo.id, estado, motivo])
 }

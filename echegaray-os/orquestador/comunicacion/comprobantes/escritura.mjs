@@ -151,6 +151,14 @@ export function aFajoJson(items = []) {
       categoriaVia: c.categoriaVia ?? undefined,
       pagoVia: c.pagoVia ?? undefined,
       duplicadoResuelto: it.duplicadoResuelto ?? undefined,
+      // ═══ LA CLAVE PROPIA VIAJA, O EL CARGADOR FRENA LO QUE EL BOT YA ACEPTÓ (01/10/2026) ═══
+      //
+      // Un gasto de libreta o cargado a mano no tiene proveedor del desplegable: su identidad es su clave
+      // (`l:…`, `m:…`) y `faltantes.mjs` lo deja pasar por eso. El bot lo juzgaba con la clave y el cargador
+      // sin ella: el primer «Reconocer» real (ER-0021) volvió «nada_cargable · sin proveedor» y el fajo quedó
+      // reabierto con la rendición ya descontada. Sólo viaja la de estos ítems: la de un comprobante con
+      // papel se calcula del propio papel y ahí el proveedor SÍ se exige.
+      clave: it.origenCarga === 'libreta' ? (it.clave ?? undefined) : undefined,
     }
   })
 }
