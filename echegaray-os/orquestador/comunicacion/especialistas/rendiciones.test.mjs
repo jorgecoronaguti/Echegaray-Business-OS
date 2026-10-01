@@ -149,3 +149,12 @@ test('Dirección y Administración con entrega propia siguen rindiendo la foto c
     assert.equal(port.q.filter((x) => /insert into public\.efectivo_comprobante/.test(x)).length, 1, rol)
   }
 })
+
+test('Administración sin entrega propia no oye «no tenés efectivo»: se le dice cómo rendir lo de un tercero', async () => {
+  for (const rol of ['administracion', 'direccion']) {
+    const port = portFalso({ rol, abiertas: [] })
+    const r = await especialista.atender({ texto: '', port, actor, fileIds: ['f1'], postId: 'post1' })
+    assert.equal(r.estado, 'rechazado_sin_entrega')
+    assert.ok(!/No tenés efectivo/.test(r.texto) && /ER-/.test(r.texto) && /No cargué|no cargué/.test(r.texto), rol)
+  }
+})

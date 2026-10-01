@@ -41,7 +41,7 @@
 import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import { atenderVale } from './entregas-efectivo.mjs'
-import { rinde, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
+import { rinde, rindePorOtro, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
 
 export const AREA_RENDICION = 'rendicion'
 /** Las áreas cuyo canal oficial acepta una rendición: sólo la del canal Efectivo. */
@@ -55,6 +55,8 @@ export const TEXTO = Object.freeze({
   NO_VERIFICABLE: 'No pude confirmar desde dónde escribís ni quién sos, así que no cargué nada. Probá de nuevo en un minuto.',
   SIN_PERSONA: 'No encuentro tu legajo detrás de este usuario de Mattermost, y cada rendición descuenta del saldo de una persona. Avisale a Administración.',
   ES_PRUEBA: 'Esta persona es de PRUEBA: no cargo su ticket en Compras. Si esto no es una prueba, avisale a Administración.',
+  // Dirección/Administración rinden por otro: no se les dice «no tenés efectivo», se les dice cómo rendir lo de un tercero.
+  SIN_ENTREGA_ADMIN: 'No tenés una entrega propia abierta, así que no cargué el ticket. Si es el recibo de otra persona, rendilo contra SU entrega: mandá la foto con el número de la entrega (por ejemplo «ER-0021») en el canal de Compras, o cargalo desde la ficha de la entrega en la app. Si salió de la caja, mandalo como compra común.',
   SIN_ENTREGA: 'No tenés efectivo a rendir abierto, así que no cargué el ticket. Si pagaste con plata de la empresa, avisale a Administración para que registre la entrega.',
   AYUDA: [
     'Soy **Rendiciones**. Para rendir un gasto pagado con efectivo que te entregó la empresa:',
@@ -183,7 +185,7 @@ export const especialista = {
       return { texto: [TEXTO_NO_RINDE.COMUN, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
     }
     const { entrega, motivo } = elegirEntrega(yo.abiertas, texto)
-    if (motivo === 'ninguna') return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
+    if (motivo === 'ninguna') return { texto: rindePorOtro(yo.rol) ? TEXTO.SIN_ENTREGA_ADMIN : TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }
     // UNA ENTREGA DECLARADA PRUEBA NO ESCRIBE COMPRAS (dueño, 23/09/2026). Es la misma razón por la que
     // no escribe una persona de prueba: la fila iría a la pestaña real, con su espejo y su descuento de
