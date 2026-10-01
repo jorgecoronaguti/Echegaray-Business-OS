@@ -1,29 +1,43 @@
-# TRASPASO — 01/10/2026 13:00 (sesión 081bf46e) — LEER ESTO PRIMERO
+# TRASPASO — 01/10/2026 tarde (sesión 081bf46e) — LEER ESTO PRIMERO
 
-`origin/main` y producción en `f4e229008`. El checkout de la sesión (`echegaray-os-daily`) quedó en **main** por pedido del dueño (antes: rama `liquidacion-presentismo-recibo`, que conserva los traspasos viejos). Mandato vigente: «seguí con todo… liberá todo ya». Se le contesta por DM del bot (`avisar-al-dueno.mjs` desde producción).
+`origin/main`, el checkout de la sesión (`echegaray-os-daily`, rama **main**) y producción en `0b8f46511`. Mandato vigente del dueño: «seguí con todo, aunque me quede sin conexión, y terminalo». Se le contesta por DM del bot (`avisar-al-dueno.mjs` desde producción).
 
-**Permisos:** el dueño habilitó `git push origin *:main` (12:40). El modo automático sigue negando cosas sueltas (leer `produccion-al-dia.mjs`, listar procesos): no se rodea; correr el script directo sí anduvo. El MCP de Supabase declina los `UPDATE` sueltos: las escrituras pedidas por el dueño van por script con `getPool` de producción.
+**Permisos:** `git push origin HEAD:main` y `produccion-al-dia.mjs` andan. **`aplicar-migracion.mjs --aplicar` fue NEGADO por el clasificador a la tarde («Production Deploy»)**: no se rodea; lo aplica el dueño o lo autoriza. El MCP de Supabase declina `UPDATE` sueltos.
 
-## Publicado hoy
-- `112e1aa54` Efectivo: el gasto reconocido a mano entra a Compras → ER-0021 quedó en **Compras fila 1052** ($5.000, A rendir). DEFECTO ABIERTO: la fila nació sin proveedor, obra ni categoría (el gasto a mano no los lleva al Sheet) → arreglar en el código y completar esa fila.
-- `6b273451c` Legajo «Cuentas bancarias» (migración T0300 aplicada, 17 personas cargadas). Falta QA visual.
-- `f4e229008` Efectivo: Administración rinde con foto por la entrega de cualquiera (auditor: firma con límites; falta verlo en pantalla por nivel y teléfono).
-- El worker de comunicación sigue con código viejo hasta su reinicio nocturno: un reintento manual tiene que encolar y correr `reintentar-fajos-comprobantes.mjs --ahora` EN EL MISMO comando (`systemd-run --user --wait --pipe -p EnvironmentFile=worker.env -p EnvironmentFile=comunicacion.env`), o el worker viejo se lleva el fajo en segundos.
+## BLOQUEADO — necesita al dueño
+- **Dos migraciones sin aplicar (ensayadas OK, el código ya está en main):**
+  `20261001T0400_efectivo_adelanto_exige_nivel.sql` y `20261001T1000_pago_efectivo_de_sueldo_exige_nivel.sql`.
+  Son la segunda puerta (la base) de «sólo jefe de obra y Administración rinden». La primera puerta (el bot) está publicada y toma efecto con el reinicio nocturno del worker (2–5 h). Compatibles con el código viejo y el nuevo. Después de aplicarlas: probar en una transacción que se deshace que un perfil `campo` recibe 42501 en las dos funciones.
+- **`20261001T0600_convenio_escala_septiembre_2026.sql`**: sin aplicar hasta que el dueño diga «aplicá septiembre».
+- **Redondeo de Liquidación («rehacer»)**: dos rechazos. No hay tercer intento sin las cifras que el dueño espera para «Efectivo redondeado» y «Saldo redondeado» de la 2ª quincena de septiembre (hoy 3.744.000 / 7.877.000; cabecera 12.877.000). Pedidas por DM.
 
-## En curso
-- **Pedro Tello (RECLAMO ABIERTO DEL DUEÑO, 12:34):** «mal lo de Tello, revisá las celdas anteriores porque se le hacía un descuento de lo que se paga porque se le adelantó 1.250.000». Historia reconstruida: 27–29/08 plan «400 + 600×3 m², $9.900.000, anticipos $1.250.000 pagados, pendiente $8.650.000» con el anticipo repartido como pagado dentro de cada fila (bruto en Total, descuento en Monto Pagado); 11/09 dueño: total 3.610 m² × 4.400 = 15.884.000, el resto (5.984.000) semanal hasta 23/10; 18/09 pago por m² ejecutado (600 m² = 2.640.000) y fila 990 «a cuenta»; 01/10 recibo pago 3: 720 m² = 3.168.000 − 50 % del adelanto = 2.543.000. Fila 806 (Galpón 5, 1000 m² × 4.200) tiene U = `=1250000+1000000`: **el 1.250.000 puede ser el pago del Galpón 5 y no un anticipo aparte** — verificar antes de tocar. Estado actual de Compras: 990, 880–883, 959, 960 (suma 15.884.000) y 1048 (Messina). Respaldo: `scratchpad/tello-compras.antes.json`.
-- **Liquidación** (`liquidacion-0110b`: `7d968aa97`, `cfa2646ec`; migraciones T0600 y T0700 sin aplicar): en auditoría. Según veredicto: ensayar/aplicar migraciones, rebasar sobre main, publicar.
-- **Herramientas** (`herramientas-arreglos`: `9c92904f2`, migración T0800 sin aplicar): falta el informe del agente, auditoría, migración, publicar.
-- **Recibo para firmar del gasto manual** (pedido 12:25): agente en worktree `efectivo-recibo`.
-- **Bot Efectivo** (`bot-efectivo-fix` `0e994b907` WIP): tests sin correr, T0400 sin aplicar, sin auditar.
+## Publicado hoy (tarde), verificado en producción con el usuario del dueño, sólo lectura, 1440 y 390
+- `6bca70b47` Plantel sin el recorte «Cuentas» (no pedido).
+- `93644d9b9` `4d7aca9cc` Liquidación: recorte «Presentismo» (Todos · Lo gana · No lo gana).
+- `1bcd71860` App «no levanta»: el portero ya no rebota en bucle a quien quedó sin rol legible; «Salir» cierra sólo la sesión local; cabecera sin «Business OS», marca → Clientes. **Límite:** no pude reproducir por qué la lectura del perfil volvió vacía; validado por test y camino de código.
+- `4eca80ef8` Panel de la persona: «Generar recibo» · «Ver blanco» · «Historial recibos».
+- `7564f648a` Rodados: Mantenimiento muestra RTO y seguro vencidos desde los papeles (4 unidades).
+- `1baaef8d1` `c43be756e` Recibos en lote: casillas + barra «Guardar e imprimir · 4 por hoja» (A4 horizontal). **Límite:** el botón no se apretó en producción (registra recibos reales); la hoja se verificó fuera de la app con el componente real.
+- `6ec55d3f9` `5825b2f12` Efectivo: recibo del gasto manual firmado en pantalla (migración T0900 aplicada) y el recibo dice la obra del GASTO. **Límite:** nadie firmó uno real; el flujo del jefe por `/mi-informacion` no se vio con un gasto real.
+- `0b8f46511` Bot Efectivo: quién rinde (lib única), Administración sin entrega propia, y nivel exigido también en el pago «de la caja» y el gasto sin ticket. Dos auditorías: firma con límites (ver BLOQUEADO). 1523 tests del chat, 0 fallas.
+- Migraciones aplicadas hoy: T0300, T0700, T0800, T0900.
 
-## Cerrado hoy
-San Francisco (Cobranzas 70–73 y 106–110, publicado en el portal) · cuentas sueldo Ochoa/Castillo (Drive y legajo) · ER-0026 → fila 1047 · recibos: Tello fila 882 y 1048, Fredes (foto), Roxana filas 1049/1050 imputadas a ER-0023 (queda en −$213.432,88) · nota del subcontrato de Tello actualizada (habrá que rehacerla con la corrección).
+## Abierto, mío
+- **Gasto manual de Efectivo (web):** el formulario no tiene obra ni categoría, y el proveedor escrito a mano viaja en el concepto (la celda E es desplegable estricto). La obra sale de la entrega: una entrega «Estructura» que paga un gasto de obra nace mal imputada (caso ER-0021 → Compras 1052, completada a mano). Arreglo: obra (por defecto la de la entrega) y proveedor del padrón en el formulario + parámetro en `rendir_gasto_manual` (`_efectivo_cargar_gasto_a_mano` ya acepta `p_extra.obra/proveedor`). Necesita migración.
+- Bot Efectivo, defecto medio no corregido: una foto de quien tiene UNA sola entrega propia se imputa a ésa sin preguntar aunque el recibo sea de un tercero (`rendiciones.mjs`, ya estaba en main).
+- Defectos de UI de Efectivo: cabecera «$ 0» al reconocer; importes con un decimal en teléfono; «Entregas» desborda a 390 px; «Devolver efectivo» visible a campo sin plata; enlace de confirmar abre fuera de sesión.
+- QA por nivel y teléfono pendiente: legajo «Cuentas bancarias», «rendir por otro».
+- Rojo preexistente en main: `features/auth/services/cableado-del-ingreso.test.ts` («cada puerta enlaza a la otra»).
+- C7 de Impuestos sin releer.
+- Tello: el adelanto de $1.250.000 quedó todo en Pisos SF (dueño 01/10, sale de lo pagado de la fila 806). Verificar si falta su respuesta sobre el descuento del pago del 11/09.
+- 199 worktrees en `git worktree list`: correr `node scripts/higiene-worktrees.mjs` (los cuatro de esta sesión ya se quitaron).
 
 ## Abierto, depende del dueño
-- FCL Castillo/Ochoa: no existe archivo de apertura FCL; falta saber qué carga Rodrigo en el portal (lote «- 2»). Cuenta sueldo de Tello y CBU de Agüero.
-- Roxana: factura por el otro 50 % de la cargadora ($1.000.000). ER-0023 negativa.
-- San Francisco: 67.160,60 «a cuenta» del 18/09 sin fila; `obras.monto_contratado` de Mampostería.
+- FCL Castillo/Ochoa (qué carga Rodrigo en el portal); cuenta sueldo de Tello y CBU de Agüero.
+- Roxana: factura por el otro 50 % de la cargadora ($1.000.000). ER-0023 en −$213.432,88.
+- San Francisco: 67.160,60 «a cuenta» del 18/09 sin fila; `obras.monto_contratado` de Mampostería. (Cobranzas 70–73 y 106–110: el dueño las dio por buenas.)
+- Rodados: sin datos de service cargados; faltan RTO y seguro de Ford XLS AG503PV y Hilux NMN898.
 
-## Defectos anotados sin arreglar
-Efectivo: cabecera «$ 0» al reconocer; importes con un decimal en teléfono; «Entregas» desborda a 390 px; «Devolver efectivo» visible a campo sin plata; enlace de confirmar abre fuera de sesión; el bot contesta «no tenés efectivo a rendir» a recibos de terceros. C7 de Impuestos sin releer.
+## Riesgos
+- El worker de comunicación corre código viejo hasta su reinicio nocturno: un reintento manual de fajos tiene que encolar y correr `reintentar-fajos-comprobantes.mjs --ahora` en el mismo comando.
+- No vaciar celdas del Sheet desde el OS (`no-borrar.mjs`): se reemplaza el texto.
