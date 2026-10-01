@@ -66,6 +66,8 @@ test('la tabla que no existe es «falta la migración», no «no hay herramienta
   assert.equal(faltaMigracion({ code: 'PGRST205', message: "Could not find the table 'public.activo' in the schema cache" }), true)
   assert.equal(faltaMigracion({ code: '42P01', message: 'relation "public.activo" does not exist' }), true)
   assert.equal(faltaMigracion({ code: 'PGRST202', message: 'Could not find the function public.mover_activos' }), true)
+  assert.equal(faltaMigracion({ code: '42703', message: 'column activo_evento.trabajo_hecho does not exist' }), true)
+  assert.equal(faltaMigracion({ code: 'PGRST204', message: "Could not find the 'vuelta_en' column of 'activo_evento' in the schema cache" }), true)
   assert.equal(faltaMigracion({ code: '42501', message: 'permission denied for table activo' }), false)
   assert.equal(faltaMigracion(null), false)
 })

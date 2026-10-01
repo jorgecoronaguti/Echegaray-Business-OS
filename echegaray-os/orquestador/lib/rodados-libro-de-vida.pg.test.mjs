@@ -65,7 +65,9 @@ test('estado operativo del rodado: cada paso mueve (o no) el lugar y vuelve a do
     assert.deepEqual(await lugares(), [e.ubicacion_id], 'la existencia por lugar acompaña (el lugar es uno solo)')
     assert.equal((await q(`select ubicacion_origen from activo_evento where id = $1`, [ev]))[0].ubicacion_origen, origen, 'guarda de dónde salió')
 
-    await q(`select public.avanzar_evento_activo($1, 'hecho', null, 84400, null, null, 185000.5)`, [ev])
+    await assert.rejects(q(`select public.avanzar_evento_activo($1, 'hecho', null, 84400, null, null, 185000.5)`, [ev]), /qué se le hizo/,
+      'cerrar un arreglo sin decir qué se le hizo no pasa')
+    await q(`select public.avanzar_evento_activo($1, 'hecho', null, 84400, null, null, 185000.5, p_trabajo => 'zz cambio de embrague')`, [ev])
     e = await estado()
     assert.equal(e.estado, 'operativo', 'cerrado y sin otro abierto → operativo')
     assert.equal(e.ubicacion_id, origen, 'vuelve a donde estaba')
@@ -117,7 +119,7 @@ test('los permisos son los mismos para todos los niveles y nadie escribe la tabl
       await como(r.id)
       await q('savepoint s')
       const id = (await q(`select public.registrar_evento_activo($1, 'otro', 'pendiente', $2, $3) id`, [rodado, hoy, `novedad de ${r.rol}`]))[0].id
-      await q(`select public.avanzar_evento_activo($1, 'hecho', null, null, null, 'propio')`, [id])
+      await q(`select public.avanzar_evento_activo($1, 'hecho', null, null, null, 'propio', p_trabajo => 'zz novedad resuelta')`, [id])
       const fila = (await q(`select creado_por, cerrado_por from activo_evento where id = $1`, [id]))[0]
       assert.deepEqual([fila.creado_por, fila.cerrado_por], [r.id, r.id], `rol ${r.rol}: registra y cierra con su usuario`)
       await q('release savepoint s')

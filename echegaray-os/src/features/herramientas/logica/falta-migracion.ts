@@ -14,7 +14,10 @@ export interface ErrorBase {
 
 export function faltaMigracion(e: ErrorBase | null | undefined): boolean {
   if (!e) return false
-  if (['PGRST205', '42P01', 'PGRST202', '42883'].includes(String(e.code ?? ''))) return true
+  // 42703 / PGRST204: la tabla existe pero le falta una columna que el código ya lee (una migración
+  // posterior sin aplicar). Sin esto el módulo entero caía en «error» en vez de avisar qué falta.
+  if (['PGRST205', '42P01', 'PGRST202', '42883', '42703', 'PGRST204'].includes(String(e.code ?? ''))) return true
   const m = String(e.message ?? '')
   return /could not find the (table|function)/i.test(m) || /relation "?[\w.]*"? does not exist/i.test(m)
+    || /column "?[\w.]*"? does not exist/i.test(m)
 }
