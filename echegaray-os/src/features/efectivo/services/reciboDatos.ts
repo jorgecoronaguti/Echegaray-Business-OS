@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { nombresDePersonas } from '@/shared/personas/nombresDePersonas'
-import { armarRecibo, type ReciboParaFirmar } from '../logica/recibo'
+import { armarRecibo, type ObraDelGasto, type ReciboParaFirmar } from '../logica/recibo'
 import { fraseDelRecibo, type FirmaDelRecibo } from '../logica/reciboFirma'
 import { COLUMNAS_ENTREGA, COLUMNAS_RENDICION, type Entrega, type Rendicion } from '../types'
 
@@ -47,13 +47,28 @@ type EntregaDelRecibo = Pick<Entrega, 'codigo' | 'obra' | 'estructura' | 'obra_i
 /** `null` si el gasto no tiene un importe válido para un recibo (monto cero o negativo). */
 export async function leerReciboParaFirmar(r: RendicionDelRecibo, e: EntregaDelRecibo): Promise<ReciboPorFirmar | null> {
   const supabase = await createClient()
-  const [codigos, nombres] = await Promise.all([codigosDeObra(supabase, [e.obra_id]), nombresDePersonas(supabase, [e.persona_id])])
+  const [codigos, nombres, gasto] = await Promise.all([
+    codigosDeObra(supabase, [e.obra_id]), nombresDePersonas(supabase, [e.persona_id]), leerObraDelGasto(supabase, r.id),
+  ])
   const recibo = armarRecibo({
-    rendicion: r, entrega: e,
+    rendicion: r, entrega: e, gasto,
     codigoObra: e.obra_id ? codigos.get(e.obra_id) ?? null : null,
     pagador: nombres.get(e.persona_id) ?? e.persona,
   })
   return recibo ? { rendicion: r.id, recibo, frase: fraseDelRecibo(recibo) } : null
+}
+
+/**
+ * La obra del gasto, leída de su fila de Compras (`compra_sheet`). `null` si el gasto todavía no tiene fila o la
+ * sesión no la ve: en ese caso el recibo dice lo de la entrega, que es lo que se sabía antes.
+ */
+export async function leerObraDelGasto(supabase: SupabaseClient, rendicion: string): Promise<ObraDelGasto | null> {
+  const { data: r } = await supabase.from('efectivo_rendicion').select('fila').eq('id', rendicion).maybeSingle()
+  const fila = (r as { fila: number | null } | null)?.fila
+  if (fila == null) return null
+  const { data: c } = await supabase.from('compra_sheet').select('destino, obra_celda').eq('fila', fila).maybeSingle()
+  const f = c as { destino: string | null; obra_celda: string | null } | null
+  return f ? { destino: f.destino, obraCelda: f.obra_celda } : null
 }
 
 /**

@@ -16,7 +16,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { armarRecibo } from '@/features/efectivo/logica/recibo'
 import { pdfDeReciboFirmado } from '@/features/efectivo/services/reciboPdf'
-import { leerReciboFirmado } from '@/features/efectivo/services/reciboDatos'
+import { leerObraDelGasto, leerReciboFirmado } from '@/features/efectivo/services/reciboDatos'
 import { COLUMNAS_ENTREGA, type Entrega } from '@/features/efectivo/types'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { nombresDePersonas } from '@/shared/personas/nombresDePersonas'
@@ -40,12 +40,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ rendici
   const entrega = en as unknown as Entrega | null
   if (!entrega) return noHay()
 
-  const [codigos, nombres] = await Promise.all([
-    codigosDeObra(supabase, [entrega.obra_id]), nombresDePersonas(supabase, [entrega.persona_id]),
+  const [codigos, nombres, gasto] = await Promise.all([
+    codigosDeObra(supabase, [entrega.obra_id]), nombresDePersonas(supabase, [entrega.persona_id]), leerObraDelGasto(supabase, id),
   ])
   const recibo = armarRecibo({
     rendicion: { monto: firma.monto, fecha: firma.fecha, imputada_en: firma.firmado_en, concepto: firma.concepto, proveedor: firma.proveedor },
-    entrega,
+    entrega, gasto,
     codigoObra: entrega.obra_id ? codigos.get(entrega.obra_id) ?? null : null,
     pagador: nombres.get(entrega.persona_id) ?? entrega.persona,
   })

@@ -18,6 +18,22 @@ export interface EntradaRecibo {
   codigoObra: string | null
   /** Quien tenía la plata y pagó (nombre para mostrar). */
   pagador: string | null
+  /** La fila de Compras que rinde este gasto, si ya existe: de ahí sale a qué obra se imputó. */
+  gasto?: ObraDelGasto | null
+}
+
+/** Lo que se lee de `compra_sheet` para saber a dónde se imputó el gasto. */
+export interface ObraDelGasto { destino: string | null; obraCelda: string | null }
+
+/**
+ * A QUÉ SE IMPUTÓ EL GASTO, SEGÚN SU FILA DE COMPRAS (01/10/2026). La entrega dice a quién se le dio la plata y para
+ * qué; el gasto se imputa después, y puede ir a otra obra: ER-0021 es una entrega de Estructura y su telgopor está
+ * en Compras como OB-0011. El recibo que firma el proveedor dice lo del gasto. `null` = la fila no lo dice: manda la entrega.
+ */
+export function obraDelGasto(g: ObraDelGasto | null | undefined): string | null {
+  if (!g) return null
+  if ((g.destino ?? '').startsWith('estructura')) return 'Estructura'
+  return g.destino === 'obra' ? limpio(g.obraCelda) : null
 }
 
 export interface ReciboParaFirmar {
@@ -49,9 +65,9 @@ export function armarRecibo(i: EntradaRecibo): ReciboParaFirmar | null {
   const letras = importeEnLetras(m)
   if (!letras) return null
   const dia = diaAR(i.rendicion.fecha ?? i.rendicion.imputada_en)
-  const obra = i.entrega.estructura
+  const obra = obraDelGasto(i.gasto) ?? (i.entrega.estructura
     ? 'Estructura'
-    : [i.codigoObra, limpio(i.entrega.obra)].filter(Boolean).join(' · ') || 'sin obra'
+    : [i.codigoObra, limpio(i.entrega.obra)].filter(Boolean).join(' · ') || 'sin obra')
   return {
     fecha: dia ? `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}` : null,
     monto: m,

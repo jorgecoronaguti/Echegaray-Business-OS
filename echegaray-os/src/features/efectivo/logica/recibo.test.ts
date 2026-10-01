@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { armarRecibo, type EntradaRecibo } from './recibo.ts'
+import { armarRecibo, obraDelGasto, type EntradaRecibo } from './recibo.ts'
 
 const base = (r: Partial<EntradaRecibo['rendicion']> = {}, e: Partial<EntradaRecibo['entrega']> = {}): EntradaRecibo => ({
   rendicion: { monto: 170000, fecha: '2026-09-28', imputada_en: '2026-09-30T15:00:00Z', concepto: 'Alquiler de contenedor', proveedor: 'Contenedores del Sur', ...r },
@@ -45,4 +45,18 @@ test('estructura no lleva obra; sin fecha de gasto usa la de imputación', () =>
 test('un monto cero o negativo no arma recibo', () => {
   assert.equal(armarRecibo(base({ monto: 0 })), null)
   assert.equal(armarRecibo(base({ monto: -5 })), null)
+})
+
+test('la obra del recibo es la del GASTO (su fila de Compras), no la de la entrega', () => {
+  // ER-0021: entrega de Estructura, telgopor imputado en Compras a OB-0011.
+  const r = armarRecibo({ ...base({}, { estructura: true, obra: null }), gasto: { destino: 'obra', obraCelda: 'OB-0011 · SF - PISOS INDUSTRIALES' } })!
+  assert.equal(r.obra, 'OB-0011 · SF - PISOS INDUSTRIALES')
+  assert.equal(obraDelGasto({ destino: 'estructura_taller', obraCelda: 'ES-TAL · Estructura – Taller' }), 'Estructura')
+  assert.equal(armarRecibo({ ...base(), gasto: { destino: 'estructura_admin', obraCelda: null } })!.obra, 'Estructura')
+})
+
+test('sin fila de Compras, o con una que no dice la obra, manda la entrega', () => {
+  assert.equal(armarRecibo({ ...base(), gasto: null })!.obra, 'OB-0012 · Casa Pérez')
+  assert.equal(armarRecibo({ ...base(), gasto: { destino: 'obra', obraCelda: '  ' } })!.obra, 'OB-0012 · Casa Pérez')
+  assert.equal(obraDelGasto({ destino: null, obraCelda: 'OB-0011' }), null)
 })
