@@ -72,8 +72,12 @@ export function resolverLayout(encabezado, { exigirObra = true } = {}) {
 /** Texto para comparar identidad: sin espacios de más ni mayúsculas. `texto()` del sync ya recortó los bordes. */
 const mismoTexto = (a, b) => normalizarCelda(a).replace(/\s+/g, ' ').toLowerCase() === normalizarCelda(b).replace(/\s+/g, ' ').toLowerCase()
 
-/** ¿El respaldo trae con qué identificar? Sin proveedor no hay huella: fecha y total solos son de cualquiera. */
-export const respaldoUsable = (r) => Boolean(r && normalizarCelda(r.proveedor))
+/**
+ * ¿El respaldo trae con qué identificar? Proveedor, o —sin proveedor— el concepto escrito: una rendición de
+ * efectivo sin comprobante no tiene proveedor del desplegable (01/10/2026) y fecha + total + concepto, con el
+ * proveedor vacío en los dos lados, la identifican. Fecha y total solos siguen siendo de cualquiera.
+ */
+export const respaldoUsable = (r) => Boolean(r && (normalizarCelda(r.proveedor) || normalizarCelda(r.concepto)))
 
 /**
  * La fila viva contra lo que `compra_sheet` dice de esa fila. `null` si coincide; si no, el detalle.
@@ -113,7 +117,7 @@ export function verificarHuella(compra, cambio, respaldo) {
     }
   } else if (!respaldoUsable(respaldo)) {
     // Sin número de comprobante y sin respaldo de la base sólo quedaría el ID, que es una posición.
-    return rechazar('sin_huella', `el cambio se encoló sin clave de comprobante y compra_sheet no tiene proveedor para la fila ${cambio?.fila}: no hay forma de probar que la fila es la misma compra`)
+    return rechazar('sin_huella', `el cambio se encoló sin clave de comprobante y compra_sheet no tiene proveedor ni concepto para la fila ${cambio?.fila}: no hay forma de probar que la fila es la misma compra`)
   } else {
     const distinta = compararRespaldo(compra, respaldo, cambio.fila)
     if (distinta) return rechazar('huella_distinta', distinta)

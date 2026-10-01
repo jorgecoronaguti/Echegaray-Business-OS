@@ -188,6 +188,29 @@ test('huella ausente por completo (sin clave, sin respaldo o respaldo sin provee
   }
 })
 
+// ═══ SIN PROVEEDOR PERO CON CONCEPTO (01/10/2026) ═══
+// Una rendición de efectivo sin comprobante («flete · sin comprobante») no tiene proveedor del desplegable: el
+// nombre escrito a mano viaja en el concepto. Sin respaldo usable, corregirla o cancelarla desde Efectivo quedaba
+// rechazada por `sin_huella` para siempre. Con el proveedor vacío EN LOS DOS LADOS, fecha + total + concepto
+// identifican la fila; fecha y total solos siguen sin alcanzar.
+const FLETE = { ...TELLO, Proveedor: '', Concepto: 'flete a obra · Juan Pérez · sin comprobante' }
+const RESPALDO_FLETE = { proveedor: null, fecha: '2026-09-10', total: 4200000, concepto: 'flete a obra · Juan Pérez · sin comprobante', resincronizado: false }
+const filaFlete = (extra = {}) => filaDe(COMPRAS_CON_OBRA, { ...FLETE, Obra: '', ...extra })
+
+test('sin proveedor en los dos lados, con el mismo concepto, fecha y total: ESCRIBE', () => {
+  assert.equal(respaldoUsable(RESPALDO_FLETE), true)
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaFlete(), respaldo: RESPALDO_FLETE })
+  assert.equal(p.accion, 'escribir')
+})
+
+test('sin proveedor en el respaldo: un proveedor en la fila viva, otro concepto u otro total RECHAZAN', () => {
+  for (const extra of [{ Proveedor: 'PEDRO TELLO' }, { Concepto: 'flete a obra · otro' }, { Importe: 4100000, Total: 4100000 }]) {
+    const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaFlete(extra), respaldo: RESPALDO_FLETE })
+    assert.equal(p.accion, 'rechazar', JSON.stringify(extra))
+    assert.equal(p.motivo, 'huella_distinta')
+  }
+})
+
 test('fecha, total (más de un peso) o concepto distintos rechazan; un peso de flotante no', () => {
   const casos = [
     [{ 'Fecha factura': SERIAL_10_09_2026 + 1 }, /fecha 2026-09-11/],
