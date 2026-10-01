@@ -14,7 +14,10 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { faltaMigracion } from '../../herramientas/logica/falta-migracion'
 import { esTrazoGuardable } from '@/shared/firma/firma'
+import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { MIGRACION_EFECTIVO, esRutaDeRendicion } from './logica'
+import { puedeRendirContra } from './rendir-por'
 
 export type Resultado<T = null> = { ok: true; dato: T } | { ok: false; error: string }
 
@@ -97,6 +100,20 @@ export async function rendirComprobantesAction(entrada: z.input<typeof rendirSch
   if (p.data.archivos.some((a) => !esRutaDeRendicion(a.storage_path, user.id))) {
     return { ok: false, error: 'La foto no quedó en tu carpeta de rendición. Probá de nuevo.' }
   }
+  // La misma regla que `_efectivo_actua_por`, preguntada ANTES de gastar el lote: Administración rinde contra la
+  // entrega de cualquiera, un jefe de obra sólo contra la suya, un operario contra ninguna. La RPC la vuelve a
+  // aplicar (es la puerta de verdad); esto sale del cliente y evita el «subió y después no» de una URL armada a mano.
+  const [perfil, veEco, ent] = await Promise.all([
+    getPerfilPropio(supabase, user.id),
+    supabase.rpc('ve_economia'),
+    supabase.from('efectivo_entrega').select('persona_id').eq('id', p.data.entrega).maybeSingle(),
+  ])
+  const permitido = puedeRendirContra({
+    veEconomia: veEco.data === true,
+    puedeRendir: esAdministracion((perfil.data?.rol ?? null) as Parameters<typeof esAdministracion>[0]),
+    personaPropia: perfil.data?.persona_id ?? null,
+  }, (ent.data as { persona_id: string } | null)?.persona_id)
+  if (!permitido) return { ok: false, error: 'Sólo rinde quien recibió el efectivo, o Administración.' }
   const salida: ResultadoFoto[] = []
   for (const a of p.data.archivos) {
     const { error } = await supabase.rpc('rendir_comprobante', {

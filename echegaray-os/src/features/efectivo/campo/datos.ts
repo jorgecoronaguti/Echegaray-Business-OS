@@ -60,6 +60,23 @@ export async function getMisEntregas(supabase: SupabaseClient, personaId: string
 }
 
 /**
+ * Las entregas ABIERTAS de todas las personas, para que Administración elija a cuál imputar un ticket.
+ * Sólo se llama después de confirmar `ve_economia()`: para cualquier otro la RLS devolvería únicamente las suyas,
+ * pero la pantalla ni siquiera pregunta.
+ */
+export async function getEntregasAbiertasDeTodos(supabase: SupabaseClient): Promise<Lectura<EntregaSaldo[]>> {
+  const { data, error } = await supabase
+    .from('efectivo_entrega_saldo')
+    .select(COLS_ENTREGA)
+    .eq('estado', 'abierta')
+    .order('fecha', { ascending: true })
+  if (error) return faltaMigracion(error) ? { estado: 'sin-publicar' } : { estado: 'error', error: error.message }
+  const filas = ((data ?? []) as unknown as Record<string, unknown>[]).map(numerosDeEntrega)
+  const nombres = await nombresDePersonas(supabase, [...new Set(filas.map((e) => e.persona_id))])
+  return { estado: 'ok', dato: filas.map((e) => ({ ...e, persona: nombres.get(e.persona_id) ?? e.persona })) }
+}
+
+/**
  * QUIÉN LE DIO LA PLATA — «De Jorge Echegaray» en M01, y a quién devolverla en M08.
  *
  * `entregada_por` es un usuario (no una persona) y no está en la vista. Se lee de la tabla (la RLS deja

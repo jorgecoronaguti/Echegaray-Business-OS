@@ -307,7 +307,8 @@ export function accionesDelJefe(todas: readonly EntregaSaldo[]): { rendir: strin
 
 export function entregaParaRendir(entregas: readonly EntregaSaldo[], pedida: string | null | undefined): EntregaSaldo | null {
   const vivas = abiertas(entregas)
-  if (pedida) return vivas.find((e) => e.id === pedida) ?? null
+  // Por id o por código: Administración llega con `?entrega=ER-0147`, el que ve en la ficha.
+  if (pedida) return vivas.find((e) => e.id === pedida || e.codigo.toLowerCase() === pedida.toLowerCase()) ?? null
   return vivas.length === 1 ? vivas[0] : null
 }
 

@@ -23,6 +23,8 @@ export interface ContextoEfectivo {
    * `_efectivo_actua_por`: esto sólo evita mostrar un botón que la base va a rechazar.
    */
   puedeRendir: boolean
+  /** `ve_economia()` confirmado por la base (no por el rol del perfil): habilita elegir la entrega de cualquiera. */
+  veEconomia: boolean
   vinculoDisponible: boolean
   /** `desde=obra&obra=…` o vacío: se pega a cada enlace entre pantallas del módulo. */
   sufijo: string
@@ -39,14 +41,16 @@ export async function contextoEfectivo(params: { desde?: string; obra?: string; 
   // rendir/confirmar (20260930T2200). Para cualquier otro nivel el parámetro se ignora, y la pantalla muestra lo
   // propio: ni siquiera se insinúa que existe un «por otro». Un Jefe de obra no pasa (es_administracion ≠ ve_economia).
   const por = personaDePor(params.por)
-  const { data: puede } = por ? await supabase.rpc('ve_economia') : { data: false }
-  const actuaPor = por && puede === true ? por : null
+  const { data: puede } = await supabase.rpc('ve_economia')
+  const veEconomia = puede === true
+  const actuaPor = por && veEconomia ? por : null
   return {
     supabase,
     uid: user.id,
     personaId: actuaPor ?? perfil.data?.persona_id ?? null,
     porOtro: actuaPor !== null && actuaPor !== (perfil.data?.persona_id ?? null),
     puedeRendir: esAdministracion((perfil.data?.rol ?? null) as Parameters<typeof esAdministracion>[0]),
+    veEconomia,
     vinculoDisponible: perfil.data?.vinculoDisponible !== false,
     sufijo: sufijoDeVuelta(params.desde, params.obra, actuaPor),
     volverA: destinoDeVuelta(params.desde, params.obra, actuaPor),

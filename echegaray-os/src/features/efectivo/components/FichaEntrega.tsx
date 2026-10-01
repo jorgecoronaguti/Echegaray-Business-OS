@@ -147,7 +147,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 teléfono (`por=` sólo se honra para Dirección/Administración: lo confirma la base). */}
             {puedeImputar && (
               <Link href={`/mi-informacion/efectivo/rendir?entrega=${e.id}&por=${e.persona_id}`} prefetch={false} style={botonClaro} data-testid="rendir-por-otro">
-                Rendir un gasto por {e.persona}
+                Rendir con foto
               </Link>
             )}
             {/* RENDIR SIN FOTO (30/09/2026): un gasto tipeado, para todos los que ven la ficha. Va a Compras como
