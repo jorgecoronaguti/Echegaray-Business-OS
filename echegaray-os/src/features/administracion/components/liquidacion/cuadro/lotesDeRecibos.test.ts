@@ -11,7 +11,8 @@ import { pagoDeLaLinea } from '../../../services/pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from '../../../services/liquidacionOverrides.ts'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales.ts'
 import {
-  armarLote, avisoDelLote, enHojas, reciboSinNada, estadoDeSeccion, marcarSeccion, reciboPorDefecto, sinNadaQueCobrar,
+  armarLote, avisoDelLote, eleccionEnElLote, eleccionPorDefecto, enHojas, estadoDeOpcion, OPCIONES_DEL_RECIBO, reciboSinNada,
+  estadoDeSeccion, marcarSeccion, reciboPorDefecto, sinNadaQueCobrar,
   soloLosVisibles, textoDeSeleccion, textoDelLote,
 } from './lotesDeRecibos.ts'
 
@@ -129,4 +130,55 @@ test('CABLEADO: una sola regla de «qué lleva», registrar antes de imprimir, A
   assert.match(grilla, /impreso: impresos\[fila\.personaId\]/)
   assert.match(fuente('./HojaDelRecibo.tsx'), /size: A4 landscape/)
   assert.match(fuente('./HojasDeRecibosA4.tsx'), /gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr'/)
+})
+
+// ═══ EL CHECKLIST DEL RECIBO EN EL LOTE (dueño, 01/10/2026) ═══
+//
+// MUTACIONES QUE LO PONEN ROJO: que un concepto sin tocar deje de salir como sale por defecto; que destildar no
+// saque el renglón; que tildar le invente un concepto a quien no lo tiene; que el panel y el lote ofrezcan
+// checklists distintos.
+test('lote sin tocar el checklist = el recibo por defecto de cada persona', () => {
+  const f = fila('p1', 'Ana', jornalero)
+  assert.deepEqual(eleccionEnElLote(f, {}), eleccionPorDefecto(f))
+  assert.deepEqual(armarLote([f], new Set(['p1']), Q, fmt, rotulo, {}).listos[0].sellado, reciboPorDefecto(f, Q, fmt, rotulo).sellado)
+})
+
+test('destildar «Efectivo» en el lote saca ese renglón de TODOS los recibos, y lo sellado lo refleja', () => {
+  const filas = [fila('a', 'Ana', jornalero), fila('b', 'Beto', jornalero)]
+  const antes = armarLote(filas, new Set(['a', 'b']), Q, fmt, rotulo)
+  const despues = armarLote(filas, new Set(['a', 'b']), Q, fmt, rotulo, { efectivo: false })
+  for (const r of antes.listos) assert.ok(r.recibo.medios.some((m) => m.importe === 306000), 'por defecto lleva el efectivo')
+  for (const r of despues.listos) {
+    assert.ok(!r.recibo.medios.some((m) => m.importe === 306000), 'sin el renglón de efectivo')
+    assert.notDeepEqual(r.sellado, antes.listos[0].sellado)
+  }
+  assert.equal(despues.listos.length, 2)
+})
+
+test('destildar todo deja a la persona sin nada: se nombra y no sale una hoja vacía', () => {
+  const todoNo = Object.fromEntries(OPCIONES_DEL_RECIBO.map((o) => [o.clave, false]))
+  const lote = armarLote([fila('a', 'Ana', jornalero)], new Set(['a']), Q, fmt, rotulo, todoNo)
+  assert.deepEqual([lote.listos.length, lote.sinNada], [0, ['Ana']])
+})
+
+test('tildar un concepto no se lo inventa a quien no lo tiene', () => {
+  const sinHoras = fila('v', 'Vera', vacia)
+  assert.equal(eleccionEnElLote(sinHoras, { horas: true }).horas, false)
+  assert.equal(estadoDeOpcion([sinHoras], 'horas', { horas: true }), 'nadie')
+})
+
+test('estado de cada opción del checklist: todas, ninguna, y sólo cuentan los que tienen el concepto', () => {
+  const con = fila('a', 'Ana', jornalero), sin = fila('v', 'Vera', vacia)
+  assert.equal(estadoDeOpcion([con, sin], 'horas'), 'todas', 'Vera no tiene horas: no baja el estado a «algunas»')
+  assert.equal(estadoDeOpcion([con, sin], 'horas', { horas: false }), 'ninguna')
+  assert.equal(estadoDeOpcion([con], 'horas', { horas: false, efectivo: true }), 'ninguna')
+  assert.equal(estadoDeOpcion([], 'horas'), 'nadie')
+})
+
+test('el panel de una persona y la vista previa del lote ofrecen EL MISMO checklist', () => {
+  assert.match(fuente('./ArmarRecibo.tsx'), /const OPCIONES = OPCIONES_DEL_RECIBO/)
+  const previa = fuente('./VistaPreviaDeRecibos.tsx')
+  assert.match(previa, /OPCIONES_DEL_RECIBO\.map/)
+  assert.match(previa, /armarLote\(filas, marcados, quincena, pesos, rotuloCategoria, cambios\)/)
+  assert.deepEqual(OPCIONES_DEL_RECIBO.map((o) => o.clave), ['horas', 'horasRecibo', 'horasFuera', 'banco', 'efectivo', 'pagado'])
 })

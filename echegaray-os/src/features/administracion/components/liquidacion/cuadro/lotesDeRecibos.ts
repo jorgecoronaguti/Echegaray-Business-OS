@@ -6,7 +6,9 @@
 // regla vive acá UNA vez y `ArmarRecibo` la usa también: dos copias de «qué lleva el recibo por defecto» son dos
 // papeles distintos para la misma persona el día que alguien toque una.
 
-import { armarRecibo, eleccionInicial, type EleccionDelRecibo, type ReciboArmado } from '../../../services/reciboDeLaQuincena.ts'
+import {
+  armarRecibo, conceptosDisponibles, eleccionInicial, type ConceptoDelRecibo, type EleccionDelRecibo, type ReciboArmado,
+} from '../../../services/reciboDeLaQuincena.ts'
 import { sellarRecibo, type ReciboSellado } from '../../../services/reciboEmitido.ts'
 import { tipoDeLiquidacion } from '../../../services/liquidacionPorTipo.ts'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales.ts'
@@ -17,6 +19,54 @@ export const RECIBOS_POR_HOJA = 4
 /** Qué lleva el recibo cuando nadie lo tocó. La usan el panel de una persona y el lote. */
 export const eleccionPorDefecto = (fila: FilaDelEspejo): EleccionDelRecibo =>
   eleccionInicial(fila.linea, tipoDeLiquidacion(fila) === 'mensual')
+
+// SIN BLANCO NI NEGRO (dueño, 22/09/2026): el papel dice horas totales, depositado y efectivo. El reparto es
+// una cuenta interna y se mira en el panel de Liquidación, no en lo que firma la persona.
+/** El checklist «Qué lleva el recibo», en el orden en que se ofrece. Lo usan el panel de una persona y el lote. */
+export const OPCIONES_DEL_RECIBO: { clave: ConceptoDelRecibo; rotulo: string }[] = [
+  { clave: 'horas', rotulo: 'Horas trabajadas' },
+  // Dueño, 22/09/2026: «en recibo quiero dos opciones adicionales q sean hs trabajadas por recibo y hs
+  // trabajadas fuera de recibo». Van juntas al total de horas, que es de lo que son partes.
+  { clave: 'horasRecibo', rotulo: 'Horas trabajadas por recibo' },
+  { clave: 'horasFuera', rotulo: 'Horas trabajadas fuera de recibo' },
+  { clave: 'banco', rotulo: 'Depósito en banco' },
+  { clave: 'efectivo', rotulo: 'Efectivo' },
+  { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },
+]
+
+// ═══ EL CHECKLIST EN EL LOTE (dueño, 01/10/2026) ═══
+//
+// *«cómo manejo los checklists que tiene cada persona […] que van componiendo el recibo, cómo logro eso en la
+// impresión masiva»*. El lote lleva el mismo checklist, UNA vez, para todos los tildados. Lo que se guarda es
+// sólo lo que la persona TOCÓ (`CambiosDelLote`): un concepto sin tocar sigue saliendo como sale por defecto
+// para cada uno (un mensual y un jornalero no arrancan igual), y uno tocado vale para todos los que lo tienen.
+// A quien no le corresponde un concepto no se le inventa: `conceptosDisponibles` manda, igual que en el panel.
+
+/** Lo que se cambió en el checklist del lote. Sin entrada = «como viene por defecto para cada persona». */
+export type CambiosDelLote = Partial<EleccionDelRecibo>
+
+/** Qué lleva el recibo de ESTA persona dentro del lote. */
+export function eleccionEnElLote(fila: FilaDelEspejo, cambios: CambiosDelLote = {}): EleccionDelRecibo {
+  const e = { ...eleccionPorDefecto(fila) }
+  const disponibles = conceptosDisponibles(fila.linea, tipoDeLiquidacion(fila) === 'mensual')
+  for (const { clave } of OPCIONES_DEL_RECIBO) {
+    const pedido = cambios[clave]
+    if (pedido !== undefined) e[clave] = pedido && !disponibles[clave]
+  }
+  return e
+}
+
+/** Cómo se dibuja una opción del checklist del lote. `nadie` = ningún tildado tiene ese concepto: va apagada. */
+export type EstadoDeOpcion = EstadoDeSeccion | 'nadie'
+
+export function estadoDeOpcion(
+  filas: readonly FilaDelEspejo[], clave: ConceptoDelRecibo, cambios: CambiosDelLote = {},
+): EstadoDeOpcion {
+  const conEl = filas.filter((f) => !conceptosDisponibles(f.linea, tipoDeLiquidacion(f) === 'mensual')[clave])
+  if (conEl.length === 0) return 'nadie'
+  const n = conEl.filter((f) => eleccionEnElLote(f, cambios)[clave]).length
+  return n === 0 ? 'ninguna' : n === conEl.length ? 'todas' : 'algunas'
+}
 
 export interface ReciboDeLaFila {
   fila: FilaDelEspejo
@@ -34,15 +84,16 @@ export const reciboSinNada = (r: ReciboArmado): boolean =>
   (r.horas.length === 0 && r.medios.length === 0)
   || (!r.horas.some((h) => (h.horas ?? 0) > 0) && !r.medios.some((m) => !m.sub && (m.importe ?? 0) !== 0))
 
-/** El recibo de una persona con la elección por defecto, ya sellado como lo registraría el panel. */
+/** El recibo de una persona —por defecto, o con lo cambiado en el checklist del lote—, ya sellado como lo registraría el panel. */
 export function reciboPorDefecto(
   fila: FilaDelEspejo,
   quincena: { desde: string; hasta: string },
   fmt: (n: number) => string,
   rotuloCategoria: (c: string) => string,
+  cambios: CambiosDelLote = {},
 ): ReciboDeLaFila {
   const mensual = tipoDeLiquidacion(fila) === 'mensual'
-  const recibo = armarRecibo(fila.linea, eleccionPorDefecto(fila), fmt, mensual)
+  const recibo = armarRecibo(fila.linea, eleccionEnElLote(fila, cambios), fmt, mensual)
   const categoria = fila.categoria ? rotuloCategoria(fila.categoria) : null
   const sellado = sellarRecibo(
     { personaId: fila.personaId, nombre: fila.nombre, categoria, desde: quincena.desde, hasta: quincena.hasta },
@@ -65,11 +116,12 @@ export function armarLote(
   quincena: { desde: string; hasta: string },
   fmt: (n: number) => string,
   rotuloCategoria: (c: string) => string,
+  cambios: CambiosDelLote = {},
 ): LoteDeRecibos {
   const lote: LoteDeRecibos = { listos: [], sinNada: [] }
   for (const fila of filas) {
     if (!marcados.has(fila.personaId)) continue
-    const r = reciboPorDefecto(fila, quincena, fmt, rotuloCategoria)
+    const r = reciboPorDefecto(fila, quincena, fmt, rotuloCategoria, cambios)
     if (reciboSinNada(r.recibo)) lote.sinNada.push(fila.nombre)
     else lote.listos.push(r)
   }

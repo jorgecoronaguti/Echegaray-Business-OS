@@ -32,21 +32,11 @@ import { aceptarRecibo } from '../../../services/recibosEmitidosActions'
 import { enviarReciboAFirmar } from '../../../services/cicloDelReciboActions'
 import { rotuloCategoria } from './CeldaTarifa'
 import { tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
-import { eleccionPorDefecto } from './lotesDeRecibos'
+import { eleccionPorDefecto, OPCIONES_DEL_RECIBO } from './lotesDeRecibos'
 import { HojaDelRecibo, imprimirHoja, tituloDelRecibo } from './HojaDelRecibo'
 
-// SIN BLANCO NI NEGRO (dueño, 22/09/2026): el papel dice horas totales, depositado y efectivo. El reparto es
-// una cuenta interna y se mira en el panel de Liquidación, no en lo que firma la persona.
-const OPCIONES: { clave: ConceptoDelRecibo; rotulo: string }[] = [
-  { clave: 'horas', rotulo: 'Horas trabajadas' },
-  // Dueño, 22/09/2026: «en recibo quiero dos opciones adicionales q sean hs trabajadas por recibo y hs
-  // trabajadas fuera de recibo». Van juntas al total de horas, que es de lo que son partes.
-  { clave: 'horasRecibo', rotulo: 'Horas trabajadas por recibo' },
-  { clave: 'horasFuera', rotulo: 'Horas trabajadas fuera de recibo' },
-  { clave: 'banco', rotulo: 'Depósito en banco' },
-  { clave: 'efectivo', rotulo: 'Efectivo' },
-  { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },
-]
+// El checklist «Qué lleva el recibo» vive en `lotesDeRecibos.ts`: lo comparten este panel y la vista previa del lote.
+const OPCIONES = OPCIONES_DEL_RECIBO
 
 const BOTON = { padding: '9px 16px', lineHeight: '20px', borderRadius: 6, fontSize: '13px' } as const
 

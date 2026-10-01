@@ -11,6 +11,13 @@
 // La hoja de la vista previa es `HojasDeRecibosA4`, el mismo componente que va a la impresora, achicado para que
 // entre en el panel. No hay un dibujo «parecido» que pueda desviarse del papel.
 //
+// ═══ EL CHECKLIST DEL RECIBO, UNA VEZ PARA TODO EL LOTE (dueño, 01/10/2026) ═══
+//
+// *«cómo manejo los checklists que tiene cada persona […] que van componiendo el recibo, cómo logro eso en la
+// impresión masiva»*. Arriba de la hoja va el mismo «Qué lleva el recibo» del panel de una persona. Lo que se
+// tilda o destilda vale para todos los tildados y la hoja se redibuja ahí mismo, antes de guardar. Una opción en
+// guion (indeterminada) es «por defecto cada uno lo lleva distinto»; apagada, «nadie del lote lo tiene».
+//
 // ═══ RECIÉN ACÁ SE GUARDA, Y SIN DUPLICAR ═══
 //
 // «Guardar e imprimir» y «Guardar y descargar PDF» pasan por `guardarRecibosDelLote`: una llamada para todos; a
@@ -28,7 +35,11 @@ import { guardarRecibosDelLote } from '../../../services/recibosEmitidosActions'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { abrirVentanaDeImpresion, imprimirEnVentana, fechaCorta } from './HojaDelRecibo'
 import { ANCHO_DE_HOJA_PX, HojasDeRecibosA4, type ReciboParaLaHoja } from './HojasDeRecibosA4'
-import { armarLote, avisoDelLote, textoDelLote, type AvisoDelLote, type ReciboDeLaFila } from './lotesDeRecibos'
+import {
+  armarLote, avisoDelLote, estadoDeOpcion, OPCIONES_DEL_RECIBO, textoDelLote,
+  type AvisoDelLote, type CambiosDelLote, type ReciboDeLaFila,
+} from './lotesDeRecibos'
+import type { ConceptoDelRecibo } from '../../../services/reciboDeLaQuincena'
 
 type Tarea = 'imprimir' | 'pdf'
 
@@ -69,7 +80,14 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   const ventana = useRef<Window | null>(null)
   const hoja = useRef<HTMLDivElement>(null)
   const caja = useRef<HTMLDivElement>(null)
-  const lote = armarLote(filas, marcados, quincena, pesos, rotuloCategoria)
+  const [cambios, setCambios] = useState<CambiosDelLote>({})
+  const lote = armarLote(filas, marcados, quincena, pesos, rotuloCategoria, cambios)
+  const tildadas = filas.filter((f) => marcados.has(f.personaId))
+  const alternar = (clave: ConceptoDelRecibo, marcar: boolean) => {
+    if (tarea) return
+    setAviso(null)
+    setCambios((c) => ({ ...c, [clave]: marcar }))
+  }
 
   // LA HOJA ENTRA ENTERA EN EL ANCHO DEL PANEL, sea el costado del escritorio o la pantalla del teléfono.
   useLayoutEffect(() => {
@@ -178,6 +196,33 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
         <div data-testid={aviso.tono === 'ok' ? 'recibos-lote-ok' : 'recibos-lote-falla'} role="status"
           style={{ marginBottom: 16, fontSize: '12.5px', lineHeight: 1.5, color: aviso.tono === 'ok' ? V.tinta : V.warn }}>
           {aviso.lineas.map((l) => <div key={l}>{l}</div>)}
+        </div>
+      )}
+      <fieldset data-testid="recibos-lote-opciones" disabled={Boolean(tarea)}
+        className="m-0 mb-4 grid grid-cols-2 gap-x-6 border-0 p-0 max-[767px]:grid-cols-1">
+        <legend style={{ fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', color: V.apagado, marginBottom: 8 }}>
+          Qué lleva el recibo
+        </legend>
+        {OPCIONES_DEL_RECIBO.map(({ clave, rotulo }) => {
+          const estado = estadoDeOpcion(tildadas, clave, cambios)
+          const nadie = estado === 'nadie'
+          return (
+            <label key={clave} className="flex min-h-8 items-center gap-2 max-[767px]:min-h-11"
+              style={{ fontSize: '13px', color: nadie ? V.apagado : V.tinta, cursor: nadie ? 'default' : 'pointer' }}>
+              <input type="checkbox" checked={estado === 'todas'} disabled={nadie}
+                ref={(el) => { if (el) el.indeterminate = estado === 'algunas' }}
+                onChange={() => alternar(clave, estado !== 'todas')}
+                data-testid={`recibos-lote-opcion-${clave}`} data-estado={estado}
+                style={{ width: 16, height: 16, accentColor: V.grafito }} />
+              <span>{rotulo}</span>
+              {nadie && <span style={{ fontSize: '11.5px' }}>· nadie del lote lo tiene</span>}
+            </label>
+          )
+        })}
+      </fieldset>
+      {lote.sinNada.length > 0 && (
+        <div data-testid="recibos-lote-sin-nada" style={{ marginBottom: 16, fontSize: '12.5px', lineHeight: 1.5, color: V.warn }}>
+          Con esta selección no les queda nada para imprimir: {lote.sinNada.join(', ')}.
         </div>
       )}
       <div ref={caja} data-testid="recibos-lote-hojas">
