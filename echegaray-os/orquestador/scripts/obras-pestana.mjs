@@ -46,6 +46,7 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
+import { podarCelda } from '../lib/podar-prosa.mjs'
 // EL CUADRO 5 NO SE REGENERA: SE FUSIONA. La pestaña es el origen de la fecha y el importe de cada
 // material previsto desde el 24/08 — este script se los pisaba en cada corrida. Ver materiales-fusion.
 // EL FORMATO DE NÚMERO SALE DE LA ESPECIE QUE DECLARA LA GRILLA. Ver `obras-especies.mjs`.
@@ -506,6 +507,17 @@ async function main() {
     .filter((x) => x && x[1]))
   if (rotas.length) throw new Error(`${rotas.length} fórmula(s) no parsean y Sheets las publicaría como #ERROR!: `
     + `${rotas.slice(0, 5).map(([ref, why]) => `${ref} (${why})`).join(' · ')}. NO escribo.`)
+  // ═══ UNA OBRA NO SE PUBLICA SIN SU NOMBRE (01/10/2026) ═══
+  //
+  // El contrato de diseño poda la prosa de la grilla ANTES de escribir, y a un rótulo de obra lo lee
+  // como «título — glosa»: si la glosa pasa el tope se queda con el título, que acá es el cliente.
+  // Así salió «2.11 · MESSINA» donde iba el adicional del playón de dilución, sin un solo error.
+  // Va antes del ensayo a propósito: el ensayo también tiene que decirlo.
+  const sinNombre = obrasQueLaPodaDejaSinNombre(g)
+  if (sinNombre.length) {
+    throw new Error(`${sinNombre.length} obra(s) saldrían SIN SU NOMBRE porque el rótulo pasa el tope de la poda: `
+      + `${sinNombre.map((t) => `«${t}»`).join(' · ')}. Acortar \`obra\` en obras-datos.mjs. NO escribo.`)
+  }
   const proyectado = enCartera.reduce((s, o) => s + totalEgresos(o), 0)
   console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${enCartera.length} obras con saldo (de ${OBRAS_FUTURAS.length}) · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
@@ -652,6 +664,17 @@ async function main() {
       + `— $${Math.round(cobradoAno - cobradoObras).toLocaleString('es-AR')} son trabajos fuera de obra`)
   }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
+}
+
+/**
+ * Los rótulos de obra que la poda de prosa recortaría. PURA. Vacío = todas conservan su nombre.
+ *
+ * @param {{rotulos?:{fila:number,texto:string}[], bloques?:{fProt:number}[]}} g la grilla de OBRAS
+ * @returns {string[]} el texto visible de cada rótulo que no sobreviviría entero
+ */
+export function obrasQueLaPodaDejaSinNombre(g) {
+  const deObra = new Set((g?.bloques ?? []).map((b) => b.fProt))
+  return (g?.rotulos ?? []).filter((r) => deObra.has(r.fila) && podarCelda(r.texto) !== null).map((r) => r.texto)
 }
 
 /**

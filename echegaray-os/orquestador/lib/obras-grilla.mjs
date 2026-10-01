@@ -1325,12 +1325,13 @@ export function grillaObras(ctx = {}) {
  */
 export function rotuloDeObra(o, idx, seccion = SECCION_OBRAS) {
   const base = `${seccion}.${idx} · ${o.cliente} — ${o.obra}`
-  // SIN FECHAS NO SE INVENTA NINGUNA. El aviso es texto plano: no hay ninguna fecha con la que armar
-  // un TODAY(), y una fórmula que no puede fallar no debe existir.
-  if (!esProyectable(o)) {
-    const avisa = `${base}   ${ALERTA} sin fechas — no se proyecta`
-    return { texto: avisa, celda: avisa }
-  }
+  // SIN FECHAS NO SE INVENTA NINGUNA, Y TAMPOCO SE EXPLICA EN LA CELDA (01/10/2026). Es texto plano:
+  // no hay ninguna fecha con la que armar un TODAY(), y una fórmula que no puede fallar no debe
+  // existir. Hasta hoy el rótulo llevaba la leyenda «▲ sin fechas — no se proyecta», y esa leyenda
+  // era prosa: con un nombre largo la glosa pasaba el tope del contrato de diseño y la poda dejaba
+  // «2.11 · MESSINA» — la obra publicada SIN SU NOMBRE. Que no tiene fechas ya lo dicen el «—» de
+  // Inicio y de Fin; el aviso de que no se proyecta sale en el registro de la corrida.
+  if (!esProyectable(o)) return { texto: base, celda: base }
   return {
     texto: `${base} ${ALERTA}`,
     celda: `=${quote(base)}&IF(TODAY()>${serialISO(o.fin)};" ${ALERTA}";"")`,

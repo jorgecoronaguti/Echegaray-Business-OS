@@ -301,7 +301,11 @@ test('el cierre cita TODAS las obras en el contratado y SÓLO las que tienen cos
   const g2 = grillaObras({ obras: [...OBRAS_FUTURAS, sinCosto] })
   const filas2 = g2.bloques.map((b) => b.fProt)
   const conCosto2 = g2.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
-  assert.equal(conCosto2.length, filas2.length - 1, 'la sintética es la única sin costo')
+  // LA CUENTA SE HACE CONTRA EL CATÁLOGO, NO CONTRA UN NÚMERO (01/10/2026). Decía «la sintética es la
+  // única sin costo» y dejó de ser cierto el 29/09, cuando entraron dos obras reales sin fechas (y por
+  // eso sin costo proyectado): el test quedó rojo sin que ninguna regla se rompiera.
+  assert.equal(conCosto2.length, conCosto.length, 'la sintética no suma a las que tienen costo')
+  assert.equal(filas2.length, filasObra.length + 1)
   assert.equal(cel(g2, `D${g2.fTotObras}`), `=${filas2.map((n) => `D${n}`).join('+')}`)
   assert.equal(cel(g2, `H${g2.fTotObras}`), `=${conCosto2.map((n) => `H${n}`).join('+')}`)
 })
@@ -374,12 +378,14 @@ test('la marca de "ya pasó el fin" es una FÓRMULA con TODAY(), no un texto tip
   if (otra) assert.notEqual(rotuloDeObra(otra, 1).celda, celda)
 })
 
-test('una obra SIN fechas no inventa ninguna: avisa, y no lleva fórmula', () => {
+test('una obra SIN fechas no inventa ninguna: publica su nombre, sin fórmula y sin leyenda', () => {
   const sinFechas = { cliente: 'X', obra: 'Y', inicio: null, fin: null }
   const { texto, celda } = rotuloDeObra(sinFechas, 1)
   assert.equal(texto, celda, 'sin fechas no hay nada que calcular')
   assert.ok(!celda.startsWith('='), 'y por eso no es una fórmula que no puede fallar')
-  assert.match(celda, /sin fechas/)
+  // 01/10/2026: la leyenda «▲ sin fechas — no se proyecta» era prosa en la celda, y con un nombre
+  // largo la poda se llevaba el nombre de la obra. Que no tiene fechas lo dicen los dos guiones.
+  assert.equal(celda, '2.1 · X — Y')
   // Y su fila publica el guion en las dos columnas de fecha, no un cero (que sería 30/12/1899).
   const gr = grillaObras({ obras: [{ ...sinFechas, clave: 'x', ventaTexto: 'Y' }] })
   assert.equal(cel(gr, `B${gr.bloques[0].fProt}`), SIN_CONTRATO)
@@ -391,7 +397,11 @@ test('la grilla expone el texto VISIBLE de cada rótulo: sin eso la columna A mi
     const r = g.rotulos.find((x) => x.fila === b.fProt)
     assert.ok(r, `la fila ${b.fProt} no declaró su texto visible`)
     assert.ok(!r.texto.startsWith('='), 'el texto visible no es la fórmula')
-    assert.ok(r.texto.length < String(cel(g, `A${b.fProt}`)).length, 'y es más corto que ella')
+    // Con fechas la celda es una fórmula y el texto visible es más corto que ella; sin fechas la
+    // celda ES el texto (no hay nada que calcular) y miden lo mismo.
+    const celda = String(cel(g, `A${b.fProt}`))
+    if (celda.startsWith('=')) assert.ok(r.texto.length < celda.length, 'y es más corto que ella')
+    else assert.equal(r.texto, celda)
   }
 })
 

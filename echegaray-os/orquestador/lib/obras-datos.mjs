@@ -585,7 +585,9 @@ export const OBRAS_FUTURAS = [
   {
     clave: 'messina-adicional-playon-dilucion',
     cliente: 'MESSINA',
-    obra: 'ADICIONAL PLAYÓN DILUCIÓN (EXCAVACIONES Y PLATEA)',
+    // EL NOMBRE NOMBRA, NO DESCRIBE (01/10/2026): «(EXCAVACIONES Y PLATEA)» llevaba el rótulo a 66
+    // caracteres, pasado el tope de 60 del contrato de diseño. Qué incluye el adicional está en `notas`.
+    obra: 'ADICIONAL PLAYÓN DILUCIÓN',
     ventaTexto: 'Adicional Playón Dilución de Ácido',
     // Cobranzas fila 105 (OC 00002-00002361, 25/09/2026): $5.025.105,97 neto. Código OB-0073, adicional
     // de OB-0022 (obra_padre_id = messina-playon-dilucion-acido).
