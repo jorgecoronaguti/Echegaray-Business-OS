@@ -11,7 +11,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { claveDeCelda, historialDeCeldas, type CambioCrudo } from './historialDeManuales.ts'
+import { claveDeCelda, historialDeCeldas, type CambioCrudo, type CruceConElRegistro } from './historialDeManuales.ts'
 
 const P = '11111111-1111-1111-1111-111111111111'
 
@@ -52,15 +52,61 @@ test('la cuenta escrita como «=a+b» viaja al lado del número', () => {
   assert.equal(h[claveDeCelda('obreros', P, 'porBanco')].entradas[0].cuenta, '=340909,09+197272,73')
 })
 
-test('el manual que ya existía NO tiene pasado inventado: valor actual y «sin registro anterior al <día>»', () => {
-  const h = historialDeCeldas([
-    fila({ id: 1, tipo: 'base', antes: null, despues: 90000, autor: null, en: '2026-10-01T02:00:00Z' }),
-  ], new Map())
-  const [e] = h[claveDeCelda('obreros', P, 'porBanco')].entradas
+// ═══ QUIÉN · CUÁNDO · CÓMO (dueño, 01/10/2026, popover «01/10/26 10:10 · $102.200 · sin registro anterior al 01/10/26») ═══
+// La fila `base` es la foto de la migración: se dibujaba como si fuera un cambio hecho el 01/10 a las 10:10.
+
+const BASE = (o: Partial<CambioCrudo> = {}) => fila({ id: 1, tipo: 'base', despues: 102200, formula_despues: '=6400*8+51000', en: '2026-10-01T13:10:13Z', ...o })
+const clave = claveDeCelda('obreros', P, 'porBanco')
+
+test('BASE SOLA: no es un cambio (sin flecha ni hora de la migración) y dice «anterior al registro (30/09)»', () => {
+  const [e] = historialDeCeldas([BASE()], new Map())[clave].entradas
   assert.equal(e.esBase, true)
-  assert.equal(e.despues, '$90.000')
-  assert.equal(e.nota, 'sin registro anterior al 30/09/26', 'la fecha se dice en la hora de la empresa, no en UTC')
-  assert.equal(e.quien, 'sin autor registrado', 'no se inventa quién lo escribió')
+  assert.equal(e.cuando, null, 'la hora de la migración no es la hora en que alguien escribió')
+  assert.equal(e.quien, 'anterior al registro (30/09)')
+  assert.equal(e.despues, '$102.200')
+  assert.equal(e.cuenta, '=6400*8+51000')
+  assert.doesNotMatch(JSON.stringify(e), /sin registro anterior/)
+})
+
+test('BASE + CAMBIO CON AUTOR: el cambio dice quién, cuándo y cómo; la base queda al final como valor previo', () => {
+  const h = historialDeCeldas([
+    BASE(),
+    fila({ id: 2, antes: 102200, despues: 120000, formula_despues: '=6400*8+51000+17800', autor: 'u1', origen: 'celda', en: '2026-10-01T15:00:00Z' }),
+  ], new Map([['u1', 'Jorge Corona']]))[clave].entradas
+  assert.deepEqual(h.map((e) => e.esBase), [false, true])
+  assert.deepEqual([h[0].cuando, h[0].quien, h[0].antes, h[0].despues, h[0].cuenta, h[0].como],
+    ['01/10/26 12:00', 'Jorge Corona', '$102.200', '$120.000', '=6400*8+51000+17800', 'a mano en la celda'])
+  assert.equal(h[1].como, 'valor previo al log')
+})
+
+test('el CÓMO distingue celda, marca de pago, sesión y chat/sincronización; sin autor no se inventa uno', () => {
+  const h = (origen: string, autor: string | null) =>
+    historialDeCeldas([fila({ id: 1, despues: 1, autor, origen })], new Map([['u1', 'Ana']]))[clave].entradas[0]
+  assert.equal(h('pago', 'u1').como, 'marca de pago')
+  assert.equal(h('sesion', 'u1').como, 'con la sesión de quien lo hizo, fuera de la celda')
+  assert.equal(h('sin_sello', null).como, 'chat o sincronización')
+  assert.equal(h('sin_sello', null).quien, 'sin autor: chat o sincronización')
+  assert.equal(h('celda', 'u1').quien, 'Ana')
+})
+
+const CRUCE = (act: string | null, posts: CruceConElRegistro['posts']): CruceConElRegistro =>
+  ({ actualizadoEn: new Map([['L1|' + P, act]]), posts })
+
+test('CON CRUCE POR REGISTRO: un solo usuario con POST ese minuto se nombra «según el registro de la app»', () => {
+  const [e] = historialDeCeldas([BASE()], new Map([['u9', 'Rodrigo']]),
+    CRUCE('2026-10-01T09:05:30Z', [{ perfil_id: 'u9', en: '2026-10-01T09:05:12Z' }, { perfil_id: 'u9', en: '2026-10-01T09:05:50Z' }]))[clave].entradas
+  assert.equal(e.quien, 'Rodrigo, según el registro de la app')
+  assert.equal(e.cuando, '01/10/26 06:05')
+})
+
+test('SIN CRUCE: línea anterior al registro, sin POST, o con varios usuarios, nunca un autor inventado', () => {
+  const nombres = new Map([['u8', 'Ana'], ['u9', 'Beto']])
+  const quien = (c: CruceConElRegistro | null) => historialDeCeldas([BASE()], nombres, c)[clave].entradas[0].quien
+  assert.equal(quien(CRUCE('2026-09-15T12:00:00Z', [{ perfil_id: 'u9', en: '2026-09-15T12:00:10Z' }])), 'anterior al registro (30/09)')
+  assert.equal(quien(CRUCE(null, [])), 'anterior al registro (30/09)')
+  assert.equal(quien(null), 'anterior al registro (30/09)')
+  assert.equal(quien(CRUCE('2026-10-01T09:05:30Z', [{ perfil_id: 'u9', en: '2026-10-01T09:20:00Z' }])), 'sin POST de Liquidación en el registro a esa hora')
+  assert.match(quien(CRUCE('2026-10-01T09:05:30Z', [{ perfil_id: 'u9', en: '2026-10-01T09:05:01Z' }, { perfil_id: 'u8', en: '2026-10-01T09:05:40Z' }])), /varios usuarios/)
 })
 
 test('el orden desempata por id cuando dos cargas caen en el mismo instante', () => {

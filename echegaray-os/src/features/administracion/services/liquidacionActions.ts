@@ -570,6 +570,10 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
     }
   }
 
+  // EL AUTOR DEL LOG TAMBIÉN EN EL DESHACER (01/10/2026): al desmarcar, `pagada_por` se vacía y el trigger de
+  // `liquidacion_cambio` se quedaba sin quién. La persona real (no la lente «ver como») viaja en el sello, como en
+  // `guardarCeldaLiquidacion`; en el marcar es la misma que `pagada_por`.
+  Object.assign(aEscribir, selloDeAutor((await getUsuarioActual(supabase))?.id ?? null))
   const { data, error } = await admin.from('liquidacion_linea')
     .upsert(aEscribir, { onConflict: 'liquidacion_id,persona_id' })
     .select('pagada_en, pagado_banco, pagado_efectivo')

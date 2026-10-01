@@ -35,3 +35,21 @@ test('el log no se escribe desde la web: authenticated sólo lee', () => {
   assert.match(SQL, /grant select on public\.liquidacion_cambio to authenticated/)
   assert.doesNotMatch(SQL, /grant [^;]*(insert|update|delete)[^;]* on public\.liquidacion_cambio/i)
 })
+
+// QUIÉN · CUÁNDO · CÓMO (01/10/2026): el trigger nuevo anota el origen y el autor del deshacer de «pagada» no se pierde.
+const SQL_AUTOR = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../../../supabase/migrations/20261001T0700_liquidacion_cambio_autor.sql'), 'utf8')
+
+test('el trigger de 0700 anota el origen con las cuatro ramas y conserva el sello de pantalla', () => {
+  for (const o of ['pago', 'celda', 'sesion', 'sin_sello']) assert.match(SQL_AUTOR, new RegExp(`'${o}'`))
+  assert.match(SQL_AUTOR, /new\.escribio_en is distinct from old\.escribio_en/)
+  assert.match(SQL_AUTOR, /set local lock_timeout = '5s'/)
+  assert.match(SQL_AUTOR, /add column if not exists origen/)
+})
+
+test('el deshacer de la marca «pagada» sella al autor (pagada_por se vacía al deshacer)', () => {
+  const acc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'liquidacionActions.ts'), 'utf8')
+  const desde = acc.indexOf('export async function marcarLineaPagada')
+  assert.ok(desde > 0)
+  assert.match(acc.slice(desde), /Object\.assign\(aEscribir, selloDeAutor\(/)
+})

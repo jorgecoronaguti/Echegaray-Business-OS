@@ -159,14 +159,14 @@ function CuerpoDelHistorial({ entradas, error }: { entradas: EntradaDeHistorial[
       {entradas.map((e, i) => (
         <li key={e.id} className={i === 0 ? 'flex flex-col gap-1' : 'flex flex-col gap-1 border-t border-line pt-2'}>
           <div className="flex items-baseline justify-between gap-2 text-[11px]">
-            <span className="text-faint">{e.cuando}</span>
-            <span className="min-w-0 truncate text-muted">{e.quien}</span>
+            {e.cuando && <span className="text-faint">{e.cuando}</span>}
+            <span className="min-w-0 break-words text-right text-muted">{e.quien}</span>
           </div>
           <div className="text-[12.5px]">
             {e.esBase ? e.despues : <>{e.antes} <span className="text-faint">→</span> {e.despues}</>}
           </div>
           {e.cuenta && <div className="break-all text-[11px] text-muted">{e.cuenta}</div>}
-          {e.nota && <div className="text-[11px] text-faint">{e.nota}</div>}
+          <div className="text-[11px] text-faint">{e.como}</div>
         </li>
       ))}
     </ol>
