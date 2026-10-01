@@ -179,7 +179,7 @@ begin
   select persona_id into v_persona from public.efectivo_entrega where id = p_entrega;
   if not found then raise exception 'esa entrega no existe' using errcode = 'P0001'; end if;
   if not coalesce(public._efectivo_actua_por(v_persona), false) then
-    raise exception 'sólo rinde quien tiene la entrega, o Administración' using errcode = '42501';
+    raise exception 'sólo rinde el jefe de obra que tiene la entrega, o Administración' using errcode = '42501';
   end if;
   return public._efectivo_cargar_gasto_a_mano(p_entrega, v_usr, p_fecha, p_total, p_concepto, p_proveedor, p_cuit);
 end $$;
