@@ -6,6 +6,7 @@ import { getMisEntregas } from '@/features/efectivo/campo/datos'
 import { abiertas, conVuelta, destino } from '@/features/efectivo/campo/logica'
 import { NoRinde, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo } from '@/features/efectivo/campo/components/TarjetasHoy'
+import { MARCA_RENDICION } from '@/features/efectivo/logica/url'
 import { FormularioGastoManual } from '@/features/efectivo/components/FormularioGastoManual'
 
 // RENDIR SIN FOTO (30/09/2026). El gasto que no tiene ticket —un flete, una changa, el kiosco— se tipea:
@@ -63,6 +64,7 @@ export default async function RendirSinFotoPage({ searchParams }: { searchParams
           entregaInicial={sp.entrega}
           volverA={ctx.volverA}
           alGuardar={conVuelta('/mi-informacion/efectivo/rendiciones', ctx.sufijo)}
+          firmarRecibo={{ tipo: 'telefono', url: conVuelta(`/mi-informacion/efectivo/firmar-recibo?rendicion=${MARCA_RENDICION}`, ctx.sufijo) }}
         />
       )}
     </PantallaEmpleado>

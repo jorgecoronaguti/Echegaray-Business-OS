@@ -13,6 +13,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { validarMonto } from '../logica/formularios'
+import { MARCA_RENDICION, urlEfectivo } from '../logica/url'
 import { rendirGastoManualAction } from '../services/edicion'
 import { Campo, ErrorPanel } from './Piezas'
 import { V, botonClaroGrande, botonOscuroGrande, campo, campoMonto, MONO } from './estilo'
@@ -31,7 +32,7 @@ function hoyIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function FormularioGastoManual({ entregas, entregaInicial, volverA, alGuardar, testid = 'gasto-manual' }: {
+export function FormularioGastoManual({ entregas, entregaInicial, volverA, alGuardar, firmarRecibo, testid = 'gasto-manual' }: {
   /** Las entregas abiertas entre las que se elige. Con una sola, no se pregunta. */
   entregas: EntregaParaRendir[]
   entregaInicial?: string | null
@@ -39,6 +40,12 @@ export function FormularioGastoManual({ entregas, entregaInicial, volverA, alGua
   volverA: string
   /** Adónde va al guardar (por defecto, a `volverA`). */
   alGuardar?: string
+  /**
+   * AL TERMINAR SE FIRMA EL RECIBO (dueño, 01/10/2026): el proveedor del servicio firma en esta pantalla. `ficha`
+   * abre el panel de la ficha de la entrega elegida; `url` es la pantalla del teléfono, con `MARCA_RENDICION`
+   * donde va el id (viaja como texto: una función no cruza de servidor a cliente). Sin esto, vuelve a `alGuardar`.
+   */
+  firmarRecibo?: { tipo: 'ficha' } | { tipo: 'telefono'; url: string }
   testid?: string
 }) {
   const router = useRouter()
@@ -62,7 +69,11 @@ export function FormularioGastoManual({ entregas, entregaInicial, volverA, alGua
     if (!concepto.trim()) { setError('Decí qué se compró o pagó'); return }
     const r = await rendirGastoManualAction(elegida.id, { fecha, total, concepto, proveedor, cuit })
     if (!r.ok) { setError(r.error); return }
-    router.push(alGuardar ?? volverA, { scroll: false })
+    const rendicion = r.dato.rendicion
+    const aFirmar = !rendicion || !firmarRecibo ? null
+      : firmarRecibo.tipo === 'ficha' ? urlEfectivo({ entrega: elegida.codigo, panel: 'recibo', item: rendicion })
+        : firmarRecibo.url.replace(MARCA_RENDICION, rendicion)
+    router.push(aFirmar ?? alGuardar ?? volverA, { scroll: false })
     router.refresh()
   })
 

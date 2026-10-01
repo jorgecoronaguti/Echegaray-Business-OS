@@ -6,6 +6,7 @@
 //   …&persona=<persona_id>&panel=entregar                        D02 sobre la persona, con ella ya elegida
 //   …&entrega=ER-0147                                            D03 la ficha
 //   …&entrega=ER-0147&panel=devolucion                           D06 sobre D03
+//   …&entrega=ER-0147&panel=recibo&item=<rendición>              firmar el recibo de un gasto manual (01/10/2026)
 //   …&entrega=ER-0147&panel=imputar                              imputar una compra ya cargada (24/09/2026)
 //   …&entrega=ER-0147&comprobante=<id>                           D04 revisar (D05 si está observado)
 //   …&entrega=ER-0147&panel=editar                               editar la entrega (25/09/2026)
@@ -14,14 +15,17 @@
 
 export const RUTA = '/administracion/compras'
 
+/** Donde va el id de la rendición en una URL que se arma antes de que exista (la que sigue a «Rendir el gasto»). */
+export const MARCA_RENDICION = '__RENDICION__'
+
 export interface EstadoURL {
   f?: 'abiertas' | 'todas' | 'obra' | 'anuladas'
   entrega?: string | null
   /** El id de la persona cuya cronología se abre (29/09/2026: la unidad de la pantalla es la persona). */
   persona?: string | null
-  panel?: 'entregar' | 'devolucion' | 'imputar' | 'rendir' | PanelEdicion | null
+  panel?: 'entregar' | 'devolucion' | 'imputar' | 'rendir' | 'recibo' | PanelEdicion | null
   comprobante?: string | null
-  /** El id de lo que se edita en `editar-devolucion` / `editar-comprobante`. */
+  /** El id de lo que se edita en `editar-devolucion` / `editar-comprobante`, o la rendición cuyo recibo se firma en `recibo`. */
   item?: string | null
 }
 

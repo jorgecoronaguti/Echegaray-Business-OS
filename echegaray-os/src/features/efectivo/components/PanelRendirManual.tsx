@@ -29,6 +29,7 @@ export function PanelRendirManual({ entregas, entregaInicial, cerrarHref, quien 
       <FormularioGastoManual
         entregas={lista} entregaInicial={elegida?.id ?? null} volverA={cerrarHref}
         alGuardar={elegida ? urlEfectivo({ entrega: elegida.codigo }) : cerrarHref}
+        firmarRecibo={{ tipo: 'ficha' }}
       />
     </aside>
   )

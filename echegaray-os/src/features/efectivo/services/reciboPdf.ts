@@ -1,11 +1,15 @@
-// EL PDF «RECIBO» DE UN GASTO MANUAL — una hoja A5 apaisada, pdf-lib, Helvetica, todo en negro sobre blanco
-// (se imprime en blanco y negro y se firma a mano). Dibuja lo que `armarRecibo` armó: no calcula ni decide.
-// Lo que no se sabe es un renglón con raya para completar a mano. Logo por el helper compartido (regla 30/09).
+// EL PDF DEL RECIBO FIRMADO DE UN GASTO MANUAL — una hoja A5 apaisada, pdf-lib, Helvetica, en negro sobre blanco.
+//
+// Ya NO es un modelo para imprimir y firmar a mano (dueño, 01/10/2026: «quiero q sea algo digital como la firma
+// de conformidad»): es el comprobante de lo que el proveedor firmó en la pantalla. Por eso sólo se genera con la
+// firma: sin trazo legible no hay PDF (se lanza, no se dibuja un renglón vacío). La frase es la MISMA que vio
+// quien firmó (`fraseDelRecibo`). Logo por el helper compartido (regla 30/09).
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
+import { LineCapStyle, PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { aWinAnsi } from '../../obras/services/cierreObra.ts'
 import { dibujarLogoPdf } from '../../../shared/exportar/logoPdf.ts'
 import { RAZON_SOCIAL_RECIBO, type ReciboParaFirmar } from '../logica/recibo.ts'
+import { fechaHoraDeFirma, fraseDelRecibo, trazoParaPdf, type FirmaDelRecibo } from '../logica/reciboFirma.ts'
 
 const A5_APAISADO: [number, number] = [595.28, 419.53]
 const M = 36
@@ -25,9 +29,11 @@ function partir(t: string, ancho: number, f: PDFFont, tam: number): string[] {
   return out
 }
 
-export async function pdfDeRecibo(r: ReciboParaFirmar): Promise<Uint8Array> {
+export async function pdfDeReciboFirmado(r: ReciboParaFirmar, firma: FirmaDelRecibo): Promise<Uint8Array> {
+  const trazo = trazoParaPdf(firma.trazo)
+  if (!trazo) throw new Error('La firma guardada no se puede dibujar: el recibo no se entrega como firmado')
   const doc = await PDFDocument.create()
-  doc.setTitle(aWinAnsi(`Recibo ${r.entrega} - $ ${r.montoTexto}`))
+  doc.setTitle(aWinAnsi(`Recibo firmado ${r.entrega} - $ ${r.montoTexto}`))
   doc.setAuthor('Echegaray Construcciones · Business OS')
   const normal = await doc.embedFont(StandardFonts.Helvetica)
   const negrita = await doc.embedFont(StandardFonts.HelveticaBold)
@@ -37,13 +43,6 @@ export async function pdfDeRecibo(r: ReciboParaFirmar): Promise<Uint8Array> {
   const texto = (t: string, x: number, y: number, f: PDFFont, tam: number, color = NEGRO) =>
     page.drawText(aWinAnsi(t), { x, y, size: tam, font: f, color })
   const raya = (x1: number, x2: number, y: number) => page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness: 0.6, color: NEGRO })
-  /** «Rótulo: ____» — con valor lo escribe sobre la raya; sin valor deja la raya vacía. */
-  const campo = (rotulo: string, valor: string | null, x: number, y: number, hasta: number) => {
-    texto(rotulo, x, y, negrita, 10)
-    const xv = x + negrita.widthOfTextAtSize(aWinAnsi(rotulo), 10) + 6
-    raya(xv, hasta, y - 2)
-    if (valor) texto(valor, xv + 3, y, normal, 10.5)
-  }
 
   // Encabezado: logo + razón social a la izquierda, «RECIBO» y el importe a la derecha.
   const anchoLogo = await dibujarLogoPdf(doc, page, M, alto - M + 4, 40)
@@ -57,40 +56,31 @@ export async function pdfDeRecibo(r: ReciboParaFirmar): Promise<Uint8Array> {
 
   let y = alto - M - 70
   raya(M, A5_APAISADO[0] - M, y)
-  y -= 22
-  campo('Fecha:', r.fecha, M, y, M + 190)
 
-  // El cuerpo: la frase del recibo con el importe en letras y en números.
+  // El cuerpo: la frase que firmó quien cobra, tal cual la vio en pantalla.
   y -= 26
-  const cuerpo = `Recibí de ${RAZON_SOCIAL_RECIBO} la suma de pesos ${r.montoEnLetras} ($\u00A0${r.montoTexto}).`
-  for (const l of partir(cuerpo, ANCHO_UTIL, normal, 11.5)) { texto(l, M, y, normal, 11.5); y -= 16 }
+  for (const l of partir(fraseDelRecibo(r), ANCHO_UTIL, normal, 11.5)) { texto(l, M, y, normal, 11.5); y -= 16 }
 
-  y -= 6
-  texto('En concepto de', M, y, negrita, 10)
-  const xc = M + negrita.widthOfTextAtSize('En concepto de', 10) + 6
-  const lineasConcepto = r.concepto ? partir(r.concepto, A5_APAISADO[0] - M - xc, normal, 10.5).slice(0, 2) : []
-  raya(xc, A5_APAISADO[0] - M, y - 2)
-  if (lineasConcepto[0]) texto(lineasConcepto[0], xc + 3, y, normal, 10.5)
-  y -= 18
-  // Segundo renglón: continuación del concepto, o raya libre para completar a mano.
-  raya(M, A5_APAISADO[0] - M, y - 2)
-  if (lineasConcepto[1]) texto(lineasConcepto[1], M + 3, y, normal, 10.5)
-
-  y -= 24
-  campo('Obra:', r.obra, M, y, M + 330)
-  texto('Forma de pago: efectivo', M + 350, y, negrita, 10)
-  y -= 22
-  campo('Proveedor / quien recibe:', r.proveedor, M, y, A5_APAISADO[0] - M)
-
-  // Firma, aclaración y DNI/CUIT: siempre en blanco, es lo que firma quien cobra.
-  y -= 46
-  const tercio = (ANCHO_UTIL - 2 * 20) / 3
-  const cols: [string, number][] = [['Firma', 0], ['Aclaración', 1], ['DNI / CUIT', 2]]
-  for (const [rotulo, i] of cols) {
-    const x = M + i * (tercio + 20)
-    raya(x, x + tercio, y)
-    texto(rotulo, x, y - 12, normal, 9, GRIS)
+  y -= 8
+  texto('Forma de pago: efectivo', M, y, negrita, 10)
+  if (r.proveedor) {
+    y -= 16
+    texto(`Proveedor: ${r.proveedor}`, M, y, normal, 10)
   }
+
+  // La firma: el trazo estampado sobre la raya, con quién firma y cuándo. Se achica a la caja sin deformarse.
+  const cajaFirma = { w: 200, h: 64 }
+  const escala = Math.min(cajaFirma.w / trazo.ancho, cajaFirma.h / trazo.alto)
+  const base = M + 60
+  page.drawSvgPath(trazo.d, {
+    x: M, y: base + cajaFirma.h - (cajaFirma.h - trazo.alto * escala) / 2, scale: escala,
+    borderColor: NEGRO, borderWidth: 1.4, borderLineCap: LineCapStyle.Round,
+  })
+  raya(M, M + cajaFirma.w + 40, base)
+  texto('Firma', M, base - 12, normal, 9, GRIS)
+  texto(`Aclaración: ${firma.aclaracion}`, M + cajaFirma.w + 60, base + 30, normal, 10.5)
+  if (firma.dni) texto(`DNI: ${firma.dni}`, M + cajaFirma.w + 60, base + 12, normal, 10.5)
+  texto(`Firmado en pantalla el ${fechaHoraDeFirma(firma.firmado_en)}`, M, base - 30, normal, 9, GRIS)
 
   // Pie chico: de dónde salió y que no es una factura.
   const pie = [`Entrega ${r.entrega}`, r.pagador ? `pagó ${r.pagador}` : null, 'Documento no válido como factura'].filter(Boolean).join(' · ')

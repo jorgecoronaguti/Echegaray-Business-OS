@@ -22,6 +22,7 @@ import { urlEfectivo } from '../logica/url'
 import { leerComprasPorClave, leerEfectivo, leerExtraDeFicha, leerLecturaDelTicket, urlDeFoto, type DatosEfectivo } from '../services/datos'
 import { leerParaImputar } from '../services/imputar'
 import { leerEdicionDeFicha } from '../services/edicionDatos'
+import { leerReciboParaFirmar, leerRendicionesFirmadas } from '../services/reciboDatos'
 import { PanelEditarComprobante, PanelEditarDevolucion, PanelEditarEntrega } from './Edicion'
 import { BotonExportar } from './Botones'
 import { FichaEntrega } from './FichaEntrega'
@@ -31,6 +32,7 @@ import { Tarjetas } from './Tarjetas'
 import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
 import { PanelRendirManual } from './PanelRendirManual'
+import { PanelFirmarRecibo } from './PanelFirmarRecibo'
 import { PanelImputar } from './PanelImputar'
 import { PanelObservado } from './PanelObservado'
 import { RevisarComprobante } from './RevisarComprobante'
@@ -136,10 +138,12 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   const devoluciones = d.devoluciones.filter((x) => x.entrega_id === e.id)
   const claves = [...new Set([...rendiciones.map((r) => r.compra_clave), ...comprobantes.map((c) => c.compra_clave).filter((x): x is string => !!x)])]
   const elegido = sp.comprobante ? comprobantes.find((c) => c.id === sp.comprobante) ?? null : null
-  const [extra, foto, edicion] = await Promise.all([
+  const manuales = rendiciones.filter((r) => r.origen === 'manual')
+  const [extra, foto, edicion, recibosFirmados] = await Promise.all([
     leerExtraDeFicha(e.id, claves, filasManuales(rendiciones)),
     elegido && elegido.estado !== 'observado' ? urlDeFoto(elegido.storage_path) : Promise.resolve(null),
     leerEdicionDeFicha(e.id),
+    leerRendicionesFirmadas(manuales.map((r) => r.id)),
   ])
   const cliente = e.obra_id ? (d.clienteDeObra[e.obra_id] ?? null) : null
   const dest = destinoDe(e, cliente)
@@ -165,6 +169,11 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   const devolviendo = sp.panel === 'devolucion' && e.estado === 'abierta'
   // RENDIR SIN FOTO (30/09/2026): un gasto tipeado, para cualquiera que vea la ficha. Va a Compras igual que un ticket.
   const rindiendo = sp.panel === 'rendir' && e.estado === 'abierta' && !devolviendo
+  // EL RECIBO DEL GASTO MANUAL (01/10/2026): el proveedor lo firma en esta pantalla. Si ya está firmado el panel
+  // no se abre: la ficha muestra «Recibo firmado» y el PDF. Se lee sólo con el panel pedido.
+  const rendDelRecibo = sp.panel === 'recibo' ? manuales.find((r) => r.id === sp.item) ?? null : null
+  const paraRecibo = rendDelRecibo && recibosFirmados && !recibosFirmados.has(rendDelRecibo.id)
+    ? await leerReciboParaFirmar(rendDelRecibo, e) : null
   // «IMPUTAR UN COMPROBANTE YA CARGADO» (24/09/2026): sólo Dirección y Administración, y sólo con la
   // entrega abierta (la base lo exige igual). La lista se lee sólo con el panel abierto.
   const imputando = sp.panel === 'imputar' && e.estado === 'abierta' && d.veEconomia && !devolviendo
@@ -199,7 +208,7 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
     obras: Object.fromEntries(d.obras.map((o) => [o.id, o.nombre] as const)),
     entregas: Object.fromEntries(d.entregas.map((x) => [x.id, x.codigo] as const)),
   }
-  const conPanel = devolviendo || !!observado || imputando || !!edicionPanel || rindiendo
+  const conPanel = devolviendo || !!observado || imputando || !!edicionPanel || rindiendo || !!paraRecibo
   const volver = (
     <Link href={urlEfectivo({ persona: e.persona_id })} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-entregas">
       ← volver a {e.persona}
@@ -210,24 +219,25 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
       {cabecera(
         conPanel ? undefined : volver,
         abiertas,
-        devolviendo || imputando || edicionPanel || rindiendo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
+        devolviendo || imputando || edicionPanel || rindiendo || paraRecibo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
       )}
       <div className="flex flex-col lg:flex-row lg:items-start">
         <div className={`min-w-0 flex-1 max-md:!px-4 ${conPanel ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: conPanel ? 0.4 : 1 }}>
           <FichaEntrega
             e={e} comprobantes={comprobantes} rendiciones={rendiciones} devoluciones={devoluciones} extra={extra} cliente={cliente}
-            puedeImputar={d.veEconomia} edicion={edicion} nombres={nombres}
+            puedeImputar={d.veEconomia} edicion={edicion} nombres={nombres} recibosFirmados={recibosFirmados}
           />
         </div>
         {imputando && paraImputar && <PanelImputar e={e} destino={destino} lectura={paraImputar} />}
         {rindiendo && <PanelRendirManual entregas={[e]} entregaInicial={e.id} cerrarHref={cerrarEdicion} quien={e.persona} />}
+        {paraRecibo && <PanelFirmarRecibo rendicion={paraRecibo.rendicion} frase={paraRecibo.frase} cerrarHref={cerrarEdicion} codigo={e.codigo} />}
         {edicionPanel}
         {devolviendo && (
           <PanelDevolucion
             e={e} destino={destino} porImputar={cola.length} personas={d.personas} miPersona={d.miPersona}
           />
         )}
-        {observado && !devolviendo && !imputando && !edicionPanel && !rindiendo && <PanelObservado c={observado} e={e} destino={destino} />}
+        {observado && !devolviendo && !imputando && !edicionPanel && !rindiendo && !paraRecibo && <PanelObservado c={observado} e={e} destino={destino} />}
       </div>
     </>
   )

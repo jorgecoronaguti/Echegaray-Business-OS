@@ -49,7 +49,7 @@ function iniciales(nombre: string): string {
   return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
 }
 
-export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente, puedeImputar = false, edicion, nombres }: {
+export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente, puedeImputar = false, edicion, nombres, recibosFirmados = null }: {
   e: Entrega
   comprobantes: Comprobante[]
   rendiciones: Rendicion[]
@@ -62,6 +62,8 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   edicion: EdicionDeFicha
   /** Para decir la bitácora con nombres: id → nombre de persona, de obra y código de entrega. */
   nombres: { personas: Record<string, string>; obras: Record<string, string>; entregas: Record<string, string> }
+  /** Rendiciones manuales con el recibo ya firmado. `null` = no se pudo leer (migración sin aplicar): no se ofrece nada. */
+  recibosFirmados?: ReadonlySet<string> | null
 }) {
   const destino = destinoDe(e, cliente)
   const nombreDestino = e.estructura ? 'Estructura' : destino.linea
@@ -234,8 +236,10 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                         Editar
                       </Link>
                     )}
-                    {f.rendicion?.origen === 'manual' && (
-                      <div style={{ gridColumn: '1 / -1', paddingBottom: 8 }}><ReciboParaFirmar rendicion={f.rendicion.id} /></div>
+                    {f.rendicion?.origen === 'manual' && recibosFirmados && (
+                      <div style={{ gridColumn: '1 / -1', paddingBottom: 8 }}>
+                        <ReciboParaFirmar rendicion={f.rendicion.id} entrega={e.codigo} firmado={recibosFirmados.has(f.rendicion.id)} />
+                      </div>
                     )}
                   </div>
                 )
