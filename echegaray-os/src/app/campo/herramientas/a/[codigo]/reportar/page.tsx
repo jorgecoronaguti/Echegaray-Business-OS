@@ -23,7 +23,7 @@ export default async function ReportarCampo({ params, searchParams }: { params: 
     <MarcoTelefono titulo="Reportar" volver={ficha}>
       {a.estado === 'baja'
         ? <div style={{ fontSize: '14px' }}>{a.nombre} está dado de baja: no admite reportes nuevos.</div>
-        : <ReportarTelefono activo={a.id} nombre={a.nombre} volverA={ficha} />}
+        : <ReportarTelefono activo={a.id} nombre={a.nombre} volverA={ficha} varias={lectura.parque.fotos != null} />}
     </MarcoTelefono>
   )
 }

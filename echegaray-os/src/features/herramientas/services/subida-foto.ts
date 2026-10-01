@@ -30,3 +30,17 @@ export async function subirFotoDeActivo(archivo: File, carpeta: string): Promise
     return { ok: false, error: traducirErrorDeFoto(e instanceof Error ? e.message : String(e)) }
   }
 }
+
+/**
+ * Varias fotos a la misma carpeta, de a una (por 4G, en paralelo se cortan todas a la vez). Se corta en
+ * la primera que falla: un reporte no se manda con parte de sus fotos sin que la persona lo sepa.
+ */
+export async function subirFotosDeActivo(archivos: readonly File[], carpeta: string): Promise<{ ok: true; rutas: string[] } | { ok: false; error: string }> {
+  const rutas: string[] = []
+  for (const archivo of archivos) {
+    const s = await subirFotoDeActivo(archivo, carpeta)
+    if (!s.ok) return { ok: false, error: archivos.length > 1 ? `Foto ${rutas.length + 1} de ${archivos.length}: ${s.error}` : s.error }
+    rutas.push(s.ruta)
+  }
+  return { ok: true, rutas }
+}

@@ -28,6 +28,8 @@ import { ResumenRevision } from './FichaRevision'
 import { LibroDeVidaFicha } from './LibroDeVida'
 import { Unidades } from './Unidades'
 import { SacarFoto } from './campo/SacarFoto'
+import { Fotos } from './Fotos'
+import { fotosDe } from '../logica/fotos'
 import { AZUL, COLOR_TONO, eyebrow, MONO, SUPERFICIE, V, vacio } from './estilo'
 import { diaMes, diaMesAnio, mesAnio, pesos } from './formato'
 
@@ -49,6 +51,8 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
   const quienEstado = a.estado_por ? parque.nombres[a.estado_por] : null
   const renglones = historial(parque, a.id)
   const ultimaInc = parque.incDe.get(a.id)?.find((i) => !i.cerrada_en)
+  // null = sin la migración 20261001T1800: la foto única de siempre, debajo de la portada.
+  const fotos = fotosDe(parque.fotos, a.id)
   const carga = a.clase === 'rodado' ? (() => { const u = ubicacionDelRodado(parque, a.id); return u ? activosEn(parque, u.id) : [] })() : []
 
   async function estado(e: 'operativo' | 'reparacion_externa') {
@@ -111,7 +115,7 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           ) : 'sin foto'}
           </div>
           {/* La misma pieza que «Sacar una foto» en el teléfono (M03): la foto de la ficha se cambia desde las dos caras. */}
-          {a.estado !== 'baja' && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} tieneFoto={!!a.foto_url} />}
+          {a.estado !== 'baja' && fotos === null && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} tieneFoto={!!a.foto_url} />}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE }}>
@@ -172,6 +176,15 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
         )}
         {error && <div role="alert" style={{ fontSize: '12.5px', color: V.neg }}>{error}</div>}
       </div>
+
+      {/* Todas las fotos, como evidencia del estado (dueño, 01/10): la misma lista que el teléfono. */}
+      {fotos && (fotos.length > 0 || a.estado !== 'baja') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-fotos">
+          <div style={{ ...eyebrow, paddingTop: 10 }}>Fotos</div>
+          <Fotos fotos={fotos} nombres={parque.nombres} alt={a.nombre} variante="escritorio" />
+          {a.estado !== 'baja' && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} tieneFoto={!!a.foto_url} varias />}
+        </div>
+      )}
 
       {a.clase === 'rodado' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }}>

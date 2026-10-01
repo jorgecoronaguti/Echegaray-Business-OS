@@ -17,6 +17,8 @@ import { faltaMigracion, MIGRACION } from '../logica/falta-migracion'
 import { normalizarCodigo } from '../logica/codigo'
 import { leerOperadores } from './datos'
 import { esRutaDeFoto, urlPublicaDeFoto } from '../logica/foto'
+import { TOPE_FOTOS_POR_VEZ } from '../logica/fotos'
+import { agregarFotosAction } from './acciones-fotos'
 import { crearProveedor } from '@/features/administracion/services/proveedoresActions'
 
 export type Resultado<T = null> = { ok: true; dato: T; mensaje?: string } | { ok: false; error: string }
@@ -152,18 +154,30 @@ const reportarSchema = z.object({
   activo: uuid,
   tipo: z.enum(['fallando', 'no_anda', 'no_encontrada'], { message: 'Elegí qué le pasa' }),
   texto: z.string().trim().max(400).optional(),
-  /** Ruta de la foto ya subida al bucket (`subirFotoDeActivo`), o nada. */
-  foto: z.string().max(200).optional(),
+  /** Rutas de las fotos ya subidas al bucket (`subirFotoDeActivo`); vacío = sin foto. */
+  fotos: z.array(z.string().max(200)).max(TOPE_FOTOS_POR_VEZ, `Son más de ${TOPE_FOTOS_POR_VEZ} fotos.`).default([]),
 })
 
+/**
+ * La PRIMERA foto viaja en `reportar_problema_activo`, como siempre (su trigger la copia a `activo_foto`);
+ * las demás se agregan al mismo reporte (20261001T1800). Las rutas se revisan TODAS antes de reportar: una
+ * mal subida no deja un reporte a medias. Si las de más no entran, el reporte ya quedó: se dice cuántas
+ * faltan en vez de devolver un error que invite a reportar dos veces.
+ */
 export async function reportarProblemaAction(entrada: z.input<typeof reportarSchema>): Promise<Resultado<string>> {
   const p = reportarSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
-  const foto = urlDeFoto(p.data.foto)
+  const [primera, ...resto] = p.data.fotos
+  if (!p.data.fotos.every(esRutaDeFoto)) return { ok: false, error: 'La foto no quedó bien subida. Probá de nuevo.' }
+  const foto = urlDeFoto(primera)
   if (!foto.ok) return foto
-  return rpc<string>('reportar_problema_activo', {
+  const r = await rpc<string>('reportar_problema_activo', {
     p_activo: p.data.activo, p_tipo: p.data.tipo, p_texto: p.data.texto || null, p_foto_url: foto.dato,
   })
+  if (!r.ok || resto.length === 0) return r
+  const mas = await agregarFotosAction({ activo: p.data.activo, rutas: resto, incidencia: r.dato })
+  if (mas.ok) return r
+  return { ok: true, dato: r.dato, mensaje: `El problema quedó reportado con 1 foto; ${resto.length === 1 ? 'la otra no se guardó' : `las otras ${resto.length} no se guardaron`}: ${mas.error}` }
 }
 
 const verificacionSchema = z.object({

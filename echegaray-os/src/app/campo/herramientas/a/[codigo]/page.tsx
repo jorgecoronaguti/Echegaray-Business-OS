@@ -6,6 +6,8 @@ import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBas
 import { CodigoDesconocido } from '@/features/herramientas/components/campo/CodigoDesconocido'
 import { SacarFoto } from '@/features/herramientas/components/campo/SacarFoto'
 import { UnPapel } from '@/features/herramientas/components/Ficha'
+import { Fotos } from '@/features/herramientas/components/Fotos'
+import { fotosDe } from '@/features/herramientas/logica/fotos'
 import { COLOR_TONO, MONO, SUPERFICIE, V } from '@/features/herramientas/components/estilo'
 import { diaMes, diaMesAnio, mesAnio, pesos } from '@/features/herramientas/components/formato'
 import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
@@ -64,6 +66,8 @@ export default async function UnaHerramienta({ params, searchParams }: {
   // DÓNDE ≠ QUIÉN (dueño 30/09): la persona que lo tiene va aparte del lugar donde está.
   const tiene = baja ? '' : rotuloQuien(p, a)
   const personal = a.clase === 'epp' || a.clase === 'ropa'
+  // Todas las fotos (20261001T1800), igual que en la computadora. null = sin la migración: la de siempre.
+  const fotos = fotosDe(p.fotos, a.id)
 
   return (
     <MarcoTelefono
@@ -149,6 +153,13 @@ export default async function UnaHerramienta({ params, searchParams }: {
         </div>
       )}
 
+      {fotos && fotos.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="ficha-fotos">
+          <div style={{ fontSize: '13px', color: V.apagado }}>Fotos</div>
+          <Fotos fotos={fotos} nombres={p.nombres} alt={a.nombre} variante="telefono" />
+        </div>
+      )}
+
       {inc?.texto && (
         <div style={{ fontSize: '13.5px', color: V.tintaSuave, lineHeight: 1.5, borderLeft: `2px solid ${V.linea}`, paddingLeft: 12 }}>
           «{inc.texto}»{inc.usuario_id && p.nombres[inc.usuario_id] ? ` — ${p.nombres[inc.usuario_id]}` : ''}, {diaMes(inc.creado_en)}
@@ -199,7 +210,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
             ))}
           </div>
         </details>
-        {!baja && <SacarFoto activo={a.id} tieneFoto={!!a.foto_url} />}
+        {!baja && <SacarFoto activo={a.id} tieneFoto={!!a.foto_url} varias={fotos !== null} />}
         <Unidades activo={a} unidades={p.unidades} variante="telefono" />
       </div>
     </MarcoTelefono>

@@ -5,7 +5,8 @@
 
 import { useRef, useState } from 'react'
 import { reportarProblemaAction } from '../services/acciones'
-import { subirFotoDeActivo } from '../services/subida-foto'
+import { subirFotosDeActivo } from '../services/subida-foto'
+import { rotuloElegidas, sumarElegidas } from '../logica/fotos'
 import type { TipoIncidencia } from '../types'
 import { useHerramientas } from './Espacio'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
@@ -22,7 +23,9 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
   const activos = ids.map((id) => parque.activoPorId.get(id)).filter((a) => a && a.estado !== 'baja')
   const [tipo, setTipo] = useState<TipoIncidencia | null>(null)
   const [texto, setTexto] = useState('')
-  const [foto, setFoto] = useState<File | null>(null)
+  // Con la tabla `activo_foto` (20261001T1800) un reporte lleva varias fotos; sin ella, una.
+  const varias = parque.fotos != null
+  const [fotos, setFotos] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const input = useRef<HTMLInputElement>(null)
@@ -32,24 +35,23 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
     setEnviando(true)
     setError(null)
     let hechos = 0
+    const avisos: string[] = []
     for (const a of activos) {
-      // La foto va del navegador al bucket; a la acción llega sólo la ruta (`logica/foto.ts`). Una por
-      // reporte: si se reportan varios con la misma foto, cada incidencia lleva su copia.
-      let ruta: string | undefined
-      if (foto) {
-        const s = await subirFotoDeActivo(foto, `incidencias/${a!.id}`)
-        if (!s.ok) { setEnviando(false); return setError(hechos ? `Se reportaron ${hechos} de ${activos.length}. ${s.error}` : s.error) }
-        ruta = s.ruta
-      }
-      const r = await reportarProblemaAction({ activo: a!.id, tipo, texto, foto: ruta })
+      // Las fotos van del navegador al bucket; a la acción llegan sólo las rutas (`logica/foto.ts`). Si se
+      // reportan varios con las mismas fotos, cada incidencia lleva su copia.
+      const s = await subirFotosDeActivo(fotos, `incidencias/${a!.id}`)
+      if (!s.ok) { setEnviando(false); return setError(hechos ? `Se reportaron ${hechos} de ${activos.length}. ${s.error}` : s.error) }
+      const r = await reportarProblemaAction({ activo: a!.id, tipo, texto, fotos: s.rutas })
       if (!r.ok) {
         setEnviando(false)
         return setError(hechos ? `Se reportaron ${hechos} de ${activos.length}. ${r.error}` : r.error)
       }
+      if (r.mensaje) avisos.push(r.mensaje)
       hechos++
     }
     setEnviando(false)
-    onHecho(activos.length === 1 ? `Problema reportado: ${activos[0]!.nombre}. No se movió de lugar.` : `${hechos} problemas reportados. Nada se movió de lugar.`)
+    const hecho = activos.length === 1 ? `Problema reportado: ${activos[0]!.nombre}. No se movió de lugar.` : `${hechos} problemas reportados. Nada se movió de lugar.`
+    onHecho(avisos.length ? `${hecho} ${avisos[0]}` : hecho)
   }
 
   return (
@@ -82,10 +84,11 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
         <textarea value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={400} rows={3} style={{ border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: 10, fontSize: '13.5px' }} />
         {/* La misma foto que M07 en el teléfono: desde la computadora se elige un archivo. */}
         <button type="button" onClick={() => input.current?.click()} data-testid="foto-reporte"
-          style={{ height: 38, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', color: foto ? V.pos : V.tinta }}>
-          {foto ? 'Foto lista · cambiar' : 'Agregar foto'}
+          style={{ height: 38, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', color: fotos.length ? V.pos : V.tinta }}>
+          {rotuloElegidas(fotos.length, varias)}
         </button>
-        <input ref={input} type="file" accept="image/*" hidden onChange={(e) => setFoto(e.target.files?.[0] ?? null)} />
+        <input ref={input} type="file" accept="image/*" multiple={varias} hidden
+          onChange={(e) => { const nuevas = Array.from(e.target.files ?? []); setFotos((antes) => sumarElegidas(antes, nuevas, varias)); e.target.value = '' }} />
         <div style={{ fontSize: '12.5px', color: V.apagado, borderLeft: `2px solid ${V.linea}`, paddingLeft: 12 }}>No se mueve: sigue donde está. El taller decide si la retira.</div>
       </Bloque>
       <ErrorPanel texto={error} />

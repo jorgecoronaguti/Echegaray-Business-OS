@@ -6,6 +6,7 @@
 // reportes se vio «nunca». Ninguna función de acá devuelve 0 o un lugar por defecto para tapar un hueco.
 
 import type { Evento } from './evento.ts'
+import type { FotoDeActivo } from './fotos.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import type { Papel } from './papeles.ts'
 import type { Recuento, RecuentoLinea } from './recuento.ts'
@@ -62,6 +63,11 @@ export interface DatosParque {
   recuentos?: Recuento[] | null
   /** Las líneas de cada recuento (`activo_recuento_linea`). `null`/ausente = sin la migración. */
   recuentoLineas?: RecuentoLinea[] | null
+  /**
+   * Todas las fotos de cada activo (`activo_foto`, 20261001T1800). `null`/ausente = sin la migración:
+   * la ficha muestra `activo.foto_url` como antes y ofrece una foto por vez.
+   */
+  fotos?: FotoDeActivo[] | null
 }
 
 export interface Parque extends DatosParque {

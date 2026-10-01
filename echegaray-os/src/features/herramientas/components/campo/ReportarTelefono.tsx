@@ -5,17 +5,27 @@
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { reportarProblemaAction } from '../../services/acciones'
-import { subirFotoDeActivo } from '../../services/subida-foto'
+import { subirFotosDeActivo } from '../../services/subida-foto'
+import { rotuloElegidas, sumarElegidas } from '../../logica/fotos'
 import type { TipoIncidencia } from '../../types'
 import { TIPOS } from '../PanelReportar'
 import { V, eyebrow } from '../estilo'
 import { primarioTelefono } from './MarcoTelefono'
 
-export function ReportarTelefono({ activo, nombre, volverA }: { activo: string; nombre: string; volverA: string }) {
+export function ReportarTelefono({ activo, nombre, volverA, varias = false }: {
+  activo: string
+  nombre: string
+  volverA: string
+  /** Con la tabla `activo_foto` (20261001T1800): se sacan varias, una tras otra. Sin ella, una. */
+  varias?: boolean
+}) {
   const router = useRouter()
   const [tipo, setTipo] = useState<TipoIncidencia | null>(null)
   const [texto, setTexto] = useState('')
-  const [foto, setFoto] = useState<File | null>(null)
+  const [fotos, setFotos] = useState<File[]>([])
+  // El reporte quedó pero alguna foto de más no: se avisa y el botón vuelve a la ficha (reportar otra
+  // vez duplicaría el reporte).
+  const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const input = useRef<HTMLInputElement>(null)
@@ -24,16 +34,17 @@ export function ReportarTelefono({ activo, nombre, volverA }: { activo: string; 
     if (!tipo) return
     setEnviando(true)
     setError(null)
-    // La foto va del teléfono al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
-    let ruta: string | undefined
-    if (foto) {
-      const s = await subirFotoDeActivo(foto, `incidencias/${activo}`)
-      if (!s.ok) { setEnviando(false); return setError(s.error) }
-      ruta = s.ruta
-    }
-    const r = await reportarProblemaAction({ activo, tipo, texto, foto: ruta }).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : 'No se pudo reportar' }))
+    // Las fotos van del teléfono al bucket; a la acción llegan sólo las rutas (`logica/foto.ts`).
+    const s = await subirFotosDeActivo(fotos, `incidencias/${activo}`)
+    if (!s.ok) { setEnviando(false); return setError(s.error) }
+    const r = await reportarProblemaAction({ activo, tipo, texto, fotos: s.rutas }).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : 'No se pudo reportar' }))
     setEnviando(false)
     if (!r.ok) return setError(r.error)
+    if (r.mensaje) return setAviso(r.mensaje)
+    volver()
+  }
+
+  function volver() {
     router.push(volverA)
     router.refresh()
   }
@@ -57,17 +68,23 @@ export function ReportarTelefono({ activo, nombre, volverA }: { activo: string; 
         <div style={eyebrow}>Contalo en una línea</div>
         <textarea value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={400} rows={3} data-testid="texto-reporte"
           style={{ border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: 12, fontSize: '15px', minHeight: 96 }} />
-        <button type="button" onClick={() => input.current?.click()} style={{ height: 52, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: '14px', color: foto ? V.pos : V.tinta }}>
-          {foto ? 'Foto lista · cambiar' : 'Agregar foto'}
+        <button type="button" onClick={() => input.current?.click()} data-testid="foto-reporte" style={{ height: 52, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: '14px', color: fotos.length ? V.pos : V.tinta }}>
+          {rotuloElegidas(fotos.length, varias)}
         </button>
-        <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => setFoto(e.target.files?.[0] ?? null)} />
+        <input ref={input} type="file" accept="image/*" capture="environment" multiple={varias} hidden
+          onChange={(e) => { const nuevas = Array.from(e.target.files ?? []); setFotos((antes) => sumarElegidas(antes, nuevas, varias)); e.target.value = '' }} />
         <div style={{ fontSize: '13px', color: V.apagado, borderLeft: `2px solid ${V.linea}`, paddingLeft: 12, lineHeight: 1.5 }}>No se mueve: sigue donde está. El taller decide si la retira.</div>
       </div>
       {error && <div role="alert" style={{ fontSize: '13px', color: V.neg }}>{error}</div>}
+      {aviso && <div role="alert" style={{ fontSize: '13px', color: V.warn }} data-testid="aviso-reporte">{aviso}</div>}
       <div style={{ position: 'sticky', bottom: 0, margin: 'auto -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: '#FFFFFF', display: 'flex' }}>
-        <button type="button" onClick={enviar} disabled={!tipo || enviando} style={{ ...primarioTelefono, opacity: tipo ? 1 : 0.45 }} data-testid="enviar-reporte">
-          {enviando ? 'Reportando…' : 'Reportar'}
-        </button>
+        {aviso ? (
+          <button type="button" onClick={volver} style={primarioTelefono} data-testid="volver-a-la-ficha">Volver a la ficha</button>
+        ) : (
+          <button type="button" onClick={enviar} disabled={!tipo || enviando} style={{ ...primarioTelefono, opacity: tipo ? 1 : 0.45 }} data-testid="enviar-reporte">
+            {enviando ? 'Reportando…' : 'Reportar'}
+          </button>
+        )}
       </div>
     </>
   )
