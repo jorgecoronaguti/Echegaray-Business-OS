@@ -96,6 +96,10 @@ import { RecibosEmitidos } from '@/features/administracion/components/RecibosEmi
 import { RecibosDelLegajo } from '@/features/administracion/components/RecibosDelLegajo'
 import { getRecibosDelLegajo } from '@/features/administracion/services/recibosDelLegajoService'
 import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
+import { CuentasDelLegajo } from '@/features/administracion/components/CuentasDelLegajo'
+import { CamposCuentas } from '@/features/administracion/components/CamposCuentas'
+import { leerCuentas } from '@/features/administracion/services/cuentasDelLegajoService'
+import { editarCuentas } from '@/features/administracion/services/cuentasActions'
 import { conLiquidacionEstimada } from '@/features/administracion/services/haberesDelBanco'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
@@ -136,9 +140,11 @@ export default async function FichaPersonaPage({
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound()
   const sp = await searchParams
   const vista = (VISTAS_FICHA.find((v) => v === sp.v) ?? 'resumen') as VistaFicha
-  const editar = sp.editar === 'identidad' || sp.editar === 'laboral' ? (sp.editar as GrupoEdicion) : null
+  const pedido = sp.editar === 'identidad' || sp.editar === 'laboral' || sp.editar === 'cuentas'
+    ? (sp.editar as GrupoEdicion | 'cuentas')
+    : null
   const base = `/administracion/personas/${id}`
-  const href = (v: VistaFicha, e?: GrupoEdicion) =>
+  const href = (v: VistaFicha, e?: GrupoEdicion | 'cuentas') =>
     `${base}${v === 'resumen' && !e ? '' : `?${new URLSearchParams({ ...(v !== 'resumen' ? { v } : {}), ...(e ? { editar: e } : {}) })}`}`
 
   const supabase = await createClient()
@@ -176,7 +182,9 @@ export default async function FichaPersonaPage({
   // AFIRMA en todas. Leerlo sólo en el Resumen escribiría «sin $/h cargado» en las otras cinco
   // sobre gente que sí tiene tarifa —el defecto que ya se pagó con «Obra actual: sin asignar»—. Son
   // cuatro consultas chicas: las de UNA persona y la escala de UNA categoría, no el módulo entero.
-  const [asignaciones, documentos, valorHora, historialCategoria] = await Promise.all([
+  // LAS CUENTAS BANCARIAS VAN EN EL COSTADO, QUE ESTÁ EN TODAS LAS VISTAS — y sólo para quien liquida:
+  // la función tira 42501 a cualquier otro, y esto evita el viaje (01/10/2026).
+  const [asignaciones, documentos, valorHora, historialCategoria, cuentas] = await Promise.all([
     getAsignacionesDe(supabase, id),
     getDocumentos(supabase, id),
     getValorHoraDelLegajo(supabase, {
@@ -191,7 +199,11 @@ export default async function FichaPersonaPage({
       hoy,
     }),
     getCategoriaHistorial(supabase, id),
+    liquida ? leerCuentas(supabase, id) : null,
   ])
+  // `?editar=cuentas` SIN PERMISO O SIN LECTURA NO ABRE NADA: el costado queda en su lugar. Un panel
+  // vacío invitaría a «cargar» cuentas que quizá ya están y no se pudieron leer.
+  const editar = pedido === 'cuentas' && cuentas?.estado !== 'ok' ? null : pedido
   // La cronología de categoría, para el costado. Si la lectura falla se calla el bloque: la
   // categoría vigente ya está en Laboral y sale de la misma tabla.
   const categorias = (historialCategoria.data ?? []).map((c) => ({
@@ -723,15 +735,17 @@ export default async function FichaPersonaPage({
         {editar
           ? (
               <PanelEdicion
-                titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
+                titulo={editar === 'identidad' ? 'Editar identidad' : editar === 'laboral' ? 'Editar datos laborales' : 'Editar cuentas bancarias'}
                 subtitulo={nombreDePersona(persona)}
-                accion={editarPersona.bind(null, id, editar)}
+                accion={editar === 'cuentas' ? editarCuentas.bind(null, id) : editarPersona.bind(null, id, editar)}
                 cerrarHref={href(vista)}
                 testid={`panel-editar-${editar}`}
               >
                 {editar === 'identidad'
                   ? <CamposIdentidad persona={persona} />
-                  : <CamposLaboral persona={persona} />}
+                  : editar === 'laboral'
+                    ? <CamposLaboral persona={persona} />
+                    : <CamposCuentas c={cuentas?.estado === 'ok' ? cuentas.filas[0] ?? null : null} />}
               </PanelEdicion>
             )
           : (
@@ -745,6 +759,7 @@ export default async function FichaPersonaPage({
                   hrefIdentidad={href(vista, 'identidad')}
                   hrefLaboral={href(vista, 'laboral')}
                   puedeEditar
+                  cuentas={cuentas && <CuentasDelLegajo lectura={cuentas} hrefEditar={href(vista, 'cuentas')} />}
                 />
               </CostadoDeFicha>
             )}

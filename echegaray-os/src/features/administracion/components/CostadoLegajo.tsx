@@ -18,12 +18,13 @@
 //                 día»: sería una afirmación sobre un control que nadie está haciendo.
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado, DatoDeCostado } from '@/shared/components/v2/segundoNivel'
 import type { MesDeHH } from '../services/hhPorMes'
 
-/** Un enlace de edición discreto, al lado del rótulo del bloque. */
-function Editar({ href, testid }: { href: string; testid: string }) {
+/** Un enlace de edición discreto, al lado del rótulo del bloque. Lo usa también `CuentasDelLegajo`. */
+export function Editar({ href, testid }: { href: string; testid: string }) {
   return (
     <Link
       href={href} prefetch={false} data-testid={testid}
@@ -50,7 +51,7 @@ const FUENTE_DEL_PASO: Record<string, string> = {
   os: 'ficha',
 }
 
-export function CostadoLegajo({ identidad, laboral, categorias = [], asignacion, meses, hrefIdentidad, hrefLaboral, puedeEditar }: {
+export function CostadoLegajo({ identidad, laboral, categorias = [], asignacion, meses, hrefIdentidad, hrefLaboral, puedeEditar, cuentas }: {
   identidad: DatoDeLegajo[]
   laboral: DatoDeLegajo[]
   categorias?: PasoDeCategoriaDeLegajo[]
@@ -59,6 +60,9 @@ export function CostadoLegajo({ identidad, laboral, categorias = [], asignacion,
   hrefIdentidad: string
   hrefLaboral: string
   puedeEditar: boolean
+  /** Las cuentas sueldo y FCL (01/10/2026). Sólo llega para quien liquida sueldos: sin permiso no
+   *  hay bloque, ni siquiera vacío — un «sin cargar» ahí diría que nadie las cargó. */
+  cuentas?: ReactNode
 }) {
   // El tope de la barra es el mes con más horas de la serie: comparan entre sí, no contra una
   // jornada teórica. Por eso ninguna dice un porcentaje.
@@ -85,6 +89,8 @@ export function CostadoLegajo({ identidad, laboral, categorias = [], asignacion,
           <DatoDeCostado key={d.k} k={d.k} v={d.v} falta={d.falta} mono={d.mono} />
         ))}
       </div>
+
+      {cuentas}
 
       {/* CRONOLOGÍA DE CATEGORÍA (dueño, 30/09/2026): de dónde salió cada paso, más nuevo arriba.
           Es la misma tabla que fija `personas.categoria`, así que el primer renglón coincide con

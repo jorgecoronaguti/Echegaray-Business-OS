@@ -55,6 +55,8 @@ import { CamposAlta } from '@/features/administracion/components/FormularioPerso
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
 import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
+import { controlPorPersona, leerCuentas } from '@/features/administracion/services/cuentasDelLegajoService'
+import { CONTROLES, ROTULO_CONTROL, conteoPorControl, esControl } from '@/features/administracion/services/cuentasDelLegajo'
 import { EnlaceCargarAsistencia } from '@/features/administracion/components/asistencia/carga/EnlaceCargarAsistencia'
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
@@ -106,6 +108,8 @@ type Busqueda = {
   buscar?: string
   /** La solapa Retribución: el año y si las quincenas muestran lo pagado o lo liquidado. */
   anio?: string; medida?: string
+  /** El recorte por cuentas sueldo/FCL (`completo`, `falta_fcl`…). Sólo para quien liquida sueldos. */
+  cuentas?: string
 }
 
 /**
@@ -121,7 +125,7 @@ type Busqueda = {
 function armarHref(base: Busqueda, cambios: Record<string, string | undefined> = {}): string {
   const sinDefecto = (f?: string) => (f === 'plantel' ? undefined : f)
   const ajustados = 'f' in cambios ? { ...cambios, f: sinDefecto(cambios.f) } : cambios
-  return enlaceConservando(RUTA, {}, { q: base.q, f: sinDefecto(base.f), obra: base.obra }, ajustados)
+  return enlaceConservando(RUTA, {}, { q: base.q, f: sinDefecto(base.f), obra: base.obra, cuentas: base.cuentas }, ajustados)
 }
 
 /** La solapa Asistencia y su quincena. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
@@ -477,9 +481,14 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  const {
+  // LAS CUENTAS SUELDO Y FCL (dueño, 01/10/2026) van en paralelo y sólo para quien liquida: la función
+  // tira 42501 a cualquier otro. A «Inactivos» no se le pregunta si tiene cuenta para cobrar.
+  const [{
     listado, marcas, hh, papeles, presencia, conteos, filasDelPadron, tardanzasQuincena, quincena,
-  } = await leerTodo(supabase, filtro, sp.q, hoy)
+  }, cuentas] = await Promise.all([
+    leerTodo(supabase, filtro, sp.q, hoy),
+    liquida && filtro !== 'inactivos' ? leerCuentas(supabase) : null,
+  ])
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
@@ -506,6 +515,15 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // enlace se comparte por mensaje, sobrevive a recargar y no muestra un nombre que puede cambiar.
   const obraElegida = sp.obra?.trim() || undefined
   const personas = filtrarPorObra(listado.data ?? [], obraElegida)
+  // EL RECORTE POR CUENTAS, DESPUÉS DEL DE OBRA y sobre las mismas filas que cuenta: el número de cada
+  // pastilla es cuántas personas de esta lista hay en ese estado, no del plantel entero.
+  const controlDe = cuentas?.estado === 'ok' ? controlPorPersona(cuentas.filas) : null
+  const cuentaElegida = controlDe && esControl(sp.cuentas) ? sp.cuentas : undefined
+  const visibles = controlDe && cuentaElegida ? personas.filter((p) => controlDe.get(p.id) === cuentaElegida) : personas
+  const conteoCuentas = controlDe ? conteoPorControl(personas.map((p) => p.id), controlDe) : null
+  const vacioCuentas = cuentaElegida && personas.length > 0
+    ? `Nadie de esta lista en «${ROTULO_CONTROL[cuentaElegida]}». «Todas» vuelve a la lista entera.`
+    : null
   const chipsDeObra = obrasDelCorte(filasDelPadron, filtro, obraElegida)
   const sinObra = sinObraDelCorte(filasDelPadron, filtro)
   const pulso = armarPulso(marcas, hh, papeles, presencia, tardanzasQuincena, quincena, hoy)
@@ -533,6 +551,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           { clave: 'declarada', que: 'la presencia declarada de hoy', error: presencia?.error },
           { clave: 'hh', que: 'las horas del mes', error: hh?.error },
           { clave: 'papeles', que: 'los papeles del legajo', error: papeles?.error },
+          { clave: 'cuentas', que: 'las cuentas bancarias', error: cuentas?.estado === 'error' ? cuentas.mensaje : null },
         ].filter((f) => f.error).map((f) => (
           <div key={f.clave} className="max-md:!px-4" style={{ padding: '12px 20px 0' }}>
             <Aviso tono="info" testid={`sin-lectura-${f.clave}`} titulo={`No pude leer ${f.que}`}>
@@ -553,7 +572,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             // LA OBRA VIAJA CON EL BUSCADOR. Un formulario manda SÓLO lo que declara: sin este
             // campo, escribir un nombre borraba el recorte por obra y la búsqueda contestaba sobre
             // el plantel entero. Es el mismo defecto que ya se pagó en la solapa Horas.
-            oculto: { f: filtro === 'plantel' ? undefined : filtro, obra: obraElegida },
+            oculto: { f: filtro === 'plantel' ? undefined : filtro, cuentas: cuentaElegida, obra: obraElegida },
             testid: 'buscar-persona',
           }}
           alta={puedeAlta ? {
@@ -585,12 +604,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 rotulo="Filtros"
                 resumen={`${FILTROS.find((f) => f.valor === filtro)?.etiqueta ?? 'Plantel'} · ${
                   obraElegida ? (chipsDeObra.find((c) => c.clave === obraElegida)?.etiqueta ?? obraElegida) : 'todas las obras'
-                } · ${personas.length}/${conteos[filtro] ?? personas.length}`}
+                }${cuentaElegida ? ` · ${ROTULO_CONTROL[cuentaElegida]}` : ''} · ${visibles.length}/${conteos[filtro] ?? visibles.length}`}
                 testid="filtros-plantel"
               >
               <FiltrosSuaves
                 testid="filtro"
-                conteo={{ n: personas.length, total: conteos[filtro] ?? personas.length }}
+                conteo={{ n: visibles.length, total: conteos[filtro] ?? visibles.length }}
                 opciones={FILTROS.map((f) => ({
                   clave: f.valor,
                   etiqueta: f.etiqueta,
@@ -615,13 +634,39 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 filtro={filtro}
                 hrefDe={(cambios) => armarHref(sp, cambios)}
               />
+
+              {/* CUENTAS SUELDO Y FCL (dueño, 01/10/2026): quién está en regla y a quién le falta qué.
+                  Una tercera fila de recortes y no una columna: la grilla del handoff no tiene lugar, y
+                  el recorte contesta la pregunta entera —el número dice cuántos, el clic dice quiénes—. */}
+              {conteoCuentas && (
+                <FiltrosSuaves
+                  testid="filtro-cuentas"
+                  rotulo="Cuentas"
+                  desplazable
+                  opciones={[
+                    { clave: 'todas', etiqueta: 'Todas', href: armarHref(sp, { cuentas: undefined }), activo: !cuentaElegida },
+                    ...CONTROLES.map((c) => ({
+                      clave: c,
+                      etiqueta: ROTULO_CONTROL[c],
+                      href: armarHref(sp, { cuentas: c }),
+                      activo: c === cuentaElegida,
+                      cuenta: conteoCuentas[c],
+                    })),
+                  ]}
+                />
+              )}
+              {cuentas?.estado === 'falta_migracion' && (
+                <p data-testid="cuentas-sin-base" style={{ fontSize: '11.5px', color: V.tenue, marginBottom: 10 }}>
+                  Cuentas: falta aplicar la migración en la base.
+                </p>
+              )}
               </PlegadoEnTelefono>
 
               <TablaPersonas
-                personas={personas}
+                personas={visibles}
                 conBaja={filtro === 'inactivos'}
                 pulso={pulso}
-                vacio={vacioDe(filtro, sp.q, obraElegida)}
+                vacio={vacioCuentas ?? vacioDe(filtro, sp.q, obraElegida)}
                 // ═══ EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (dueño, 09/09/2026) ═══
                 //
                 // *«marcar que la persona está en el trabajo, a través de los usuarios admin / jefe
