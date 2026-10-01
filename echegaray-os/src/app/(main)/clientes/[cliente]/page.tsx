@@ -439,12 +439,6 @@ export default async function ClientePage({ params, searchParams }: {
    *  preserva todo lo que hay en la dirección. */
   const fechasCobranza = leerFiltroDeFechas(q)
 
-  /** Las OC de cada obra, para el encabezado de cada grupo de Cobranzas. Sale de los MISMOS papeles
-   *  que ya trajo la ficha: ninguna consulta nueva. */
-  const ordenesPorObra = new Map(
-    (papeles ? [...papeles.porObra.entries()] : []).map(([obraId, r]) => [obraId, r.oc]),
-  )
-
   // ═══ EL CONTRATO EN DÓLARES DEL CLIENTE ═══
   //
   // Σ de lo que sus obras tienen contratado en U$S. `null` = ninguna lo tiene, y entonces la
@@ -742,7 +736,6 @@ export default async function ClientePage({ params, searchParams }: {
           <SolapaCobranzas
             filas={cobranzas}
             obras={todas.map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))}
-            obrasConOC={ordenesPorObra}
             contratado={contratadoEnCurso}
             contratadoUsd={contratoUsd}
             recorte={recorteCobranza}

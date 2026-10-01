@@ -36,6 +36,8 @@ export interface FilaCobranza {
    * vista la publica sólo desde la migración `20261001T1200`; `undefined` = la vista aún no la trae.
    */
   fecha_venta?: string | null
+  /** Días hasta la fecha de cobro contra el hoy de San Juan (negativo = ya pasó). Lo mide la vista. */
+  dias_cobro?: number | null
   factura: string | null
   numero_comprobante: string | null
   concepto: string | null
@@ -69,7 +71,7 @@ const COLUMNAS_BASE = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_
 /** El papel que respalda una fila sin factura. Lo agrega la migración `20260911T0920`. */
 const COLUMNAS_RESPALDO = 'respaldo_drive_id, respaldo_titulo, respaldo_nota'
 /** La fecha de factura (col. Q). La agrega la migración `20261001T1200`. */
-const COLUMNAS_FECHA_FACTURA = 'fecha_venta'
+const COLUMNAS_FECHA_FACTURA = 'fecha_venta, dias_cobro'
 const COLUMNAS = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}, ${COLUMNAS_FECHA_FACTURA}`
 const COLUMNAS_SIN_FECHA_FACTURA = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}`
 

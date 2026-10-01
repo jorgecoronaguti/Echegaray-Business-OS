@@ -30,46 +30,62 @@ import { sinComentarios } from '../../../../shared/definiciones/fuente.ts'
 const RUTA = fileURLToPath(new URL('./SolapaCobranzas.tsx', import.meta.url))
 const FUENTE = sinComentarios(readFileSync(RUTA, 'utf8'))
 
-/** El cuerpo de los dos componentes que dibujan un bloque con su total. */
-const CUERPO_DE_LOS_BLOQUES = FUENTE.slice(FUENTE.indexOf('function Seccion('))
+/** El cuerpo del componente que dibuja una banda con su total. */
+const CUERPO_DE_LA_BANDA = FUENTE.slice(FUENTE.indexOf('function Seccion('))
+/** Todo lo que va antes: la cabecera de cifras y el armado de la tabla. */
+const CABECERA = FUENTE.slice(0, FUENTE.indexOf('function Seccion('))
 
-test('el archivo sigue teniendo los dos componentes que dibujan un bloque', () => {
-  // Si se renombran, esta prueba dejaría de mirar nada y habría que actualizarla a conciencia.
+test('el archivo sigue teniendo el componente que dibuja una banda', () => {
+  // Si se renombra, esta prueba dejaría de mirar nada y habría que actualizarla a conciencia.
   assert.ok(FUENTE.includes('function Seccion('), 'no existe `Seccion`')
-  assert.ok(CUERPO_DE_LOS_BLOQUES.includes('function GrupoDeTrabajo('), 'no existe `GrupoDeTrabajo`')
 })
 
-test('NINGÚN BLOQUE PUBLICA UN TOTAL QUE NO SEA LA SUMA DE SUS FILAS VISIBLES', () => {
+test('NINGUNA BANDA PUBLICA UN TOTAL QUE NO SEA LA SUMA DE SUS FILAS VISIBLES', () => {
   assert.ok(
-    !CUERPO_DE_LOS_BLOQUES.includes('totalesDeCobranzas'),
-    'un bloque volvió a usar `totalesDeCobranzas`: sus totales dejan de cerrar con sus renglones',
+    !CUERPO_DE_LA_BANDA.includes('totalesDeCobranzas'),
+    'una banda volvió a usar `totalesDeCobranzas`: sus totales dejan de cerrar con sus renglones',
   )
   assert.ok(
-    !/\.facturado/.test(CUERPO_DE_LOS_BLOQUES),
-    '«facturado» cuenta sólo las filas B: en el encabezado de un bloque que muestra B y N no cierra',
+    !/\.facturado/.test(CUERPO_DE_LA_BANDA),
+    '«facturado» cuenta sólo las filas B: en una banda que muestra B y N no cierra',
   )
   // Y lo que sí tiene que usar: la suma de lo que se ve, y las descomposiciones que cierran.
-  assert.ok(CUERPO_DE_LOS_BLOQUES.includes('totalDeFilas(filas)'), 'el bloque dejó de sumar sus filas')
-  assert.ok(CUERPO_DE_LOS_BLOQUES.includes('totalPorCircuito(filas)'))
-  assert.ok(CUERPO_DE_LOS_BLOQUES.includes('vencidoDeFilas(filas)'))
-  // Una fila sin importe no suma: si el bloque deja de contarlas, el total vuelve a callar algo.
-  assert.ok(CUERPO_DE_LOS_BLOQUES.includes('filasSinImporte(filas)'))
+  assert.ok(CUERPO_DE_LA_BANDA.includes('totalDeFilas(filas)'), 'la banda dejó de sumar sus filas')
+  assert.ok(CUERPO_DE_LA_BANDA.includes('totalPorCircuito(filas)'))
+  assert.ok(CUERPO_DE_LA_BANDA.includes('vencidoDeFilas(filas)'))
+  // Una fila sin importe no suma: si la banda deja de contarlas, el total vuelve a callar algo.
+  assert.ok(CUERPO_DE_LA_BANDA.includes('filasSinImporte(filas)'))
 })
 
-test('la tira de cifras mide LO QUE SE ESTÁ VIENDO, no la pestaña entera', () => {
-  // Con un recorte puesto (`?cob=n`), medir sobre todas las filas ponía POR COBRAR $114.916.324 en
-  // la cabecera arriba de una banda que decía $18.750.000: dos rótulos iguales, dos números.
-  const cabecera = FUENTE.slice(0, FUENTE.indexOf('function Seccion('))
-  assert.ok(cabecera.includes('totalesDeCobranzas(visibles)'), 'la cabecera volvió a medir sin el recorte')
-  // «Próximo cobro» salió de la cabecera (dueño, 24/09/2026: cuatro cifras y ninguna más).
-  assert.ok(
-    !cabecera.includes('totalesDeCobranzas(filas)'),
-    'quedó una medición sobre la pestaña entera conviviendo con las bandas recortadas',
-  )
+test('LA CABECERA ES LA POSICIÓN DEL CLIENTE ENTERO: no se mueve con los filtros (dueño, 01/10/2026)', () => {
+  // Del 11/09 al 01/10 la cabecera medía el recorte y lo pegaba al rótulo. Con «Por cobrar» elegido
+  // decía «COBRADO EN BLANCO · POR COBRAR — nada cobrado en blanco», que el dueño leyó como lo que
+  // dice: que el cliente no había pagado nada. La posición se mide sobre TODAS las filas.
+  assert.ok(CABECERA.includes('totalesDeCobranzas(filas)'), 'la cabecera dejó de medir al cliente entero')
+  assert.ok(!CABECERA.includes('totalesDeCobranzas(visibles)'), 'la cabecera volvió a medir el recorte')
+  assert.ok(!FUENTE.includes('conRecorte('), 'volvió el recorte pegado al rótulo de una cifra')
+})
+
+test('UNA BANDA FILTRADA DICE QUE ES UNA PARTE: «3 de 11 filas»', () => {
+  // Es lo que evita el defecto que la regla anterior quería evitar —dos «por cobrar» con dos
+  // números— sin tocar la cabecera: el número de una banda recortada lleva su denominador.
+  assert.ok(CABECERA.includes('deCuantas={todas.porCobrar.length}'))
+  assert.ok(CABECERA.includes('deCuantas={todas.cobrado.length}'))
+  assert.ok(/\$\{filas\.length\} de \$\{deCuantas\} filas/.test(CUERPO_DE_LA_BANDA))
+})
+
+test('UNA SOLA TABLA: el encabezado de columnas se dibuja una vez y no hay tablitas por obra', () => {
+  assert.equal(FUENTE.split('<EncabezadoDeColumnas').length - 1, 1, 'el encabezado de columnas tiene que aparecer UNA vez')
+  assert.ok(!FUENTE.includes('agruparCobranzas('), 'volvió el agrupado por obra: la agenda deja de estar ordenada de corrido')
+  assert.ok(!FUENTE.includes('OrdenesDeLaObra'), 'volvió la lista de OC con importes entre los renglones')
+})
+
+test('LO COBRADO SE VE SIN BUSCARLO: la banda no nace plegada', () => {
+  const cobrado = CABECERA.slice(CABECERA.indexOf('clave="cobrado"'), CABECERA.indexOf('clave="anuladas"'))
+  assert.ok(cobrado.length > 0 && !/\bplegada\b/.test(cobrado), '«Cobrado» volvió a nacer plegada')
 })
 
 test('la cabecera son CUATRO cifras: contratado, cobrado en blanco, cobrado en negro y falta cobrar (dueño 24/09)', () => {
-  const cabecera = FUENTE.slice(0, FUENTE.indexOf('function Seccion('))
-  for (const r of ['Contratado', 'Cobrado en blanco', 'Cobrado en negro', 'Falta cobrar']) assert.ok(cabecera.includes(`'${r}'`), r)
-  for (const r of ["'Vencido'", "'Facturado (B)'", "'Cobrado c/IVA'", "'Por cobrar'"]) assert.ok(!cabecera.includes(`conRecorte(${r})`), `volvió ${r} a la cabecera`)
+  for (const r of ['Contratado', 'Cobrado en blanco', 'Cobrado en negro', 'Falta cobrar']) assert.ok(CABECERA.includes(`'${r}'`), r)
+  for (const r of ["'Vencido'", "'Facturado (B)'", "'Cobrado c/IVA'", "'Próximo cobro'"]) assert.ok(!CABECERA.includes(r), `volvió ${r} a la cabecera`)
 })
