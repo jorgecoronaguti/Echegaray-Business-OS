@@ -44,6 +44,7 @@ import {
   type CampoEditable, type LineaConOverrides, type SelloDeLaQuincena,
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
+import { CONVENIO_UOCRA, escalaDeLaFila, type EscalaDeLaFila } from './exposicionConvenio.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
 import { leerRestituciones } from './presentismoRestitucionService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
@@ -362,6 +363,17 @@ export async function getLiquidacionDeLaQuincena(
     pisoDesde: pisoDesdeDe.get(l.personaId) ?? null,
     hasta: q.hasta,
   })
+  // ═══ UNA SOLA TABLA PARA LOS DOS RENGLONES (dueño, 01/10/2026) ═══ El $/h de «Recibo» y el de «Plataforma» salen de
+  // `convenio_escala` a `q.hasta`, cada uno con su categoría. Antes el del recibo salía de `recibo_sueldo_linea` y el de
+  // plataforma de la escala: la misma categoría decía 7.561 y 7.420. El convenio es el de la exposición (con el
+  // supuesto UOCRA del obrero sin convenio), el mismo con el que se calcula el piso.
+  const convenioDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.convenioSupuesto ? CONVENIO_UOCRA : l.convenio]))
+  const conEscala = <T extends { personaId: string; sueldo: { categoriaRecibo?: string | null } | null }>(l: T): T & { escala: EscalaDeLaFila } => ({
+    ...l,
+    escala: escalaDeLaFila(
+      exposicion.escalas, convenioDe.get(l.personaId), categoriaDe.get(l.personaId) ?? null, l.sueldo?.categoriaRecibo ?? null, q.hasta,
+    ),
+  })
   const tardanzas = tardanzasPorPersona(presencias.data)
   // LAS FALTAS SALEN DE LAS MISMAS PRESENCIAS (dueño, 16/09/2026). Una falta injustificada pierde el
   // presentismo igual que una tardanza; una licencia reconocida no. Lo decide `presentismo.ts`.
@@ -419,13 +431,13 @@ export async function getLiquidacionDeLaQuincena(
         ? c.lineas.map((l) => conMarcaDePago(conArrastres(
           sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l),
             espejo.cadenaPorPersona.get(l.personaId) ?? null), arrastres, false), pagadas,
-        ))
+        )).map(conEscala)
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
         : c.lineas.map((l) => conMarcaDePago(conArrastres(aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
           blancoDe(c.grupo, l), presentismoDe(c.grupo, l), formulas.get(l.personaId) ?? {},
-        ), arrastres, true), pagadas)),
+        ), arrastres, true), pagadas)).map(conEscala),
     })),
     camposEditables,
     espejo,

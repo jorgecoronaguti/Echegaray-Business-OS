@@ -75,6 +75,29 @@ export function pisoVigente(
     : { valorHora: Number(mejor.valorHora), desde: mejor.desde, fuente: mejor.fuente }
 }
 
+/**
+ * LA ESCALA DE LOS DOS RENGLONES «Recibo / Plataforma» (dueño, 01/10/2026: «estás leyendo de distintas tablas de
+ * supabase cuando te dije que tenías que leer de la misma»). Los dos $/h salen de `convenio_escala`, vigentes a la
+ * fecha de la quincena y cada uno con SU categoría: misma categoría ⇒ mismo número, siempre. El $/h de un recibo real
+ * (`recibo_sueldo_linea`) sigue en la columna «$/h cat.»; acá no se mezcla con la escala.
+ */
+export interface EscalaDeLaFila {
+  /** La escala de la categoría del recibo. `null` = sin recibo, o sin fila de escala para esa categoría. */
+  recibo: PisoDeConvenio | null
+  /** La escala de la categoría de plataforma (legajo). */
+  plataforma: PisoDeConvenio | null
+}
+
+export function escalaDeLaFila(
+  escalas: readonly FilaEscala[], convenio: string | null | undefined,
+  categoriaPlataforma: string | null | undefined, categoriaRecibo: string | null | undefined, fecha: string,
+): EscalaDeLaFila {
+  return {
+    recibo: pisoVigente(escalas, convenio, categoriaRecibo, fecha),
+    plataforma: pisoVigente(escalas, convenio, categoriaPlataforma, fecha),
+  }
+}
+
 /** Lo que la exposición necesita saber de una persona. Nada de esto se deriva: se lee del legajo. */
 export interface PersonaExpuesta {
   personaId: string

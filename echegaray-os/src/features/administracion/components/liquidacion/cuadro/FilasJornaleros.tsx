@@ -48,7 +48,7 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
   const c = categoriasDeLaFila({
     plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? l.sello?.piso ?? null,
     categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo, recategorizadaDesde: s?.recategorizadaDesde, estado: s?.estado ?? null,
-    sello: l.sello,
+    sello: l.sello, escala: l.escala ?? null,
   })
   return (
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).

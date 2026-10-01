@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  clave, exponerAlPiso, pisoVigente, resumenDeExposicion,
+  clave, escalaDeLaFila, exponerAlPiso, pisoVigente, resumenDeExposicion,
   type FilaEscala, type PersonaExpuesta,
 } from './exposicionConvenio.ts'
 
@@ -99,4 +99,17 @@ test('el resumen cuenta las que no tienen piso y nombra sus convenios', () => {
   assert.equal(r.sinPiso, 2)
   assert.equal(r.comparadas, 1, 'las sin piso NO cuentan como comparadas')
   assert.deepEqual(r.conveniosSinEscala, ['UOCRA — Ley 22.250 (construcción)'], 'sin repetir')
+})
+
+// UNA SOLA TABLA PARA LOS DOS RENGLONES (01/10/2026): recibo y plataforma con la misma categoría ⇒ la misma fila.
+test('escalaDeLaFila: misma categoría ⇒ mismo piso, aunque se escriba distinto; vigente a la fecha', () => {
+  const f = (categoria: string, desde: string, valorHora: number): FilaEscala => ({ convenio: 'UOCRA', categoria, desde, valorHora, fuente: 'x' })
+  const escalas = [f('Oficial Especializado', '2026-08-01', 7420), f('Oficial Especializado', '2026-09-01', 7561), f('Medio Oficial', '2026-08-01', 5866)]
+  const e = escalaDeLaFila(escalas, 'UOCRA', 'oficial_especializado', 'OFICIAL ESPECIALIZADO', '2026-09-15')
+  assert.equal(e.recibo?.valorHora, 7561)
+  assert.deepEqual(e.recibo, e.plataforma)
+  assert.equal(escalaDeLaFila(escalas, 'UOCRA', 'oficial_especializado', null, '2026-08-31').plataforma?.valorHora, 7420)
+  // Sin tramo de septiembre para Medio Oficial: la última fila existente, con su fecha.
+  assert.deepEqual(escalaDeLaFila(escalas, 'UOCRA', 'medio_oficial', 'MEDIO OFICIAL', '2026-09-15').recibo?.desde, '2026-08-01')
+  assert.equal(escalaDeLaFila(escalas, 'UOCRA', 'oficial', null, '2026-09-15').recibo, null)
 })

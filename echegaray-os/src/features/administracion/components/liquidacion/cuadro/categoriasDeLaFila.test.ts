@@ -44,3 +44,49 @@ test('RECATEGORIZADO: el renglón del recibo dice la categoría nueva, y el titl
   assert.match(c.titulo, /\$7\.561\/h es lo que el estudio pagó por Oficial especializado/)
   assert.doesNotMatch(c.titulo, /último real; el de este período no llegó\): Oficial especializado/)
 })
+
+// ═══ UNA SOLA TABLA (dueño, 01/10/2026, Quiroga Sebastián: «Recibo: $7.561/h» y «Plataforma: $7.420/h») ═══
+// Los dos renglones salen de `convenio_escala`: misma categoría ⇒ mismo número. Revertir `escala` en
+// `categoriasDeLaFila` devuelve los dos números de tablas distintas y estos tests se ponen rojos.
+const SEP = { valorHora: 7561, desde: '2026-09-01', fuente: 'recibos Q1-09/2026' }
+const AGO_MEDIO = { valorHora: 5866, desde: '2026-08-01', fuente: 'uocra_escala' }
+
+test('MISMA CATEGORÍA, MISMO $/H: el recibo de otra tabla (7.420) no se mezcla con la escala', () => {
+  const c = categoriasDeLaFila({
+    plataforma: 'Oficial especializado', pisoPlataforma: 7420, categoriaRecibo: 'OFICIAL ESPECIALIZADO', valorHoraRecibo: 7420,
+    periodoRecibo: 'Q1-09/2026', estado: 'recibo', escala: { recibo: SEP, plataforma: SEP },
+  })
+  assert.equal(c.recibo, 'Recibo: Oficial especializado · $7.561/h')
+  assert.equal(c.plataforma, 'Plataforma: Oficial especializado · $7.561/h')
+  assert.equal(c.coinciden, true)
+  assert.match(c.titulo, /rige desde el 01\/09\/2026/)
+})
+
+test('CATEGORÍAS DISTINTAS: cada renglón con la escala de SU categoría, y no coinciden', () => {
+  const c = categoriasDeLaFila({
+    plataforma: 'Ayudante', pisoPlataforma: 5399, categoriaRecibo: 'OFICIAL ESPECIALIZADO', valorHoraRecibo: 1,
+    periodoRecibo: 'Q1-09/2026', estado: 'recibo', escala: { recibo: SEP, plataforma: { valorHora: 5502, desde: '2026-09-01', fuente: 'x' } },
+  })
+  assert.equal(c.recibo, 'Recibo: Oficial especializado · $7.561/h')
+  assert.equal(c.plataforma, 'Plataforma: Ayudante · $5.502/h')
+  assert.equal(c.coinciden, false)
+})
+
+test('SIN FILA DE ESCALA PARA LA CATEGORÍA DEL RECIBO: «—/h», no el valor de otra tabla', () => {
+  const c = categoriasDeLaFila({
+    plataforma: 'Oficial', pisoPlataforma: 6348, categoriaRecibo: 'OFICIAL', valorHoraRecibo: 6468,
+    periodoRecibo: 'Q1-09/2026', estado: 'recibo', escala: { recibo: null, plataforma: { valorHora: 6468, desde: '2026-09-01', fuente: 'x' } },
+  })
+  assert.equal(c.recibo, 'Recibo: Oficial · —/h')
+  assert.equal(c.coinciden, false)
+})
+
+test('MEDIO OFICIAL SIN TRAMO DE SEPTIEMBRE: muestra la última fila existente con su fecha', () => {
+  const c = categoriasDeLaFila({
+    plataforma: 'Medio oficial', pisoPlataforma: null, categoriaRecibo: 'MEDIO OFICIAL', valorHoraRecibo: null,
+    periodoRecibo: 'Q1-09/2026', estado: 'estimado', escala: { recibo: AGO_MEDIO, plataforma: AGO_MEDIO },
+  })
+  assert.equal(c.recibo, 'Recibo: Medio oficial · $5.866/h')
+  assert.equal(c.coinciden, true)
+  assert.match(c.titulo, /rige desde el 01\/08\/2026/)
+})

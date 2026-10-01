@@ -28,6 +28,7 @@
 // le doy nada por banco» es una afirmación— y por eso el override viaja como `number | null` y la
 // ausencia como la falta de la clave, nunca como 0.
 
+import type { EscalaDeLaFila } from './exposicionConvenio.ts'
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 import { sueldoBlancoNegro, valorHoraDelBlanco, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
@@ -158,6 +159,8 @@ export interface LineaConOverrides extends LineaLiquidada {
   sueldo: SueldoBlancoNegro | null
   /** La foto de la quincena cerrada: el $/h y el piso de ESA fecha. `null` en la abierta — ahí manda `sueldo`. */
   sello: SelloDeLaQuincena | null
+  /** La escala de las dos categorías de la fila (recibo y plataforma), de `convenio_escala` a la fecha de la quincena. */
+  escala?: EscalaDeLaFila | null
   /**
    * PRESENTISMO (dueño, 15/09/2026): la parte del cobra que se pierde con una sola tardanza. Se calcula
    * sobre las HORAS QUE QUEDARON (manuales o de la app). Con blanco + negro vive sólo en el blanco (dueño

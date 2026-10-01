@@ -6,7 +6,15 @@
 // Hasta hoy la fila decía sólo la de plataforma y el $/h del recibo, y el dueño no podía ver de dónde salía cada número.
 // Puro: recibe lo que la fila ya tiene y devuelve dos renglones y un title. Nada se calcula acá.
 
+import type { EscalaDeLaFila } from '../../../services/exposicionConvenio'
+
 export interface EntradaDeCategorias {
+  /**
+   * LA ESCALA DE `convenio_escala` PARA CADA RENGLÓN (dueño, 01/10/2026: «estás leyendo de distintas tablas»). Con ella
+   * los dos $/h salen de la misma tabla, cada uno con su categoría. Sin ella (llamador viejo) se usan `pisoPlataforma`
+   * y `valorHoraRecibo`, que pueden venir de tablas distintas.
+   */
+  escala?: EscalaDeLaFila | null
   /** El rótulo de la categoría del legajo (plataforma), ya legible: «Oficial», «Ayudante»… `null` = sin categoría. */
   plataforma: string | null
   /** El piso vigente de esa categoría (escala del CCT), $/h. */
@@ -56,11 +64,20 @@ export function periodoCorto(p: string | null | undefined): string {
   return `${m[1]}ª ${mes}-${m[3].slice(2)}`
 }
 
-export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
+/** « (rige desde el 01/09/2026)» de una fila de escala; vacío sin fila. */
+const desdeDe = (f: { desde: string } | null | undefined): string => (f ? ` (rige desde el ${dia(f.desde)})` : '')
+
+export function categoriasDeLaFila(entrada: EntradaDeCategorias): CategoriasDeLaFila {
+  // UNA SOLA TABLA: con escala, el piso de plataforma y el $/h del recibo son las filas de `convenio_escala`.
+  const e: EntradaDeCategorias = entrada.escala == null ? entrada : {
+    ...entrada,
+    pisoPlataforma: entrada.escala.plataforma?.valorHora ?? null,
+    valorHoraRecibo: entrada.escala.recibo?.valorHora ?? null,
+  }
   const plat = e.plataforma ?? 'sin categoría'
   const plataforma = `Plataforma: ${plat} · ${pesos(e.pisoPlataforma)}/h`
   const catRecibo = legible(e.categoriaRecibo)
-  const hayRecibo = e.estado != null && (catRecibo != null || e.valorHoraRecibo != null) && e.periodoRecibo != null
+  const hayRecibo = e.estado != null && (catRecibo != null || entrada.valorHoraRecibo != null) && e.periodoRecibo != null
   if (!hayRecibo) {
     // ═══ UNA QUINCENA CERRADA DICE SU $/H (dueño, 17/09/2026) ═══
     //
@@ -105,11 +122,17 @@ export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
   const titulo = [
     ...(antes ? [
       `Recategorizado: su último recibo (${periodoCorto(antes.periodo)}) todavía decía ${legible(antes.categoria)}; el legajo ya dice ${catRecibo}.`,
-      `${pesos(e.valorHoraRecibo)}/h es lo que el estudio pagó por ${catRecibo} en la última quincena liquidada (sin recibos de esa categoría, el piso de plataforma).`,
+      entrada.escala
+        ? `${pesos(e.valorHoraRecibo)}/h es la escala de ${catRecibo} a la fecha de la quincena.`
+        : `${pesos(e.valorHoraRecibo)}/h es lo que el estudio pagó por ${catRecibo} en la última quincena liquidada (sin recibos de esa categoría, el piso de plataforma).`,
     ] : [
       `Recibo ${periodo}${e.estado === 'estimado' ? ' (último real; el de este período no llegó)' : ''}: ${catRecibo ?? 'sin categoría'} · ${pesos(e.valorHoraRecibo)}/h`,
     ]),
     `Plataforma (legajo): ${plat} · piso ${pesos(e.pisoPlataforma)}/h`,
+    ...(entrada.escala ? [
+      `Los dos $/h son la escala del convenio (convenio_escala): ${catRecibo ?? '¿categoría?'} ${pesos(e.valorHoraRecibo)}/h${desdeDe(entrada.escala.recibo)}; ${plat} ${pesos(e.pisoPlataforma)}/h${desdeDe(entrada.escala.plataforma)}.`,
+      ...(entrada.valorHoraRecibo != null && e.estado === 'recibo' ? [`Lo que liquidó el estudio en el recibo de ${periodo}: ${pesos(entrada.valorHoraRecibo)}/h (columna «$/h cat.»).`] : []),
+    ] : []),
     coinciden ? 'Coinciden.' : 'NO coinciden: el blanco se paga por el recibo; el negro por la plataforma.',
   ].join('\n')
   return { recibo, plataforma, titulo, coinciden }
