@@ -572,15 +572,27 @@ export const OBRAS_FUTURAS = [
     obra: 'PLATEA TANQUE GASOIL',
     ventaTexto: 'Platea para tanque de combustible',
     // Cobranzas fila 104 (OC 00002-00002345, 25/09/2026): $1.209.118,58 neto. Código OB-0072.
-    // El costo cotizado ($548.209,99 directo) está cargado en presupuestos-cotizados.mjs (v1 aprobado) y se ve en
-    // obra_economia. Acá va `sinCosto` porque sin fechas del dueño la grilla no puede proyectar egresos y su
-    // TOTAL rompería (#VALUE!, visto 29/09). No se inventan fechas.
+    // FECHAS DEL DUEÑO (01/10/2026, por el chat): «empiezan el 15/10 y terminan el 30/11».
+    inicio: '2026-10-15',
+    fin: '2026-11-30',
+    // COSTO COTIZADO (presupuestos-cotizados.mjs v1 aprobado): $548.209,99 directo. Estuvo cargado el
+    // 29/09 y se retiró porque sin fechas el TOTAL de la grilla daba #VALUE!; con fechas vuelve.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 0,
-    egresos: [],
-    sinCosto: 'Costo cotizado en presupuestos del OS ($548.209,99); sin fechas de obra no se proyecta a la grilla.',
+    // MO $212.051,65 + cargas $300.747,30 (Presupuesto, col. O + Q). AL PESO, como todo el catálogo: la
+    // grilla suma pesos enteros y un centavo suelto rompe la identidad con `_OBRAS_RAW`.
+    moCargasPesos: 512_799,
+    jornalPesos: 212_052,
+    egresos: [
+      {
+        concepto: 'Materiales, equipos y subcontratos (Presupuesto col. P)', proveedor: 'A DEFINIR', familia: 'Materiales',
+        // ESTIMACIÓN: el día que arranca la obra. No hay factura ni pedido todavía.
+        monto: 35_411, fechaEstimada: '2026-10-15',
+        nota: 'Platea para tanque de combustible .xlsm · Presupuesto · Σ col. P = $35.411,04. NO incluye los materiales que el PDF estima aparte (mallas, ripio, arena, cemento).',
+      },
+    ],
+    noCaja: { maquinaPropia: 0 },
     pctEjecutado: 0,
-    notas: 'CÁLCULO: costo de la planilla (Platea para tanque de combustible .xlsm, Presupuesto). Total $548.209,99 = MO+cargas $512.798,95 + otros $35.411,04. Cotiza SOLO mano de obra; materiales fuera. Venta: Cobranzas fila 104 (OC 2345, $1.209.118,58 neto). DESCONOCIDO: fechas de obra.',
+    notas: 'CÁLCULO: costo de la planilla (Platea para tanque de combustible .xlsm, Presupuesto). Total $548.209,99 = MO+cargas $512.798,95 + otros $35.411,04. Cotiza SOLO mano de obra; materiales fuera. Venta: Cobranzas fila 104 (OC 2345, $1.209.118,58 neto). Fechas: dueño, 01/10/2026.',
   },
   {
     clave: 'messina-adicional-playon-dilucion',
@@ -591,15 +603,25 @@ export const OBRAS_FUTURAS = [
     ventaTexto: 'Adicional Playón Dilución de Ácido',
     // Cobranzas fila 105 (OC 00002-00002361, 25/09/2026): $5.025.105,97 neto. Código OB-0073, adicional
     // de OB-0022 (obra_padre_id = messina-playon-dilucion-acido).
-    // El costo cotizado ($2.227.391,30 directo) está cargado en presupuestos-cotizados.mjs (v1 aprobado) y se ve en
-    // obra_economia. Acá va `sinCosto` porque sin fechas del dueño la grilla no puede proyectar egresos y su
-    // TOTAL rompería (#VALUE!, visto 29/09). No se inventan fechas.
+    // FECHAS DEL DUEÑO (01/10/2026, por el chat): «empiezan el 15/10 y terminan el 30/11».
+    inicio: '2026-10-15',
+    fin: '2026-11-30',
+    // COSTO COTIZADO (presupuestos-cotizados.mjs v1 aprobado): $2.227.391,30 directo.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 0,
-    egresos: [],
-    sinCosto: 'Costo cotizado en presupuestos del OS ($2.227.391,30); sin fechas de obra no se proyecta a la grilla.',
+    // MO $679.799,82, al peso.
+    moCargasPesos: 679_800,
+    jornalPesos: 679_800,
+    egresos: [
+      {
+        concepto: 'Máquina, materiales y subcontrato (explosión del costo)', proveedor: 'A DEFINIR', familia: 'Materiales',
+        // ESTIMACIÓN: el día que arranca la obra. No hay factura ni pedido todavía.
+        monto: 1_547_591, fechaEstimada: '2026-10-15',
+        nota: 'Costo - ADICIONAL Playon para dilucion de acidos.pdf: máquina+materiales $1.462.059,65 (mini excavadora $1.137.700) + subcontrato $85.531,83',
+      },
+    ],
+    noCaja: { maquinaPropia: 0 },
     pctEjecutado: 0,
-    notas: 'CÁLCULO: costo de la explosión (PDF de costo + Adicional.xlsm). Total $2.227.391,30 = MO $679.799,82 + máquina/materiales $1.462.059,65 + subcontrato $85.531,83. Venta: Cobranzas fila 105 (OC 2361, $5.025.105,97 neto). DESCONOCIDO: fechas de obra.',
+    notas: 'CÁLCULO: costo de la explosión (PDF de costo + Adicional.xlsm): excavaciones y ampliación de platea. Total $2.227.391,30 = MO $679.799,82 + máquina/materiales $1.462.059,65 + subcontrato $85.531,83. Venta: Cobranzas fila 105 (OC 2361, $5.025.105,97 neto). Fechas: dueño, 01/10/2026.',
   },
 ]
 

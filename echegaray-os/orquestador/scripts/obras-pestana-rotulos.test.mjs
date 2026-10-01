@@ -21,17 +21,16 @@ test('ninguna obra del catálogo pierde su nombre en la poda: la celda que se es
 })
 
 test('la obra sin fechas publica su nombre y nada más: la celda no lleva explicación', () => {
-  const sinFechas = OBRAS_FUTURAS.filter((o) => !o.inicio || !o.fin)
-  assert.ok(sinFechas.length > 0, 'el catálogo dejó de tener obras sin fechas: este test ya no mide nada')
-  for (const o of sinFechas) {
-    const r = rotuloDeObra(o, 11)
-    assert.equal(r.celda, `2.11 · ${o.cliente} — ${o.obra}`)
-    assert.equal(r.texto, r.celda)
-  }
+  // SINTÉTICA, NO DEL CATÁLOGO: el 01/10 el dueño dio las fechas de las dos obras que no las tenían, y
+  // un test que esperara «alguna obra real sin fechas» se pondría rojo sin que ninguna regla se rompa.
+  const o = { ...OBRAS_FUTURAS[0], clave: 'zz-sin-fechas', obra: 'ZZ SIN FECHAS', inicio: null, fin: null }
+  const r = rotuloDeObra(o, 11)
+  assert.equal(r.celda, `2.11 · ${o.cliente} — ZZ SIN FECHAS`)
+  assert.equal(r.texto, r.celda)
 })
 
 test('un nombre que la poda recortaría se DETECTA antes de escribir', () => {
-  const larga = { ...OBRAS_FUTURAS.find((o) => !o.inicio), clave: 'x', obra: 'ADICIONAL DE EXCAVACIONES Y AMPLIACIÓN DE LA PLATEA PARA UNIR LAS DOS PLANTAS' }
+  const larga = { ...OBRAS_FUTURAS[0], clave: 'x', inicio: null, fin: null, obra: 'ADICIONAL DE EXCAVACIONES Y AMPLIACIÓN DE LA PLATEA PARA UNIR LAS DOS PLANTAS' }
   const g = grillaObras({ obras: [larga] })
   assert.equal(obrasQueLaPodaDejaSinNombre(g).length, 1)
 })

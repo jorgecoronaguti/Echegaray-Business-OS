@@ -104,6 +104,9 @@ test('el CONTRATO de cada obra sale de Cobranzas, y las que lo declaran cierran 
     'messina-playon-dilucion-acido': null,
     'messina-adicional-tercer-muro': null,
     'messina-pisos-120-rampa': null,
+    // Las dos del 29/09 (OB-0072 y OB-0073), por el mismo motivo: el fixture de agosto no tiene sus filas.
+    'messina-platea-tanque-gasoil': null,
+    'messina-adicional-playon-dilucion': null,
   }
   assert.deepEqual(Object.fromEntries(contratos), esperado)
   for (const [clave, c] of Object.entries(esperado)) {
