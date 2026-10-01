@@ -16,13 +16,14 @@ import { V } from '@/shared/components/v2/patron'
 import { COLUMNA_FIJA, fondoDeColumnaFija } from '../solapas/tabla'
 import { MarcaDePago } from './MarcaDePago'
 import { PERSONA_ESTIRADA } from './TablaDeBloques'
+import { CasillaDeRecibo } from './BarraDeRecibos'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, detalle }: {
+export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, detalle, marca }: {
   fila: FilaDelEspejo
   /** El color de la fila (pagada), para que la celda fija lo repita OPACO. */
   fondo: string | undefined
@@ -31,6 +32,8 @@ export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, de
   abrir: () => void
   /** Los dos renglones chicos de abajo del nombre. */
   detalle: ReactNode
+  /** La casilla de «imprimir en lote». Sin ella (otras solapas) la celda queda como estaba. */
+  marca?: { marcada: boolean; alternar: () => void }
 }) {
   return (
     <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA, background: fondoDeColumnaFija(fondo) }}>
@@ -40,6 +43,10 @@ export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, de
           color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{fila.nombre}</button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {marca && (
+          <CasillaDeRecibo estado={marca.marcada ? 'todas' : 'ninguna'} alternar={marca.alternar}
+            etiqueta={`Incluir el recibo de ${fila.nombre} en la impresión`} testid={`recibo-marca-${fila.personaId}`} />
+        )}
         {/* EL DETALLE ES SEGUNDO PLANO: tenue. Quien necesita mirarlo lo busca; quien mira la fila busca la plata. */}
         <div style={{ flex: 1, minWidth: 0, fontSize: '11px', lineHeight: '13px', color: V.tenue }}>
           {detalle}

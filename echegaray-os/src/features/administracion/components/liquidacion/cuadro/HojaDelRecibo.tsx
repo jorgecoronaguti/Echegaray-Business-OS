@@ -16,9 +16,9 @@ import { V } from '@/shared/components/v2/patron'
 import type { ReciboArmado } from '../../../services/reciboDeLaQuincena'
 import { pesos } from '../formato'
 
-const MONO = "'IBM Plex Mono', monospace"
+export const MONO = "'IBM Plex Mono', monospace"
 export const fechaCorta = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
-const plata = (n: number | null): string => (n == null ? 'sin dato' : pesos(n))
+export const plata = (n: number | null): string => (n == null ? 'sin dato' : pesos(n))
 
 /** El nombre que el diálogo de impresión propone al guardar como PDF. Uno solo, para los dos caminos. */
 export const tituloDelRecibo = (nombre: string, desde: string, hasta: string): string =>
@@ -33,21 +33,36 @@ export const tituloDelRecibo = (nombre: string, desde: string, hasta: string): s
  */
 export function imprimirHoja(nodo: HTMLElement | null, titulo: string): boolean {
   if (!nodo) return false
-  const v = window.open('', '_blank', 'width=900,height=1000')
+  const v = abrirVentanaDeImpresion()
   // VENTANA BLOQUEADA: el navegador puede negarla y antes no pasaba NADA, sin decir por qué.
   if (!v) return false
+  imprimirEnVentana(v, nodo, titulo)
+  return true
+}
+
+/**
+ * La ventana se abre APARTE de escribirla: la impresión en lote registra veinte recibos antes de imprimir, y un
+ * `window.open` después de tanto `await` ya no cuenta como gesto del usuario — el navegador lo bloquea. Se abre
+ * en el clic y se escribe cuando los recibos están registrados.
+ */
+export function abrirVentanaDeImpresion(): Window | null {
+  return window.open('', '_blank', 'width=900,height=1000')
+}
+
+/** `horizontal`: A4 apaisado con margen corto, para los cuatro recibos por hoja del lote. */
+export function imprimirEnVentana(v: Window, nodo: HTMLElement, titulo: string, opciones: { horizontal?: boolean } = {}): void {
   // LA RUTA DEL LOGO TIENE QUE SER ABSOLUTA: la ventana nace en `about:blank`, donde `/marca/logo.png` no
   // resuelve contra nada y el recibo saldría sin logo (dueño, 22/09/2026: «poneles el logo de la empresa
   // arriba cuando se arme el pdf»).
   const html = nodo.outerHTML.replace(/src="\//g, `src="${window.location.origin}/`)
+  const pagina = opciones.horizontal ? 'size: A4 landscape; margin: 8mm' : 'size: A4; margin: 16mm'
   // Y SE IMPRIME CUANDO LA IMAGEN YA ESTÁ: `print()` apenas se escribe el documento sale con el hueco del
   // logo vacío. Lo dispara el `onload` de la ventana, que espera a las imágenes.
   v.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo}</title>`
-    + '<style>@page { size: A4; margin: 16mm } '
+    + `<style>@page { ${pagina} } `
     + "body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1F1F1E }"
     + '</style></head><body onload="window.focus(); window.print()">' + html + '</body></html>')
   v.document.close()
-  return true
 }
 
 /**

@@ -24,7 +24,7 @@ import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import {
-  armarRecibo, conceptosDisponibles, eleccionInicial,
+  armarRecibo, conceptosDisponibles,
   type ConceptoDelRecibo, type EleccionDelRecibo,
 } from '../../../services/reciboDeLaQuincena'
 import { sellarRecibo } from '../../../services/reciboEmitido'
@@ -32,6 +32,7 @@ import { aceptarRecibo } from '../../../services/recibosEmitidosActions'
 import { enviarReciboAFirmar } from '../../../services/cicloDelReciboActions'
 import { rotuloCategoria } from './CeldaTarifa'
 import { tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
+import { eleccionPorDefecto } from './lotesDeRecibos'
 import { HojaDelRecibo, imprimirHoja, tituloDelRecibo } from './HojaDelRecibo'
 
 // SIN BLANCO NI NEGRO (dueño, 22/09/2026): el papel dice horas totales, depositado y efectivo. El reparto es
@@ -57,7 +58,7 @@ export function ArmarRecibo({ fila, quincena }: {
   // detalle de blanco y negro, y sin esto el panel le decía «cobra por mes» a un jornalero.
   const mensual = tipoDeLiquidacion(fila) === 'mensual'
   const disponibles = conceptosDisponibles(fila.linea, mensual)
-  const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionInicial(fila.linea, mensual))
+  const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionPorDefecto(fila))
   const recibo = armarRecibo(fila.linea, eleccion, pesos, mensual)
   const hoja = useRef<HTMLDivElement>(null)
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null)

@@ -35,8 +35,9 @@ export interface EdicionDeFila {
   camposEditables: readonly CampoEditable[]
 }
 
-export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
+export function FilaJornalero({ fila, columnas, edicion, pct, abrir, marca }: {
   fila: FilaDelEspejo; columnas: string; edicion: EdicionDeFila; pct: number | null; abrir: () => void
+  marca?: { marcada: boolean; alternar: () => void }
 }) {
   const l = fila.linea
   const { quincena } = edicion
@@ -54,7 +55,7 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="jornalero" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
-      <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
+      <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir} marca={marca}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`} data-coinciden={c.coinciden ? '1' : '0'} title={c.titulo}>
             {/* LOS DOS RENGLONES QUEDAN (los pidió el dueño el 16/09) pero tenues; la plataforma se oscurece SÓLO

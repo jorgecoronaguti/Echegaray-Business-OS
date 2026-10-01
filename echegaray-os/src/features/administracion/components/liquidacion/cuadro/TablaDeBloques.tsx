@@ -69,7 +69,7 @@ export const filaGrid = (columnas: string, alto: number): React.CSSProperties =>
   alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-export function TablaDeBloques({ testid, principal = false, titulo, meta, resumen, definicion, dias, sellada, tirador, registrar, filas, total }: {
+export function TablaDeBloques({ testid, principal = false, titulo, meta, resumen, definicion, dias, sellada, tirador, registrar, filas, total, marca }: {
   testid: string
   /**
    * El cuadro de jornaleros conserva los testids de siempre (`espejo-cinta`, `espejo-tabla`, `espejo-encabezado`,
@@ -88,6 +88,8 @@ export function TablaDeBloques({ testid, principal = false, titulo, meta, resume
   registrar: (el: HTMLElement | null) => void
   filas: (columnas: string) => ReactNode
   total: (columnas: string) => ReactNode
+  /** La casilla que marca o desmarca a todo el cuadro para imprimir recibos en lote. */
+  marca?: ReactNode
 }) {
   const nDias = definicion.bloqueDeLosDias == null ? 0 : dias.length
   const columnas = columnasDe(definicion, dias.length)
@@ -101,7 +103,7 @@ export function TablaDeBloques({ testid, principal = false, titulo, meta, resume
           cantidad de personas se leían como parte de las cifras, y en PC el resumen arrancaba corrido a la derecha. */}
       <div className="flex flex-col gap-3 pb-2 pt-4" style={{ paddingInline: CANAL_SCROLL }}>
         <h3 className="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px] font-semibold leading-5 text-ink">
-          {titulo}{meta && <span className="text-[11.5px] font-normal text-faint">{meta}</span>}
+          {marca && <span className="self-center">{marca}</span>}{titulo}{meta && <span className="text-[11.5px] font-normal text-faint">{meta}</span>}
         </h3>
         {resumen}
       </div>

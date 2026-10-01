@@ -30,6 +30,8 @@ import { CUADRO_JORNALEROS, CUADRO_MENSUALES } from './cuadro/columnasDelCuadro'
 import { FilaJornalero, TotalJornaleros } from './cuadro/FilasJornaleros'
 import { FilaMensual, TotalMensuales } from './cuadro/FilasMensuales'
 import { PieTotalGeneral, ResumenJornaleros, ResumenMensuales } from './cuadro/PieDeLaQuincena'
+import { BarraDeRecibos, CasillaDeRecibo } from './cuadro/BarraDeRecibos'
+import { estadoDeSeccion, marcarSeccion, soloLosVisibles } from './cuadro/lotesDeRecibos'
 import { useAnchoDePersona } from './cuadro/useAnchoDePersona'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../services/espejoDeJornales'
@@ -74,6 +76,9 @@ export function GrillaEspejoQuincena({
   sello: React.ReactNode
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
+  // LA SELECCIÓN PARA IMPRIMIR RECIBOS EN LOTE vive acá y no viaja a la URL: es un borrador de un rato, no un estado
+  // que se comparta. Se filtra contra lo visible: si un filtro esconde una fila, no se imprime lo que no se ve.
+  const [tildados, setTildados] = useState<ReadonlySet<string>>(new Set())
   const { registrar, tirador } = useAnchoDePersona()
   const visibles = secciones.flatMap((s) => s.filas)
   const { jornaleros, mensuales } = separarPorTipo(visibles)
@@ -81,6 +86,14 @@ export function GrillaEspejoQuincena({
   const tM = totalesDeMensuales(mensuales)
   const sellada = visibles.some((f) => f.cerrada)
   const general = totalGeneral(tJ, tM, sellada)
+  const marcados = soloLosVisibles(tildados, visibles.map((f) => f.personaId))
+  const alternar = (id: string) => setTildados(marcarSeccion(marcados, [id], !marcados.has(id)))
+  const marcaDelCuadro = (filas: readonly FilaDelEspejo[], rotulo: string, testid: string) => {
+    const ids = filas.map((f) => f.personaId)
+    const estado = estadoDeSeccion(ids, marcados)
+    return <CasillaDeRecibo estado={estado} etiqueta={`Marcar los recibos de ${rotulo}`} testid={testid}
+      alternar={() => setTildados(marcarSeccion(marcados, ids, estado !== 'todas'))} />
+  }
   const filaAbierta = abierta ? visibles.find((f) => f.personaId === abierta) : undefined
   const edicion = { quincena, camposEditables }
 
@@ -92,6 +105,7 @@ export function GrillaEspejoQuincena({
         {sec.filas.map((fila) => {
           const props = {
             fila, columnas, edicion, abrir: () => setAbierta(fila.personaId),
+            marca: { marcada: marcados.has(fila.personaId), alternar: () => alternar(fila.personaId) },
             pct: pctDeLaQuincena(historiales[fila.personaId], quincena.desde),
           }
           return tipo === 'mensual' ? <FilaMensual key={fila.personaId} {...props} /> : <FilaJornalero key={fila.personaId} {...props} />
@@ -111,6 +125,7 @@ export function GrillaEspejoQuincena({
         <TablaDeBloques testid="cuadro-jornaleros" principal titulo="Quincenales" meta={`por hora · ${jornaleros.length}`}
           resumen={<ResumenJornaleros t={tJ} pagos={jornaleros.map((f) => f.linea.pago)} sellada={sellada} />} definicion={CUADRO_JORNALEROS} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
+          marca={marcaDelCuadro(jornaleros, 'los quincenales', 'recibo-marca-quincenales')}
           filas={(c) => filasDe('jornalero', c)}
           total={(c) => <TotalJornaleros columnas={c} dias={dias} t={tJ} />} />
       )}
@@ -118,9 +133,13 @@ export function GrillaEspejoQuincena({
         <TablaDeBloques testid="cuadro-mensuales" titulo="Mensuales" meta={sellada ? `lo liquidado en la quincena · ${mensuales.length}` : `sueldo del mes · ${mensuales.length}`}
           resumen={<ResumenMensuales t={tM} sellada={sellada} />} definicion={CUADRO_MENSUALES} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
+          marca={marcaDelCuadro(mensuales, 'los mensuales', 'recibo-marca-mensuales')}
           filas={(c) => filasDe('mensual', c)}
           total={(c) => <TotalMensuales columnas={c} t={tM} />} />
       )}
+      <BarraDeRecibos filas={visibles} marcados={marcados} quincena={quincena}
+        alRegistrar={(ids) => setTildados(new Set([...marcados].filter((id) => !ids.includes(id))))}
+        quitar={() => setTildados(new Set())} />
       {/* `key` = LA PERSONA. Sin la clave, abrir a otra persona reutiliza el mismo árbol y cada celda editable
           conserva lo tecleado para la anterior (dueño, 11/09/2026: «si cambiás de persona la hora se cambia»). */}
       {filaAbierta && (

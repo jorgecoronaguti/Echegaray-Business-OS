@@ -46,8 +46,9 @@ export function textoDelRecibo(p: PagoDelMensual, reciboSinGiro: boolean): { tex
   return { texto: pesos(p.banco), titulo: origen }
 }
 
-export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
+export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
   fila: FilaDelEspejo; columnas: string; edicion: EdicionDeFila; pct: number | null; abrir: () => void
+  marca?: { marcada: boolean; alternar: () => void }
 }) {
   const l = fila.linea
   const { quincena } = edicion
@@ -69,7 +70,7 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
   return (
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="mensual" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
-      <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
+      <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir} marca={marca}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`}>
             <RenglonDelDetalle>{`${l.esJefe ? 'Jefe de obra' : 'Mensual'} · cobra por mes`}</RenglonDelDetalle>
