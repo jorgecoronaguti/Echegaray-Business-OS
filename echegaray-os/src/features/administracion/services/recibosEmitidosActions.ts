@@ -24,7 +24,9 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { liquidaSueldos } from '@/features/auth/types/areas'
-import { motivoParaNoEmitir, type ReciboSellado } from './reciboEmitido.ts'
+import {
+  mismoPapel, motivoParaNoEmitir, type PapelDelRecibo, type ReciboDelLoteGuardado, type ReciboSellado,
+} from './reciboEmitido.ts'
 import type { Resultado } from './personasActions'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -54,24 +56,40 @@ const selladoSchema = z.object({
 })
 
 export async function aceptarRecibo(sellado: ReciboSellado): Promise<Resultado> {
+  const leido = leerSellado(sellado)
+  if (!leido.ok) return leido
+  const r = leido.recibo
+  const supabase = await createClient()
+  const permiso = await puedeEmitir(supabase)
+  if (permiso) return { ok: false, error: permiso }
+  return registrar(supabase, r)
+}
+
+/** Valida la forma y la regla del papel. Lo mismo para uno que para un lote. */
+function leerSellado(sellado: ReciboSellado): { ok: true; recibo: ReciboSellado } | { ok: false; error: string } {
   const parsed = selladoSchema.safeParse(sellado)
   if (!parsed.success) return { ok: false, error: `El recibo no está bien formado: ${parsed.error.issues[0].message}` }
   const r = parsed.data as ReciboSellado
-
   // LA MISMA REGLA QUE EL PAPEL, ANTES DE ESCRIBIR. La base tiene su propio CHECK; acá se puede decir en
   // castellano cuál es la palabra que sobra, en vez de devolver un `check_violation`.
   const motivo = motivoParaNoEmitir(r)
   if (motivo) return { ok: false, error: motivo }
+  return { ok: true, recibo: r }
+}
 
-  const supabase = await createClient()
+type Cliente = Awaited<ReturnType<typeof createClient>>
+
+/** Por qué quien llama NO puede emitir, o `null` si puede. */
+async function puedeEmitir(supabase: Cliente): Promise<string | null> {
   const { data: perfil, error: errPerfil } = await getPerfilActual(supabase)
   // FALLA CERRADO: sin perfil legible no se sabe quién es, y un default permisivo dejaría a cualquiera
   // emitiendo recibos a nombre de la empresa.
-  if (errPerfil) return { ok: false, error: 'No pude verificar tu permiso. No guardé nada y no imprimí.' }
-  if (!liquidaSueldos(perfil?.rol)) {
-    return { ok: false, error: 'Los recibos los emiten Dirección y Administración.' }
-  }
+  if (errPerfil) return 'No pude verificar tu permiso. No guardé nada y no imprimí.'
+  if (!liquidaSueldos(perfil?.rol)) return 'Los recibos los emiten Dirección y Administración.'
+  return null
+}
 
+async function registrar(supabase: Cliente, r: ReciboSellado): Promise<Resultado> {
   const { data: id, error } = await supabase.rpc('registrar_recibo_liquidacion', {
     p_persona: r.personaId,
     p_desde: r.quincenaDesde,
@@ -102,4 +120,76 @@ export async function aceptarRecibo(sellado: ReciboSellado): Promise<Resultado> 
 
   revalidatePath(`/administracion/personas/${r.personaId}`)
   return { ok: true, id: fila.id, mensaje: 'Recibo registrado en el legajo.' }
+}
+
+type UltimoGuardado = { id: string; emitido_en: string } & PapelDelRecibo
+
+/**
+ * LOS YA GUARDADOS de la quincena del lote, una lectura para todos: el último de cada persona, sin los
+ * archivados. Si no se pueden leer NO se registra a ciegas: sería duplicar lo que tal vez ya está.
+ */
+async function ultimosGuardados(
+  supabase: Cliente, validos: readonly ReciboSellado[],
+): Promise<{ ok: true; ultimos: Map<string, UltimoGuardado> } | { ok: false; error: string }> {
+  const ultimos = new Map<string, UltimoGuardado>()
+  if (validos.length === 0) return { ok: true, ultimos }
+  const { data, error } = await supabase
+    .from('recibo_liquidacion')
+    .select('id, persona_id, nombre, categoria, total, renglones, emitido_en')
+    .eq('quincena_desde', validos[0].quincenaDesde).eq('quincena_hasta', validos[0].quincenaHasta)
+    .in('persona_id', validos.map((r) => r.personaId))
+    .is('archivado_en', null)
+  if (error) return { ok: false, error: `No pude leer los recibos ya guardados: ${error.message}. No guardé nada.` }
+  for (const f of data ?? []) {
+    const ya = ultimos.get(f.persona_id)
+    if (ya && f.emitido_en <= ya.emitido_en) continue
+    ultimos.set(f.persona_id, {
+      id: f.id, emitido_en: f.emitido_en, nombre: f.nombre ?? '', categoria: f.categoria ?? null,
+      total: f.total == null ? null : Number(f.total),
+      renglones: (f.renglones ?? { horas: [], medios: [] }) as PapelDelRecibo['renglones'],
+    })
+  }
+  return { ok: true, ultimos }
+}
+
+/** Tope de un lote: el plantel entero entra varias veces; más que esto es un llamado que no salió de la pantalla. */
+const MAXIMO_DEL_LOTE = 80
+
+/**
+ * GUARDAR LOS RECIBOS DE UN LOTE (rehacer del 01/10/2026) — una sola llamada para todos, y sin duplicar.
+ *
+ * Por cada uno: si el último recibo guardado de esa persona y quincena es EL MISMO PAPEL (`mismoPapel`), se
+ * reusa y no se registra otro; si no hay o cambió, se registra por la misma puerta que el individual. Devuelve
+ * qué pasó con cada uno: la pantalla imprime sólo los que quedaron con `ok`.
+ */
+export async function guardarRecibosDelLote(
+  sellados: ReciboSellado[],
+): Promise<{ ok: true; recibos: ReciboDelLoteGuardado[] } | { ok: false; error: string }> {
+  if (!Array.isArray(sellados) || sellados.length === 0) return { ok: false, error: 'No hay recibos para guardar.' }
+  if (sellados.length > MAXIMO_DEL_LOTE) return { ok: false, error: `Un lote lleva hasta ${MAXIMO_DEL_LOTE} recibos.` }
+  const supabase = await createClient()
+  const permiso = await puedeEmitir(supabase)
+  if (permiso) return { ok: false, error: permiso }
+
+  const leidos = sellados.map((s) => ({ personaId: typeof s?.personaId === 'string' ? s.personaId : '', leido: leerSellado(s) }))
+  const validos = leidos.flatMap((x) => (x.leido.ok ? [x.leido.recibo] : []))
+  const quincenas = new Set(validos.map((r) => `${r.quincenaDesde}|${r.quincenaHasta}`))
+  if (quincenas.size > 1) return { ok: false, error: 'Un lote es de una sola quincena.' }
+
+  const leidosDeLaBase = await ultimosGuardados(supabase, validos)
+  if (!leidosDeLaBase.ok) return leidosDeLaBase
+  const ultimos = leidosDeLaBase.ultimos
+
+  const recibos: ReciboDelLoteGuardado[] = []
+  for (const { personaId, leido } of leidos) {
+    if (!leido.ok) { recibos.push({ personaId, ok: false, error: leido.error }); continue }
+    const r = leido.recibo
+    const ya = ultimos.get(r.personaId)
+    if (ya && mismoPapel(ya, r)) { recibos.push({ personaId: r.personaId, ok: true, id: ya.id, yaEstaba: true }); continue }
+    const x = await registrar(supabase, r)
+    recibos.push(x.ok ? { personaId: r.personaId, ok: true, id: x.id, yaEstaba: false } : { personaId: r.personaId, ok: false, error: x.error })
+  }
+  // La marca «impreso» del cuadro sale de estos recibos: la pantalla de Liquidación se vuelve a leer.
+  if (recibos.some((x) => x.ok && !x.yaEstaba)) revalidatePath('/administracion/personas')
+  return { ok: true, recibos }
 }

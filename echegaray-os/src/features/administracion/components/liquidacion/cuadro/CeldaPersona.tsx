@@ -17,6 +17,7 @@ import { COLUMNA_FIJA, fondoDeColumnaFija } from '../solapas/tabla'
 import { MarcaDePago } from './MarcaDePago'
 import { PERSONA_ESTIRADA } from './TablaDeBloques'
 import { CasillaDeRecibo } from './BarraDeRecibos'
+import type { MarcaDeRecibo } from './lotesDeRecibos'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 
@@ -32,19 +33,26 @@ export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, de
   abrir: () => void
   /** Los dos renglones chicos de abajo del nombre. */
   detalle: ReactNode
-  /** La casilla de «imprimir en lote». Sin ella (otras solapas) la celda queda como estaba. */
-  marca?: { marcada: boolean; alternar: () => void }
+  /** La casilla de «imprimir en lote» y la marca de «impreso». Sin ella (otras solapas) la celda queda como estaba. */
+  marca?: MarcaDeRecibo
 }) {
   return (
     <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA, background: fondoDeColumnaFija(fondo) }}>
-      <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · ${corta(fila.alta)} · abrir el detalle`}
-        style={{
-          display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
-          color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{fila.nombre}</button>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · ${corta(fila.alta)} · abrir el detalle`}
+          style={{
+            display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
+            color: V.tinta, font: 'inherit', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{fila.nombre}</button>
+        {/* YA TIENE RECIBO DE ESTA QUINCENA: cuándo se guardó el último. Segundo plano; el detalle va en el `title`. */}
+        {marca?.impreso && (
+          <span data-testid={`recibo-impreso-${fila.personaId}`} title={marca.impreso.titulo}
+            style={{ flex: 'none', fontSize: '10.5px', color: V.tenue, whiteSpace: 'nowrap' }}>{marca.impreso.texto}</span>
+        )}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {marca && (
-          <CasillaDeRecibo estado={marca.marcada ? 'todas' : 'ninguna'} alternar={marca.alternar}
+          <CasillaDeRecibo estado={marca.marcada ? 'todas' : 'ninguna'} alternar={marca.alternar} apagada={marca.apagada}
             etiqueta={`Incluir el recibo de ${fila.nombre} en la impresión`} testid={`recibo-marca-${fila.personaId}`} />
         )}
         {/* EL DETALLE ES SEGUNDO PLANO: tenue. Quien necesita mirarlo lo busca; quien mira la fila busca la plata. */}

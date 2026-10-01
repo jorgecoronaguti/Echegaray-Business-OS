@@ -104,5 +104,50 @@ export function marcarSeccion(marcados: ReadonlySet<string>, ids: readonly strin
 export const soloLosVisibles = (marcados: ReadonlySet<string>, visibles: readonly string[]): Set<string> =>
   new Set(visibles.filter((id) => marcados.has(id)))
 
-/** «3 recibos seleccionados» / «1 recibo seleccionado». */
-export const textoDeSeleccion = (n: number): string => `${n} recibo${n === 1 ? '' : 's'} seleccionado${n === 1 ? '' : 's'}`
+/** «7 de 19 seleccionados»: cuántos sobre los que están a la vista, para saber qué parte del cuadro se lleva. */
+export const textoDeSeleccion = (n: number, de: number): string => `${n} de ${de} seleccionado${n === 1 ? '' : 's'}`
+
+/** «7 recibos · 2 hojas» — el título de la vista previa. */
+export function textoDelLote(recibos: number): string {
+  const hojas = Math.ceil(recibos / RECIBOS_POR_HOJA)
+  return `${recibos} recibo${recibos === 1 ? '' : 's'} · ${hojas} hoja${hojas === 1 ? '' : 's'}`
+}
+
+/**
+ * QUIÉN NO TIENE NADA QUE COBRAR, ANTES DE TILDAR (rehacer del 01/10/2026). La versión anterior dejaba tildar a
+ * todos y contaba después quién había quedado afuera; ahora esa casilla nace apagada con su motivo. La regla es
+ * la misma del lote (`reciboSinNada` sobre el recibo por defecto), no una segunda.
+ */
+export function sinNadaQueCobrar(
+  filas: readonly FilaDelEspejo[],
+  quincena: { desde: string; hasta: string },
+  fmt: (n: number) => string,
+  rotuloCategoria: (c: string) => string,
+): Set<string> {
+  return new Set(filas.filter((f) => reciboSinNada(reciboPorDefecto(f, quincena, fmt, rotuloCategoria).recibo)).map((f) => f.personaId))
+}
+
+/** El motivo que lleva la casilla apagada. */
+export const MOTIVO_SIN_NADA = 'Sin nada que cobrar en esta quincena: no hay recibo que imprimir'
+
+/** Lo que la fila necesita para dibujar su casilla y su marca de «impreso». */
+export interface MarcaDeRecibo {
+  marcada: boolean
+  alternar: () => void
+  /** Con texto, la casilla va apagada y éste es el porqué. */
+  apagada?: string
+  /** El último recibo guardado de esta quincena («impreso 01/10 14:32»). */
+  impreso?: { texto: string; titulo: string }
+}
+
+export interface AvisoDelLote { tono: 'ok' | 'mal'; lineas: string[] }
+
+/** Qué pasó al guardar, en una o dos líneas: cuántos se guardaron, cuántos ya estaban y a quién no se pudo. */
+export function avisoDelLote(nuevos: number, yaEstaban: number, fallos: readonly string[]): AvisoDelLote {
+  const lineas: string[] = []
+  const s = (n: number) => (n === 1 ? '' : 's')
+  if (nuevos > 0) lineas.push(`${nuevos} recibo${s(nuevos)} guardado${s(nuevos)} en ${nuevos === 1 ? 'el legajo' : 'los legajos'}.`)
+  if (yaEstaban > 0) lineas.push(`${yaEstaban} ya estaba${yaEstaban === 1 ? '' : 'n'} guardado${s(yaEstaban)} igual: no se duplic${yaEstaban === 1 ? 'ó' : 'aron'}.`)
+  for (const f of fallos) lineas.push(`No se guardó y no sale en la hoja. ${f}`)
+  return { tono: fallos.length > 0 || nuevos + yaEstaban === 0 ? 'mal' : 'ok', lineas }
+}

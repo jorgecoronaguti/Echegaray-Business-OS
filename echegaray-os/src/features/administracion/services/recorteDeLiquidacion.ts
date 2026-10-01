@@ -61,6 +61,47 @@ export function claseDePresentismo(p: PresentismoParaRecortar | null | undefined
 export const pasaPresentismo = (p: PresentismoParaRecortar | null | undefined, recorte: RecortePresentismo): boolean =>
   recorte === 'todos' || claseDePresentismo(p) === recorte
 
+// ═══ EL RECORTE «CLIENTE» (dueño, 01/10/2026) ═══
+//
+// *«dame filtros de liq de hs por cliente, es decir las personas que están asignadas a cada cliente, así es más
+// fácil el tema impresión de recibos»*. El cliente de una persona es el de su obra ACTUAL
+// (`persona_directorio.obra_actual_id` → `obra_canonica.cliente_id` → `clientes.nombre_comercial`): los recibos
+// se reparten donde la gente está hoy. Quien no tiene obra, o su obra no tiene cliente, va en «Sin cliente».
+
+export const SIN_CLIENTE = 'sin_cliente'
+
+export interface ClienteDePersona { id: string; nombre: string }
+/** persona → cliente de su obra actual. Sin entrada = sin obra asignada, u obra sin cliente. */
+export type ClientePorPersona = Readonly<Record<string, ClienteDePersona>>
+
+/**
+ * Las opciones del recorte, sólo con los clientes que tienen a alguien de ESTAS personas: los de más gente
+ * primero. Vacío cuando no hay ningún cliente que ofrecer (un grupo con sólo «Todos» no filtra nada).
+ */
+export function opcionesDeCliente(
+  personas: readonly string[], mapa: ClientePorPersona,
+): { clave: string; texto: string }[] {
+  const cuenta = new Map<string, { texto: string; n: number }>()
+  let sin = 0
+  for (const id of personas) {
+    const c = mapa[id]
+    if (!c) { sin += 1; continue }
+    cuenta.set(c.id, { texto: c.nombre, n: (cuenta.get(c.id)?.n ?? 0) + 1 })
+  }
+  if (cuenta.size === 0) return []
+  const clientes = [...cuenta.entries()]
+    .sort((a, b) => b[1].n - a[1].n || a[1].texto.localeCompare(b[1].texto, 'es'))
+    .map(([clave, v]) => ({ clave, texto: v.texto }))
+  return [{ clave: 'todos', texto: 'Todos' }, ...clientes, ...(sin > 0 ? [{ clave: SIN_CLIENTE, texto: 'Sin cliente' }] : [])]
+}
+
+/** El recorte pedido por la URL, o «todos» si no es una de las opciones que hay. */
+export const clientePedido = (v: string | undefined, opciones: readonly { clave: string }[]): string =>
+  opciones.find((o) => o.clave === v)?.clave ?? 'todos'
+
+export const pasaCliente = (personaId: string, recorte: string, mapa: ClientePorPersona): boolean =>
+  recorte === 'todos' || (recorte === SIN_CLIENTE ? !mapa[personaId] : mapa[personaId]?.id === recorte)
+
 /** Las filas que pasan el recorte y el buscador. El pie se calcula sobre ESTAS, no sobre el plantel. */
 export function recortar<T extends { grupo: GrupoLiquidacion; nombre: string }>(
   filas: readonly T[], grupo: GrupoLiquidacion | 'todos', buscar: string | undefined,

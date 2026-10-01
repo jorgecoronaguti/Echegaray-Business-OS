@@ -31,7 +31,11 @@ import { FilaJornalero, TotalJornaleros } from './cuadro/FilasJornaleros'
 import { FilaMensual, TotalMensuales } from './cuadro/FilasMensuales'
 import { PieTotalGeneral, ResumenJornaleros, ResumenMensuales } from './cuadro/PieDeLaQuincena'
 import { BarraDeRecibos, CasillaDeRecibo } from './cuadro/BarraDeRecibos'
-import { estadoDeSeccion, marcarSeccion, soloLosVisibles } from './cuadro/lotesDeRecibos'
+import { MOTIVO_SIN_NADA, estadoDeSeccion, marcarSeccion, sinNadaQueCobrar, soloLosVisibles } from './cuadro/lotesDeRecibos'
+import { VistaPreviaDeRecibos } from './cuadro/VistaPreviaDeRecibos'
+import { rotuloCategoria } from './cuadro/CeldaTarifa'
+import { pesos } from './formato'
+import type { ReciboImpreso } from '../../services/recibosDeLaQuincenaService'
 import { useAnchoDePersona } from './cuadro/useAnchoDePersona'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../services/espejoDeJornales'
@@ -63,7 +67,7 @@ const seccionesDelTipo = (secciones: readonly SeccionDelEspejo[], tipo: 'jornale
 
 export function GrillaEspejoQuincena({
   dias, secciones, quincena, camposEditables, sello,
-  historiales = {}, historialCompleto = true, detalles = {},
+  historiales = {}, historialCompleto = true, detalles = {}, impresos = {},
 }: {
   dias: readonly string[]
   secciones: readonly SeccionDelEspejo[]
@@ -73,6 +77,8 @@ export function GrillaEspejoQuincena({
   historialCompleto?: boolean
   /** El detalle laboral de cada persona (`leerDetallesLaborales`). Viaja armado: el panel no lee. */
   detalles?: Record<string, DetalleLaboral>
+  /** El último recibo guardado de cada persona en esta quincena (`leerRecibosDeLaQuincena`). */
+  impresos?: Record<string, ReciboImpreso>
   sello: React.ReactNode
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
@@ -86,12 +92,16 @@ export function GrillaEspejoQuincena({
   const tM = totalesDeMensuales(mensuales)
   const sellada = visibles.some((f) => f.cerrada)
   const general = totalGeneral(tJ, tM, sellada)
-  const marcados = soloLosVisibles(tildados, visibles.map((f) => f.personaId))
+  const [viendoLaPrevia, setViendoLaPrevia] = useState(false)
+  // QUIEN NO TIENE NADA QUE COBRAR NO SE PUEDE TILDAR: la casilla va apagada con su motivo, antes y no después.
+  const sinNada = sinNadaQueCobrar(visibles, quincena, pesos, rotuloCategoria)
+  const marcados = soloLosVisibles(tildados, visibles.filter((f) => !sinNada.has(f.personaId)).map((f) => f.personaId))
   const alternar = (id: string) => setTildados(marcarSeccion(marcados, [id], !marcados.has(id)))
   const marcaDelCuadro = (filas: readonly FilaDelEspejo[], rotulo: string, testid: string) => {
-    const ids = filas.map((f) => f.personaId)
+    const ids = filas.map((f) => f.personaId).filter((id) => !sinNada.has(id))
     const estado = estadoDeSeccion(ids, marcados)
-    return <CasillaDeRecibo estado={estado} etiqueta={`Marcar los recibos de ${rotulo}`} testid={testid}
+    return <CasillaDeRecibo estado={ids.length === 0 ? 'ninguna' : estado} etiqueta={`Marcar los recibos de ${rotulo}`} testid={testid}
+      apagada={ids.length === 0 ? `Nadie de ${rotulo} tiene algo que cobrar en esta quincena` : undefined}
       alternar={() => setTildados(marcarSeccion(marcados, ids, estado !== 'todas'))} />
   }
   const filaAbierta = abierta ? visibles.find((f) => f.personaId === abierta) : undefined
@@ -105,7 +115,11 @@ export function GrillaEspejoQuincena({
         {sec.filas.map((fila) => {
           const props = {
             fila, columnas, edicion, abrir: () => setAbierta(fila.personaId),
-            marca: { marcada: marcados.has(fila.personaId), alternar: () => alternar(fila.personaId) },
+            marca: {
+              marcada: marcados.has(fila.personaId), alternar: () => alternar(fila.personaId),
+              apagada: sinNada.has(fila.personaId) ? MOTIVO_SIN_NADA : undefined,
+              impreso: impresos[fila.personaId],
+            },
             pct: pctDeLaQuincena(historiales[fila.personaId], quincena.desde),
           }
           return tipo === 'mensual' ? <FilaMensual key={fila.personaId} {...props} /> : <FilaJornalero key={fila.personaId} {...props} />
@@ -137,9 +151,13 @@ export function GrillaEspejoQuincena({
           filas={(c) => filasDe('mensual', c)}
           total={(c) => <TotalMensuales columnas={c} t={tM} />} />
       )}
-      <BarraDeRecibos filas={visibles} marcados={marcados} quincena={quincena}
-        alRegistrar={(ids) => setTildados(new Set([...marcados].filter((id) => !ids.includes(id))))}
-        quitar={() => setTildados(new Set())} />
+      <BarraDeRecibos cuantos={marcados.size} de={visibles.length} verPrevia={() => setViendoLaPrevia(true)}
+        quitar={() => { setTildados(new Set()); setViendoLaPrevia(false) }} />
+      {/* LA VISTA PREVIA ES UN PANEL AL COSTADO, hermano de la grilla y no hijo de la barra: la barra es pegajosa
+          (crea su propia pila) y un panel fijo adentro quedaría debajo del resto de la pantalla. */}
+      {viendoLaPrevia && marcados.size > 0 && (
+        <VistaPreviaDeRecibos filas={visibles} marcados={marcados} quincena={quincena} onCerrar={() => setViendoLaPrevia(false)} />
+      )}
       {/* `key` = LA PERSONA. Sin la clave, abrir a otra persona reutiliza el mismo árbol y cada celda editable
           conserva lo tecleado para la anterior (dueño, 11/09/2026: «si cambiás de persona la hora se cambia»). */}
       {filaAbierta && (

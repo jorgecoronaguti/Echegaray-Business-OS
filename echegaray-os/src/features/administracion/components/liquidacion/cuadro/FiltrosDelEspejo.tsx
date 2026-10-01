@@ -23,9 +23,11 @@ const ESTILO_BUSCADOR = {
   border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
 } as const
 
-export function FiltrosDelEspejo({ periodos, grupos, presentismo, busqueda, cerrar }: {
+export function FiltrosDelEspejo({ periodos, grupos, cliente, presentismo, busqueda, cerrar }: {
   periodos: { texto: string; activo: boolean; href: string }[]
   grupos: { texto: string; activo: boolean; href: string }[]
+  /** Las personas asignadas a cada cliente (dueño, 01/10/2026). Vacío = no hay clientes que ofrecer. */
+  cliente?: { texto: string; activo: boolean; href: string }[]
   /** Quién gana el presentismo y quién no (dueño, 01/10/2026). Sólo el cuadro de la quincena lo pasa. */
   presentismo?: { texto: string; activo: boolean; href: string }[]
   /** Buscar por nombre. Formulario GET: sin JavaScript, y la URL queda compartible. */
@@ -40,6 +42,7 @@ export function FiltrosDelEspejo({ periodos, grupos, presentismo, busqueda, cerr
     }}>
       <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
       <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
+      {cliente && <Grupo rotulo="Cliente" opciones={cliente} testid="espejo-cliente" rotuloEnTelefono />}
       {presentismo && <Grupo rotulo="Presentismo" opciones={presentismo} testid="espejo-presentismo" rotuloEnTelefono />}
       {busqueda && (
         <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

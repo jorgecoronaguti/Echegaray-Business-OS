@@ -25,17 +25,30 @@ export interface ReciboParaLaHoja {
 const CORTE = '1px dashed #B5B4AF'
 const GRIS = '#6B6B69'
 
-export function HojasDeRecibosA4({ hoja, recibos, quincena }: {
-  hoja: React.RefObject<HTMLDivElement | null>
+/** El ancho útil de la hoja (297 − 2 × 8 de margen), en mm y en px de pantalla: la vista previa escala contra esto. */
+export const ANCHO_DE_HOJA_MM = 281
+export const ANCHO_DE_HOJA_PX = (ANCHO_DE_HOJA_MM * 96) / 25.4
+
+export function HojasDeRecibosA4({ hoja, recibos, quincena, vista = false }: {
+  hoja?: React.RefObject<HTMLDivElement | null>
   recibos: readonly ReciboParaLaHoja[]
   quincena: { desde: string; hasta: string }
+  /**
+   * LA VISTA PREVIA EN PANTALLA: cada hoja se dibuja como un papel (fondo blanco, borde, separadas). Es el MISMO
+   * componente que va a la impresora —sin esto la vista previa sería un dibujo parecido, no la hoja—; lo único que
+   * cambia es el marco, que en el papel no existe.
+   */
+  vista?: boolean
 }) {
   const hojas = enHojas(recibos, RECIBOS_POR_HOJA)
+  const marco = vista
+    ? { width: `${ANCHO_DE_HOJA_MM}mm`, background: '#FFFFFF', border: '1px solid #D9D8D4', marginBottom: 16, boxSizing: 'content-box' as const }
+    : {}
   return (
-    <div ref={hoja} data-testid="hojas-recibos-a4">
+    <div ref={hoja} data-testid={vista ? 'hojas-recibos-vista' : 'hojas-recibos-a4'}>
       {hojas.map((cuatro, h) => (
         <div key={cuatro[0].personaId} data-hoja={h + 1}
-          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: '192mm', breakAfter: h < hojas.length - 1 ? 'page' : 'auto', pageBreakAfter: h < hojas.length - 1 ? 'always' : 'auto' }}>
+          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: '192mm', breakAfter: h < hojas.length - 1 ? 'page' : 'auto', pageBreakAfter: h < hojas.length - 1 ? 'always' : 'auto', ...marco }}>
           {cuatro.map((r, i) => (
             // LA LÍNEA DE CORTE ES EL BORDE INTERIOR: derecha en la columna izquierda, abajo en la fila de arriba.
             <div key={r.personaId} data-recibo-compacto

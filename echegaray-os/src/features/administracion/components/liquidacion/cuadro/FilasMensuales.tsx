@@ -20,6 +20,7 @@ import { CeldaPresentismo, Leida } from './CeldasDelEspejo'
 import { CeldaPagado, CeldaPagadoTotal, CeldaSaldo, CeldaSaldoRedondeado, CeldaTotal } from './CeldasBlancoNegro'
 import { CeldaTarifa } from './CeldaTarifa'
 import { CeldaPersona, RenglonDelDetalle } from './CeldaPersona'
+import type { MarcaDeRecibo } from './lotesDeRecibos'
 import { filaPagada } from './marcaDePago'
 import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
 import { SaldoTotal, type EdicionDeFila } from './FilasJornaleros'
@@ -48,7 +49,7 @@ export function textoDelRecibo(p: PagoDelMensual, reciboSinGiro: boolean): { tex
 
 export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
   fila: FilaDelEspejo; columnas: string; edicion: EdicionDeFila; pct: number | null; abrir: () => void
-  marca?: { marcada: boolean; alternar: () => void }
+  marca?: MarcaDeRecibo
 }) {
   const l = fila.linea
   const { quincena } = edicion

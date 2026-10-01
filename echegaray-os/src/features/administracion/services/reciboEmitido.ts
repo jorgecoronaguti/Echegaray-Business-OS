@@ -80,6 +80,38 @@ export function sellarRecibo(
   }
 }
 
+// ═══ REIMPRIMIR NO ES VOLVER A REGISTRAR (rehacer del lote, 01/10/2026) ═══
+//
+// Imprimir dos veces el mismo papel dejaba dos recibos idénticos en el legajo. Antes de registrar se compara con
+// el último guardado de esa persona y quincena: si es EL MISMO PAPEL —mismos renglones, mismas cifras, mismo
+// nombre y categoría— se reusa. Si la liquidación cambió (una hora corregida, un adelanto), el papel es otro y sí
+// se registra: el anterior también se entregó y queda.
+
+/** Lo que hace a un papel: lo que la persona lee y firma. */
+export type PapelDelRecibo = Pick<ReciboSellado, 'nombre' | 'categoria' | 'total' | 'renglones'>
+
+const centavos = (n: number | null | undefined): number | null => (n == null ? null : Math.round(n * 100) / 100)
+const renglonCanonico = (r: RenglonDelRecibo) =>
+  [r.rotulo, r.detalle ?? null, centavos(r.importe), centavos(r.horas), r.sub === true]
+const papelCanonico = (p: PapelDelRecibo): string => JSON.stringify([
+  p.nombre.trim(), p.categoria?.trim() || null, centavos(p.total),
+  p.renglones.horas.map(renglonCanonico), p.renglones.medios.map(renglonCanonico),
+])
+
+/** ¿Los dos recibos dicen lo mismo, renglón por renglón? El orden de las claves del jsonb no cuenta. */
+export const mismoPapel = (a: PapelDelRecibo, b: PapelDelRecibo): boolean => papelCanonico(a) === papelCanonico(b)
+
+/** Lo que pasó con cada recibo de un lote. */
+export interface ReciboDelLoteGuardado {
+  personaId: string
+  ok: boolean
+  /** El id en `recibo_liquidacion`, recién creado o el que ya estaba. */
+  id?: string
+  /** Ya había un recibo idéntico de esta quincena: no se registró otro. */
+  yaEstaba?: boolean
+  error?: string
+}
+
 const PROHIBIDAS = /blanc[oa]s?|negr[oa]s?/gi
 
 /** Las palabras del reparto interno que aparezcan en los rótulos o detalles del papel. Vacío = está limpio. */

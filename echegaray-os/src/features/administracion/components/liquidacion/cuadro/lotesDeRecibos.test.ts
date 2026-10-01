@@ -11,7 +11,8 @@ import { pagoDeLaLinea } from '../../../services/pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from '../../../services/liquidacionOverrides.ts'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales.ts'
 import {
-  armarLote, enHojas, reciboSinNada, estadoDeSeccion, marcarSeccion, reciboPorDefecto, soloLosVisibles, textoDeSeleccion,
+  armarLote, avisoDelLote, enHojas, reciboSinNada, estadoDeSeccion, marcarSeccion, reciboPorDefecto, sinNadaQueCobrar,
+  soloLosVisibles, textoDeSeleccion, textoDelLote,
 } from './lotesDeRecibos.ts'
 
 const fmt = (n: number) => `$${n}`
@@ -79,17 +80,53 @@ test('la casilla de un cuadro marca y desmarca sólo a los suyos; con algunos ti
 
 test('un filtro que esconde una fila la saca de la selección', () => {
   assert.deepEqual([...soloLosVisibles(new Set(['a', 'b']), ['b', 'c'])], ['b'])
-  assert.equal(textoDeSeleccion(1), '1 recibo seleccionado')
-  assert.equal(textoDeSeleccion(4), '4 recibos seleccionados')
+  assert.equal(textoDeSeleccion(1, 19), '1 de 19 seleccionado')
+  assert.equal(textoDeSeleccion(7, 19), '7 de 19 seleccionados')
+})
+
+test('REHACER 01/10 · quien no tiene nada que cobrar se sabe ANTES de tildar, con la misma regla del lote', () => {
+  const filas = [fila('a', 'AGÜERO', jornalero), fila('v', 'VACÍO', vacia), fila('c', 'CASTILLO', jornalero)]
+  assert.deepEqual([...sinNadaQueCobrar(filas, Q, fmt, rotulo)], ['v'])
+  // Y el lote armado sin esa persona no deja a nadie afuera «después».
+  assert.deepEqual(armarLote(filas, new Set(['a', 'c']), Q, fmt, rotulo).sinNada, [])
+})
+
+test('REHACER 01/10 · el título de la vista previa dice recibos y hojas', () => {
+  assert.equal(textoDelLote(1), '1 recibo · 1 hoja')
+  assert.equal(textoDelLote(4), '4 recibos · 1 hoja')
+  assert.equal(textoDelLote(7), '7 recibos · 2 hojas')
+})
+
+test('REHACER 01/10 · el aviso: guardados, ya estaban (no se duplican) y a quién no se pudo', () => {
+  assert.deepEqual(avisoDelLote(7, 0, []), { tono: 'ok', lineas: ['7 recibos guardados en los legajos.'] })
+  assert.deepEqual(avisoDelLote(0, 2, []), { tono: 'ok', lineas: ['2 ya estaban guardados igual: no se duplicaron.'] })
+  assert.deepEqual(avisoDelLote(1, 1, []).lineas, ['1 recibo guardado en el legajo.', '1 ya estaba guardado igual: no se duplicó.'])
+  const mal = avisoDelLote(1, 0, ['SOSA: la base no respondió'])
+  assert.equal(mal.tono, 'mal')
+  assert.match(mal.lineas[1], /No se guardó y no sale en la hoja\. SOSA/)
+  assert.equal(avisoDelLote(0, 0, []).tono, 'mal')
 })
 
 test('CABLEADO: una sola regla de «qué lleva», registrar antes de imprimir, A4 horizontal', () => {
   const armar = fuente('./ArmarRecibo.tsx')
   assert.match(armar, /eleccionPorDefecto\(fila\)/)
   assert.doesNotMatch(armar, /eleccionInicial\(/, 'ArmarRecibo no decide su propia elección por defecto')
+  // REHACER 01/10: la barra NO guarda ni imprime; su única acción es abrir la vista previa.
   const barra = fuente('./BarraDeRecibos.tsx')
-  assert.ok(barra.indexOf('await registrarUno(') < barra.indexOf('setParaImprimir(salieron'), 'se registra antes de mandar a imprimir')
-  assert.match(barra, /aceptarRecibo\(r\.sellado\)/)
+  assert.doesNotMatch(barra, /guardarRecibosDelLote|aceptarRecibo|imprimirEnVentana/, 'la barra no escribe ni imprime')
+  assert.match(barra, /data-testid="recibos-lote-previa"/)
+  assert.match(barra, /disabled=\{Boolean\(apagada\)\}/, 'la casilla de quien no cobra va apagada')
+  // La vista previa dibuja LA MISMA hoja que se imprime, y guarda antes de imprimir o descargar.
+  const previa = fuente('./VistaPreviaDeRecibos.tsx')
+  assert.match(previa, /<HojasDeRecibosA4 vista recibos=/)
+  assert.match(previa, /<HojasDeRecibosA4 hoja=\{hoja\} recibos=\{paraImprimir\}/)
+  assert.ok(previa.indexOf('const guardados = await guardar()') < previa.indexOf('setParaImprimir(guardados'), 'se guarda antes de mandar a imprimir')
+  assert.match(previa, /recibos-lote\?ids=\$\{guardados\.map/, 'el PDF se pide con los ids de lo guardado')
+  assert.match(previa, /<Drawer testid="vista-previa-recibos"/, 'panel lateral compartido, no un modal propio')
+  // La grilla apaga la casilla ANTES y pasa la marca de impreso.
+  const grilla = fuente('../GrillaEspejoQuincena.tsx')
+  assert.match(grilla, /apagada: sinNada\.has\(fila\.personaId\) \? MOTIVO_SIN_NADA : undefined/)
+  assert.match(grilla, /impreso: impresos\[fila\.personaId\]/)
   assert.match(fuente('./HojaDelRecibo.tsx'), /size: A4 landscape/)
   assert.match(fuente('./HojasDeRecibosA4.tsx'), /gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr'/)
 })

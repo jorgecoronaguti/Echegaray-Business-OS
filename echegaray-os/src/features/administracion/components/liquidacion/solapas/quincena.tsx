@@ -11,8 +11,11 @@ import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDe
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import {
-  RECORTES, RECORTES_PRESENTISMO, normalizar, pasaPresentismo, presentismoPedido,
+  RECORTES, RECORTES_PRESENTISMO, clientePedido, normalizar, opcionesDeCliente, pasaCliente, pasaPresentismo,
+  presentismoPedido,
 } from '../../../services/recorteDeLiquidacion'
+import { leerClientePorPersona } from '../../../services/clientePorPersonaService'
+import { leerRecibosDeLaQuincena } from '../../../services/recibosDeLaQuincenaService'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -61,10 +64,14 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   //
   // DESDE BLANCO + NEGRO (14/09/2026) LA EXPOSICIÓN VIENE CON LA LIQUIDACIÓN: el $/h de categoría del
   // blanco estimado sale de ahí, y leerla otra vez acá serían dos fotos de la escala en el mismo render.
-  const [cuadro, historialDeManuales] = await Promise.all([
+  const [cuadro, historialDeManuales, clientes, recibos] = await Promise.all([
     leerCuadroDeLaQuincena(supabase, quincena, hoy),
     // EL LOG DEL PUNTO ÁMBAR: una lectura por quincena (no por celda), en la misma tanda.
     leerHistorialDeLaQuincena(supabase, quincena),
+    // DE QUÉ CLIENTE ES CADA UNO HOY, para el recorte «Cliente» (dueño, 01/10/2026).
+    leerClientePorPersona(supabase),
+    // EL ÚLTIMO RECIBO GUARDADO DE CADA UNO: la marca «impreso dd/mm hh:mm» del cuadro.
+    leerRecibosDeLaQuincena(supabase, quincena),
   ])
   const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
   const exposicion = liquidacion.exposicion
@@ -95,8 +102,13 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   const grupo = RECORTES.find((r) => r.clave === parametros.grupo)?.clave ?? 'todos'
   const presentismo = presentismoPedido(parametros.presentismo)
   const buscar = normalizar(parametros.buscar ?? '')
+  // LAS OPCIONES SALEN DE LA QUINCENA ENTERA, no de lo ya recortado: elegir «Mensuales» no puede hacer
+  // desaparecer el cliente que se estaba mirando.
+  const clientesDeLaQuincena = opcionesDeCliente(filas.map((f) => f.personaId), clientes.mapa)
+  const cliente = clientePedido(parametros.cliente, clientesDeLaQuincena)
   const visibles = filas
     .filter((f) => grupo === 'todos' || f.grupo === grupo)
+    .filter((f) => pasaCliente(f.personaId, cliente, clientes.mapa))
     .filter((f) => pasaPresentismo(f.linea.presentismo, presentismo))
     .filter((f) => !buscar || normalizar(f.nombre).includes(buscar))
   const secciones = seccionesDelEspejo(visibles, tituloDe)
@@ -117,6 +129,11 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       activo: grupo === r.clave,
       href: hrefDe({ grupo: r.clave === 'todos' ? undefined : r.clave }),
     }))
+  const opcionesDelCliente = clientesDeLaQuincena.map((c) => ({
+    texto: c.texto,
+    activo: cliente === c.clave,
+    href: hrefDe({ cliente: c.clave === 'todos' ? undefined : c.clave }),
+  }))
   const opcionesDePresentismo = RECORTES_PRESENTISMO.map((r) => ({
     texto: r.texto,
     activo: presentismo === r.clave,
@@ -133,14 +150,26 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}
+      {recibos.error && (
+        <div style={{ padding: '0 0 10px' }}>
+          <Aviso tono="neg" testid="quincena-error" titulo="No pude leer los recibos ya impresos">{recibos.error}</Aviso>
+        </div>
+      )}
+      {clientes.error && (
+        <div style={{ padding: '0 0 10px' }}>
+          <Aviso tono="neg" testid="quincena-error" titulo="No pude leer los clientes de cada persona">{clientes.error}</Aviso>
+        </div>
+      )}
       <FiltrosDelEspejo
         periodos={periodos}
         grupos={grupos}
+        cliente={opcionesDelCliente}
         presentismo={opcionesDePresentismo}
         busqueda={{
           valor: parametros.buscar ?? '',
           ocultos: {
             vista: 'liquidacion', quincena: quincena.desde, ...(grupo === 'todos' ? {} : { grupo }),
+            ...(cliente === 'todos' ? {} : { cliente }),
             ...(presentismo === 'todos' ? {} : { presentismo }),
           },
           limpiar: parametros.buscar ? hrefDe({ buscar: undefined }) : null,
@@ -155,6 +184,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         historiales={historiales}
         historialCompleto={exposicion.errores.length === 0}
         detalles={detalles}
+        impresos={recibos.impresos}
         sello={
           <Sello
             titulo={rotuloQuincena(quincena)}

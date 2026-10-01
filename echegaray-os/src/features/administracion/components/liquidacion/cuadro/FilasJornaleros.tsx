@@ -23,6 +23,7 @@ import {
 import { CeldaTarifa, rotuloCategoria } from './CeldaTarifa'
 import { CeldaPersona, RenglonDelDetalle } from './CeldaPersona'
 import { categoriasDeLaFila } from './categoriasDeLaFila'
+import type { MarcaDeRecibo } from './lotesDeRecibos'
 import { filaPagada } from './marcaDePago'
 import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
@@ -37,7 +38,7 @@ export interface EdicionDeFila {
 
 export function FilaJornalero({ fila, columnas, edicion, pct, abrir, marca }: {
   fila: FilaDelEspejo; columnas: string; edicion: EdicionDeFila; pct: number | null; abrir: () => void
-  marca?: { marcada: boolean; alternar: () => void }
+  marca?: MarcaDeRecibo
 }) {
   const l = fila.linea
   const { quincena } = edicion
