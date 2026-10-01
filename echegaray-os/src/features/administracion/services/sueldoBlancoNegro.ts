@@ -32,6 +32,7 @@
 
 import { cuilNormalizado, mismoCuil } from './cuil.ts'
 import { mismaCategoria } from './vocabularioPersona.ts'
+import { etiquetaCategoria } from '../types/index.ts'
 import { compararConElPiso, type ComparacionConElPiso } from './exposicionConvenio.ts'
 import { estimarRecibo, type ReciboEstimado } from './reciboEstimado.ts'
 import { periodoOrdenable, type ConceptoDeRecibo, type ReciboParaReglas, type ReglasDelRecibo } from './reglasDelRecibo.ts'
@@ -138,6 +139,12 @@ export interface SueldoBlancoNegro {
    */
   categoriaRecibo?: string | null
   periodoRecibo?: string | null
+  /**
+   * RECATEGORIZADA (dueño, 01/10/2026: «están mal las tarjetas… a varios se les ha modificado la categoría»): el
+   * legajo dice una categoría nueva y el recibo de este período todavía no llegó. `categoriaRecibo` ya es la NUEVA
+   * —la misma de la que sale el $/h—; acá queda la del último recibo real y su período, para decir de dónde viene.
+   */
+  recategorizadaDesde?: { categoria: string; periodo: string | null } | null
   bruto: number | null
   neto: number | null
   /** De dónde salió el neto: a mano, el recibo, `nomina_recibo_neto`, el recibo estimado por conceptos, o la mediana. */
@@ -178,7 +185,7 @@ const num = (v: number | null | undefined): number | null => (v == null || !Numb
 
 type Blanco = Pick<SueldoBlancoNegro,
   'estado' | 'horasBlanco' | 'valorHoraCategoria' | 'bruto' | 'neto' | 'origenNeto' | 'proporcion' | 'driveFileId'
-  | 'reciboEstimado' | 'conceptosReales' | 'totalesReales' | 'categoriaRecibo' | 'periodoRecibo'>
+  | 'reciboEstimado' | 'conceptosReales' | 'totalesReales' | 'categoriaRecibo' | 'periodoRecibo' | 'recategorizadaDesde'>
 
 /** El recibo estimado de la entrada, con las horas o el $/h escritos a mano si los hay. */
 /**
@@ -274,9 +281,13 @@ function blancoDe(e: EntradaDeSueldo): Blanco {
   const estimado = estimadoDe(e)
   const horasBlanco = estimado ? r2(estimado.horasNormales + estimado.horasFeriado) : e.horas == null ? null : r2(e.horas / 2)
   const bruto = estimado?.remunerativo ?? (horasBlanco == null || piso == null ? null : r2(horasBlanco * piso))
+  // LA ETIQUETA SIGUE AL $/H: recategorizada, el $/h es el de la categoría nueva y la categoría que se muestra y se
+  // imprime también; con la del último recibo, la tarjeta decía «Ayudante · $7.561/h» (el $/h de otra categoría).
+  const anterior = recategorizada(e) && ultimo?.categoria ? { categoria: ultimo.categoria, periodo: ultimo.periodo } : null
   const base = {
     estado: 'estimado' as const, horasBlanco, valorHoraCategoria: piso, bruto, reciboEstimado: estimado, conceptosReales: null, totalesReales: null,
-    categoriaRecibo: ultimo?.categoria ?? null, periodoRecibo: ultimo?.periodo ?? null,
+    categoriaRecibo: anterior ? etiquetaCategoria(e.categoriaLegajo ?? null) : ultimo?.categoria ?? null,
+    periodoRecibo: ultimo?.periodo ?? null, recategorizadaDesde: anterior,
   }
   // Un recibo sin horas todavía trae un neto real: vale lo mismo que el de nómina.
   const netoReal = num(r?.neto) ?? num(e.netoDeNomina)

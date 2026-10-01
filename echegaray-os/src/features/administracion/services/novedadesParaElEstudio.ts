@@ -168,8 +168,12 @@ function filaDe(f: FilaDelEspejo & { grupo: GrupoDeNovedades }, l: DatosDelLegaj
   const categoriaRecibo = s?.categoriaRecibo ?? null
   const categoriaLegajo = categoriaVisible(f.categoria, l?.puesto ?? null)
   // RECATEGORIZADO: el legajo dice otra cosa que el último recibo → manda el legajo y se avisa la vieja.
-  const recategorizado = categoriaRecibo != null && categoriaLegajo != null && !mismaCategoria(categoriaRecibo, categoriaLegajo)
-    ? { vieja: categoriaRecibo, periodo: s?.periodoRecibo ?? null } : null
+  // El modelo ya lo resolvió (`recategorizadaDesde`: `categoriaRecibo` es la nueva y la anterior viaja aparte); la
+  // comparación queda para un recibo REAL del período que todavía dice la categoría vieja.
+  const recategorizado = s?.recategorizadaDesde
+    ? { vieja: s.recategorizadaDesde.categoria, periodo: s.recategorizadaDesde.periodo }
+    : categoriaRecibo != null && categoriaLegajo != null && !mismaCategoria(categoriaRecibo, categoriaLegajo)
+      ? { vieja: categoriaRecibo, periodo: s?.periodoRecibo ?? null } : null
   return {
     ...base,
     categoria: recategorizado ? categoriaLegajo : (categoriaRecibo ?? categoriaLegajo), categoriaDelLegajo: categoriaRecibo == null || !!recategorizado,
