@@ -65,17 +65,59 @@ export const ddmm = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5,
 export function pareceUnPago(texto) {
   const t = plano(texto).trim()
   if (!t || t.length > 300 || t.includes('\n')) return false
-  if (RE_ENTREGA_ER.test(t) || RE_CHEQUE.test(t)) return false
+  // «ER-nnnn» ya no la excluye: «pagué 50.000 de flete con la ER-0021» es un pago con plata de una entrega.
+  if (RE_CHEQUE.test(t)) return false
   // Sin importe sólo se reclama «le pagué a X»: el bot contesta qué entendió y pide el importe (no calla).
   if (!/\d/.test(t) && !/\b(?:mil|lucas|millon|millones)\b/.test(t) && !RE_DATIVO.test(t)) return false
   return RE_VERBO_PAGO.test(t) || RE_PAGARON_CON_SE.test(t) || RE_DATIVO.test(t) && /\d/.test(t)
     || RE_A_CUENTA.test(t) && /\d/.test(t)
 }
 
+// «con la plata de Maldonado», «del efectivo de Nievas», «de la entrega de Nievas»: plata que tiene otra persona.
+// «la plata de la caja / de la oficina» NO es de nadie: es la caja.
+const RE_PLATA_DE_ALGUIEN = /\b(?:de|con|del)(?: la| el)? (?:plata|efectivo|entrega|rendicion)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)[a-z]{3,}/
+// El que paga puede ir de sujeto: «Nievas le pagó 200.000 a Nasser».
+const RE_SUJETO_PAGA = /^(?:hoy |ayer )?([a-z]{3,}(?: [a-z]{3,})?) (?:le |les )?(?:pago|pagaron|abono|abonaron|gasto|compro|transferio)\b/
+const RE_NO_NOMBRE = /^(?:se|hoy|ayer|ya|yo|nosotros|alguien|el|la)$/
+
+/** ¿Qué entrega nombra el texto por su código? «ER-0021» → 21. */
+export function codigoDeEntrega(texto) {
+  const m = plano(texto).match(/\ber-?(\d{2,})\b/)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Los nombres de quien tiene la plata, tal como el texto los dice: «con la plata de Maldonado», «de la entrega de
+ * Nievas», o el sujeto («Nievas le pagó…»). Sólo palabras; quién es lo decide el que las cruza con las entregas.
+ * @returns {{palabras:string[], sujeto:boolean}|null}
+ */
+export function tenedorDicho(texto) {
+  const t = plano(texto)
+  const m1 = t.match(/\b(?:de|con|del)(?: la| el)? (?:plata|efectivo|entrega|rendicion)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)([a-z]{3,}(?: [a-z]{3,})?)/)
+  if (m1) return { palabras: m1[1].split(' ').filter((w) => w.length >= 4), sujeto: false }
+  const m2 = t.match(RE_SUJETO_PAGA)
+  if (m2) {
+    const palabras = m2[1].split(' ').filter((w) => w.length >= 4 && !RE_NO_NOMBRE.test(w) && w !== 'pago')
+    return palabras.length ? { palabras, sujeto: true } : null
+  }
+  return null
+}
+
+/** El texto sin lo que sólo dice de dónde sale la plata, para que el que lee el pago no lo confunda con el destinatario. */
+export function sinOrigenDeEntrega(texto) {
+  return String(texto ?? '')
+    .replace(/\b(?:con|de|del)(?: la| el)? (?:plata|efectivo|entrega|rendici[oó]n)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}(?: [A-Za-zÁÉÍÓÚáéíóúñÑ]{3,})?/gi, '')
+    .replace(/\b(?:con|de|del)(?: la| el)? (?:entrega|plata a rendir)\b/gi, '')
+    .replace(/\b(?:con|de|en)(?: la)? ER-?\d{2,}\b|\bER-?\d{2,}\b/gi, '')
+    .replace(/^\s*(?:hoy |ayer )?[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}(?: [A-Za-zÁÉÍÓÚáéíóúñÑ]{3,})? (?=(?:le |les )?(?:pag[oó]|pagaron|abon[oó]|abonaron|gast[oó]|compr[oó]|transfiri[oó])\b)/i, (m) => (/^\s*(?:hoy|ayer)\b/i.test(m) ? m.match(/^\s*(?:hoy|ayer) /i)[0] : ''))
+    .replace(/\s{2,}/g, ' ').trim()
+}
+
 /** ¿Dice de dónde salió la plata? «de la caja», «con la plata de ER-0012». */
 export function dijoDeDondeSalio(texto) {
   const t = plano(texto)
   if (RE_ENTREGA_ER.test(t) || /\b(?:de|con) (?:la )?(?:entrega|plata a rendir|plata que tengo)\b/.test(t)) return 'entrega'
+  if (RE_PLATA_DE_ALGUIEN.test(t)) return 'entrega'
   if (/\b(?:de|con|por|desde) (?:la )?(?:caja|oficina|cajon)\b|\bcaja\b/.test(t)) return 'caja'
   return null
 }
