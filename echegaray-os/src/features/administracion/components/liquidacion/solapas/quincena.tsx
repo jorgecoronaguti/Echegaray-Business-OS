@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
+import { leerHistorialDeLaQuincena } from '../../../services/historialDeManualesService'
+import { ProveedorDeHistorial } from '../HistorialDeManuales'
 import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
@@ -57,7 +59,11 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   //
   // DESDE BLANCO + NEGRO (14/09/2026) LA EXPOSICIÓN VIENE CON LA LIQUIDACIÓN: el $/h de categoría del
   // blanco estimado sale de ahí, y leerla otra vez acá serían dos fotos de la escala en el mismo render.
-  const cuadro = await leerCuadroDeLaQuincena(supabase, quincena, hoy)
+  const [cuadro, historialDeManuales] = await Promise.all([
+    leerCuadroDeLaQuincena(supabase, quincena, hoy),
+    // EL LOG DEL PUNTO ÁMBAR: una lectura por quincena (no por celda), en la misma tanda.
+    leerHistorialDeLaQuincena(supabase, quincena),
+  ])
   const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
   const exposicion = liquidacion.exposicion
   // LO LABORAL DEL PANEL (costo cargado, legajo, HH por mes, esperadas/estado) sale del cuadro ya leído
@@ -109,6 +115,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
     }))
 
   return (
+    <ProveedorDeHistorial lectura={historialDeManuales}>
     <div data-testid="vista-quincena">
       {/* LOS ERRORES DE LA EXPOSICIÓN YA VIENEN EN `liquidacion.errores`: sumarlos otra vez los dibujaba
           dos veces con la misma clave. La clave lleva el índice: dos fuentes pueden fallar con el mismo rótulo. */}
@@ -146,6 +153,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         }
       />
     </div>
+    </ProveedorDeHistorial>
   )
 }
 

@@ -15,6 +15,8 @@ export interface EntradaDeCategorias {
   categoriaRecibo: string | null | undefined
   valorHoraRecibo: number | null | undefined
   periodoRecibo: string | null | undefined
+  /** La categoría del último recibo real cuando el legajo ya dice otra (`SueldoBlancoNegro.recategorizadaDesde`). */
+  recategorizadaDesde?: { categoria: string; periodo: string | null } | null
   /** `recibo` = el del período; `estimado` = el $/h viene del último recibo real; sin recibo = nunca tuvo. */
   estado: 'recibo' | 'estimado' | null
   /**
@@ -99,8 +101,14 @@ export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
   const recibo = `Recibo: ${catRecibo ?? '¿categoría?'} · ${pesos(e.valorHoraRecibo)}/h`
   const coinciden = catRecibo != null && catRecibo.toLowerCase() === plat.toLowerCase()
     && e.valorHoraRecibo != null && e.pisoPlataforma != null && Math.round(e.valorHoraRecibo) === Math.round(e.pisoPlataforma)
+  const antes = e.estado === 'estimado' ? e.recategorizadaDesde ?? null : null
   const titulo = [
-    `Recibo ${periodo}${e.estado === 'estimado' ? ' (último real; el de este período no llegó)' : ''}: ${catRecibo ?? 'sin categoría'} · ${pesos(e.valorHoraRecibo)}/h`,
+    ...(antes ? [
+      `Recategorizado: su último recibo (${periodoCorto(antes.periodo)}) todavía decía ${legible(antes.categoria)}; el legajo ya dice ${catRecibo}.`,
+      `${pesos(e.valorHoraRecibo)}/h es lo que el estudio pagó por ${catRecibo} en la última quincena liquidada (sin recibos de esa categoría, el piso de plataforma).`,
+    ] : [
+      `Recibo ${periodo}${e.estado === 'estimado' ? ' (último real; el de este período no llegó)' : ''}: ${catRecibo ?? 'sin categoría'} · ${pesos(e.valorHoraRecibo)}/h`,
+    ]),
     `Plataforma (legajo): ${plat} · piso ${pesos(e.pisoPlataforma)}/h`,
     coinciden ? 'Coinciden.' : 'NO coinciden: el blanco se paga por el recibo; el negro por la plataforma.',
   ].join('\n')

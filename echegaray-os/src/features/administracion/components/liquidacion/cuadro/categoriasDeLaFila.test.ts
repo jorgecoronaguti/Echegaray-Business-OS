@@ -31,3 +31,16 @@ test('RÓTULOS: la categoría impresa se vuelve legible y el período corto', ()
   assert.equal(periodoCorto('Q2-08/2026'), '2ª ago-26')
   assert.equal(periodoCorto('FINAL-08/2026'), 'FINAL-08/2026')
 })
+
+// RECATEGORIZADO (dueño 01/10/2026, captura de Quiroga: «Recibo: Ayudante · $7.561/h»): el $/h ya era el de la
+// categoría nueva y la etiqueta seguía con la vieja. La tarjeta dice la nueva, y el title cuenta la anterior.
+test('RECATEGORIZADO: el renglón del recibo dice la categoría nueva, y el title la anterior y de dónde sale el $/h', () => {
+  const c = categoriasDeLaFila({
+    plataforma: 'Oficial especializado', pisoPlataforma: 7420, categoriaRecibo: 'Oficial especializado', valorHoraRecibo: 7561,
+    periodoRecibo: 'Q1-09/2026', estado: 'estimado', recategorizadaDesde: { categoria: 'AYUDANTE', periodo: 'Q1-09/2026' },
+  })
+  assert.equal(c.recibo, 'Recibo: Oficial especializado · $7.561/h')
+  assert.match(c.titulo, /Recategorizado: su último recibo \(1ª sep-26\) todavía decía Ayudante/)
+  assert.match(c.titulo, /\$7\.561\/h es lo que el estudio pagó por Oficial especializado/)
+  assert.doesNotMatch(c.titulo, /último real; el de este período no llegó\): Oficial especializado/)
+})

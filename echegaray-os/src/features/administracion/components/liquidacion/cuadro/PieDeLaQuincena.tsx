@@ -17,6 +17,10 @@
 //  · «Cobraron de más» es un aviso del sistema (`Callout`), no una línea roja suelta entre cifras.
 //  · Lo que separa el saldo de «total − pagado» ya no cuelga pegado debajo de cada número: va en un bloque de
 //    ajustes, con el importe en la columna Saldo, para que la resta se lea en vertical.
+//  · «Saldo redondeado» es un RENGLÓN DEL CUADRO (dueño, 01/10/2026: «esas palabras y números tirados en el medio
+//    de la pantalla… arreglar»). No es un ajuste: es el saldo con el efectivo en billetes. Bajo el título «Ajustes
+//    del saldo», más chico y tenue que el cuadro, quedaba suelto; ahora lleva la grilla, la raya y la letra de
+//    Banco, Efectivo y Total, y el título de ajustes sólo existe cuando hay un ajuste de verdad.
 
 import type { ReactNode } from 'react'
 import { Callout } from '@/shared/components/ui/Callout'
@@ -141,18 +145,28 @@ const Ajuste = ({ testid, children, valor }: { testid: string; children: ReactNo
 
 // UNA NOTA VISIBLE, NUNCA UN title (auditor 30/09/2026): es lo que hace que cada fila cierre a la vista. Con los
 // importes en la columna Saldo, «Total − Pagado − descontado + cobrado de más = Saldo» se lee de arriba abajo.
-function AjustesDelSaldo({ t, c }: { t: TotalesDeJornaleros; c: ConciliacionDePlata }) {
+function AjustesDelSaldo({ c }: { c: ConciliacionDePlata }) {
   const lineas: ReactNode[] = []
   for (const [k, otro] of [['banco', 'efectivo'], ['efectivo', 'banco']] as const) {
     if (c[k].descontado > 0) lineas.push(<Ajuste key={`d-${k}`} testid={`pie-descuento-${k}`} valor={`−${pesos(c[k].descontado)}`}>{`Saldo ${k}: se descuenta lo pagado de más en ${otro}`}</Ajuste>)
     if (c[k].sobrepasado > 0) lineas.push(<Ajuste key={`s-${k}`} testid={`pie-sobrepasado-${k}`} valor={`+${pesos(c[k].sobrepasado)}`}>{`Saldo ${k}: cobraron de más por ${k}`}</Ajuste>)
   }
-  if (t.saldoRedondeado > 0) lineas.push(<Ajuste key="red" testid="pie-saldo-redondeado" valor={pesos(t.saldoRedondeado)}>Saldo redondeado</Ajuste>)
   if (lineas.length === 0) return null
   return (
     <div className="mt-2 border-t border-line-hairline pt-1">
       <span className={ROTULO}>Ajustes del saldo</span>
       {lineas}
+    </div>
+  )
+}
+
+/** El saldo con el efectivo en billetes: un renglón más del cuadro, con su cifra en la columna Saldo. */
+function SaldoRedondeado({ t }: { t: TotalesDeJornaleros }) {
+  if (!(t.saldoRedondeado > 0)) return null
+  return (
+    <div className={`${GRILLA} border-t border-line py-2`}>
+      <span className="col-span-3 text-muted">Saldo redondeado</span>
+      <Celda valor={t.saldoRedondeado} testid="pie-saldo-redondeado" />
     </div>
   )
 }
@@ -187,7 +201,8 @@ function DetalleDePlata({ t, c }: { t: TotalesDeJornaleros; c: ConciliacionDePla
         <Celda valor={c.total.pagado} testid="pie-pagado" fuerte />
         <Celda valor={c.total.saldo} testid="pie-saldo" fuerte />
       </div>
-      <AjustesDelSaldo t={t} c={c} />
+      <AjustesDelSaldo c={c} />
+      <SaldoRedondeado t={t} />
     </div>
   )
 }

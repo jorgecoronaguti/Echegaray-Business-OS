@@ -29,6 +29,7 @@ import type { CSSProperties } from 'react'
 //      después frente al recibo.
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react'
+import { PuntoConHistorial, useHistorialDeManuales, type CeldaDeHistorial } from './HistorialDeManuales'
 import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
@@ -114,28 +115,37 @@ export function Manual({ compacta = false }: { compacta?: boolean }) {
  * que fuera a corregirlo buscaría en el lugar equivocado. El azul es el mismo de la «L» de licencia
  * en la grilla: «esto viene de otra fuente», no «esto lo decidiste vos».
  */
-export function MarcaDeOrigen({ origen, compacta = false, titulo }: {
+export function MarcaDeOrigen({ origen, compacta = false, titulo, celda }: {
   origen: 'calculado' | 'jornales' | 'manual'
   compacta?: boolean
+  /** Qué celda es: con esto el punto «manual» abre el historial de sus cargas (`HistorialDeManuales`). */
+  celda?: CeldaDeHistorial
   /** Lo que explica el número. En JORNALES, la diferencia contra lo que calculó la app. */
   titulo?: string
 }) {
+  const lectura = useHistorialDeManuales()
   if (origen === 'calculado') return null
   const esManual = origen === 'manual'
+  // CON LOG, EL `title` NATIVO SALE: dos globos sobre el mismo punto (el del navegador y el panel) se pisarían.
+  // Sin el log (pantalla sin envolver o migración sin aplicar) el punto es el de siempre.
+  const conLog = esManual && celda != null && lectura != null
+  const punto = (
+    <span aria-hidden style={{
+      width: 6, height: 6, borderRadius: '50%',
+      background: esManual ? V.marca : '#175CD3', display: 'inline-block',
+    }} />
+  )
   return (
     <span
       data-testid={esManual ? 'marca-manual' : 'marca-jornales'}
-      title={titulo ?? (esManual
+      title={conLog ? undefined : titulo ?? (esManual
         ? 'Escrito a mano: manda sobre el cálculo'
         : 'Lo dice la planilla JORNALES. Escribirlo acá lo vuelve manual y la planilla deja de mandarlo.')}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         marginLeft: compacta ? 3 : 6, flex: 'none',
       }}>
-      <span aria-hidden style={{
-        width: 6, height: 6, borderRadius: '50%',
-        background: esManual ? V.marca : '#175CD3', display: 'inline-block',
-      }} />
+      {conLog ? <PuntoConHistorial celda={celda} lectura={lectura}>{punto}</PuntoConHistorial> : punto}
       {!compacta && (
         <span style={{
           fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
@@ -185,7 +195,7 @@ export function CeldaEditable({
   // todavía no lo pasan. Los dos conviven UNA versión: quien no lo pase dibuja lo de siempre.
   const marca = origen ?? (manual ? 'manual' : 'calculado')
   if (soloLectura) {
-    return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} /></>
+    return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo }} /></>
   }
   return (
     <span style={{
@@ -219,7 +229,7 @@ export function CeldaEditable({
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
       />
-      <MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} />
+      <MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo }} />
     </span>
   )
 }

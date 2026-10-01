@@ -28,10 +28,11 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPerfilActual } from '@/features/auth/services/authService'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 import { CAMPOS_EDITABLES, COLUMNA_DE, rechazoDelValorDeCelda, type CampoEditable } from './liquidacionOverrides'
 import { siguientesFormulas } from './liquidacionGuardadas'
+import { selloDeAutor } from './historialDeManuales'
 import { LARGO_MAXIMO_DE_FORMULA, leerCeldaNumerica } from '@/shared/lib/formulaEsAR'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
 import { leerCuadroDeLaQuincena } from './cuadroDeLaQuincenaService'
@@ -387,12 +388,19 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   // `migrations/`. Una sonda aparte sería un viaje más por tecla.
   const pedir = (columnas: string) => admin.from('liquidacion_linea').select(columnas)
     .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
-  let conFormulas = await pedir(`${columna}, formulas`)
+  // ESCALÓN DE `escribio_en` (20261001T0200): el sello de autor del historial. Sin la migración la escritura sigue
+  // igual y el log simplemente no existe todavía; mandar la columna a una base que no la tiene rompería TODA celda.
+  let conFormulas = await pedir(`${columna}, formulas, escribio_en`)
+  const hayMarca = !conFormulas.error
+  if (!hayMarca) conFormulas = await pedir(`${columna}, formulas`)
   const hayFormulas = !conFormulas.error
   if (!hayFormulas) conFormulas = await pedir(columna)
   const hoy = conFormulas.data as Record<string, unknown> | null
   const nuevo = valor === '' ? null : valor
   const cambios: Record<string, unknown> = { [columna]: nuevo }
+  // EL AUTOR DEL LOG: la escritura va con la clave de servicio y el trigger no ve `auth.uid()`. Es la persona REAL,
+  // no la de la lente «ver como» (`getUsuarioActual` lee la sesión). El trigger toma el sello sólo si `escribio_en` cambió.
+  if (hayMarca) Object.assign(cambios, selloDeAutor((await getUsuarioActual(supabase))?.id ?? null))
   // LA CUENTA VIAJA AL LADO DEL NÚMERO, NUNCA EN SU LUGAR: lo que se paga es el número.
   if (hayFormulas) cambios.formulas = siguientesFormulas(hoy?.formulas, campo, escrito.expresion)
 

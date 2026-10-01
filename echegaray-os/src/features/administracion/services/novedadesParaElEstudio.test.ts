@@ -184,6 +184,14 @@ test('obreros recategorizados: manda la categoría del legajo sobre la del últi
   assert.equal(f.categoria, 'Oficial especializado')
   assert.equal(f.categoriaDelLegajo, true)
   assert.match(f.observaciones, /Recategorizado desde esta quincena: antes AYUDANTE \(recibo Q1-09\/2026\)/)
+  // Así llega desde el modelo (01/10): `categoriaRecibo` ya es la nueva y la anterior viaja en `recategorizadaDesde`.
+  const delModelo = reporte(
+    [fila('q', 'Quiroga Sebastian', sueldo({ categoriaRecibo: 'Oficial especializado', periodoRecibo: 'Q1-09/2026', recategorizadaDesde: { categoria: 'AYUDANTE', periodo: 'Q1-09/2026' } }), { categoria: 'oficial_especializado' })],
+    [['q', legajo('Quiroga Sebastian', 1)]],
+  )
+  assert.equal(delModelo.filas[0].categoria, 'Oficial especializado')
+  assert.equal(delModelo.filas[0].categoriaDelLegajo, true)
+  assert.match(delModelo.filas[0].observaciones, /Recategorizado desde esta quincena: antes AYUDANTE \(recibo Q1-09\/2026\)/)
   // La misma categoría con otra grafía NO es recategorización.
   const igual = reporte([fila('a', 'Alvarez Bruno', sueldo({ categoriaRecibo: 'OFICIAL' }), { categoria: 'oficial' })], [['a', legajo('Alvarez Bruno', 1)]])
   assert.equal(igual.filas[0].categoria, 'OFICIAL')

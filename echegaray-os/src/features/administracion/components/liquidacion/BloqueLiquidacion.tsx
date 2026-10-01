@@ -12,6 +12,8 @@ import {
 import { getLiquidacionDeLaQuincena } from '../../services/liquidacionQuincenaService'
 import { estadoDelCuadro, resumenDeEstados } from '../../services/estadoDelCuadro'
 import { CuadroLiquidacion } from './CuadroLiquidacion'
+import { leerHistorialDeLaQuincena } from '../../services/historialDeManualesService'
+import { ProveedorDeHistorial } from './HistorialDeManuales'
 
 // LA SOLAPA «LIQUIDACIÓN» — qué cobra cada persona en esta quincena y por qué canal sale.
 //
@@ -42,7 +44,11 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 }) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, camposEditables, estados, errores, sinActividad } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const [{ cuadros, camposEditables, estados, errores, sinActividad }, historial] = await Promise.all([
+    getLiquidacionDeLaQuincena(supabase, quincena),
+    // UNA LECTURA DEL LOG DE LA QUINCENA PARA TODOS LOS PUNTOS ÁMBAR (no una por celda).
+    leerHistorialDeLaQuincena(supabase, quincena),
+  ])
   const esLaDeHoy = quincenaDe(hoy).desde === quincena.desde
   const estadoDeLaQuincena = resumenDeEstados(cuadros.map((c) => estadoDelCuadro(estados, c.grupo).estado))
 
@@ -52,6 +58,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
   const conFilas = cuadros.some((c) => c.lineas.length > 0)
 
   return (
+    <ProveedorDeHistorial lectura={historial}>
     <div data-testid="bloque-liquidacion">
       {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR. Un cuadro en cero porque la RLS
           rechazó la consulta es indistinguible de una quincena sin cargar, y la diferencia entre
@@ -116,6 +123,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
         </>
       )}
     </div>
+    </ProveedorDeHistorial>
   )
 }
 

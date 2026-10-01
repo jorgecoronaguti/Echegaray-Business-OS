@@ -47,7 +47,7 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
   // EL PISO SALE DEL MODELO EN LA ABIERTA Y DEL SELLO EN LA CERRADA: el mismo número, la misma fecha (`q.hasta`).
   const c = categoriasDeLaFila({
     plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? l.sello?.piso ?? null,
-    categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo, estado: s?.estado ?? null,
+    categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo, recategorizadaDesde: s?.recategorizadaDesde, estado: s?.estado ?? null,
     sello: l.sello,
   })
   return (

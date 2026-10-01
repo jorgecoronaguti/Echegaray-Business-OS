@@ -140,16 +140,23 @@ test('recategorizada: el $/h del blanco es el de la categoría nueva en la últi
   const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'oficial_especializado', pisoCategoria: 7000 }))
   assert.equal(s.estado, 'estimado')
   assert.equal(s.valorHoraCategoria, 7420)
-  assert.equal(s.categoriaRecibo, 'OFICIAL')
   assert.equal(s.reciboEstimado?.valorHora, 7420)
+  // LA ETIQUETA SIGUE AL $/H (dueño 01/10: «están mal las tarjetas»): con el $/h de la categoría nueva, la tarjeta y
+  // el recibo estimado dicen la categoría NUEVA; la del último recibo queda aparte, para decir de dónde viene.
+  // MUTACIÓN que pone rojo: volver a `categoriaRecibo: ultimo?.categoria`.
+  assert.equal(s.categoriaRecibo, 'Oficial especializado')
+  assert.deepEqual(s.recategorizadaDesde, { categoria: 'OFICIAL', periodo: 'Q2-08/2026' })
 })
 
 test('misma categoría en legajo y recibo: sigue el $/h del último recibo real', () => {
   const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'Oficial', pisoCategoria: 7000 }))
   assert.equal(s.valorHoraCategoria, 6348)
+  assert.equal(s.categoriaRecibo, 'OFICIAL')
+  assert.equal(s.recategorizadaDesde ?? null, null)
 })
 
 test('recategorizada sin ningún recibo de la categoría nueva: cae al piso de plataforma', () => {
   const s = sueldoBlancoNegro(entrada({ estimacion: { base: BASE_Q1_09, persona: CUIL_ROSALES }, categoriaLegajo: 'medio_oficial', pisoCategoria: 5866 }))
   assert.equal(s.valorHoraCategoria, 5866)
+  assert.equal(s.categoriaRecibo, 'Medio oficial')
 })

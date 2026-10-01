@@ -13,6 +13,7 @@
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import type { CeldaDeHistorial } from '../HistorialDeManuales'
 import { horas as nHoras, pesos } from '../formato'
 import { referenciaDeJornales, sinSello } from './estadoDelPago'
 import { horasNoCoincidenConLosDias, type CampoEditable, type LineaConOverrides } from '../../../services/liquidacionOverrides'
@@ -166,7 +167,7 @@ export function tituloDeOrigen(linea: LineaConOverrides, campo: CampoEditable): 
 }
 
 /** Una celda calculada. `null` se dibuja «—»: falta el dato, no es cero (R1). */
-export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos', origen = 'calculado', titulo, testid }: {
+export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos', origen = 'calculado', titulo, testid, celda }: {
   valor: number | null
   medio?: boolean
   apagada?: boolean
@@ -175,6 +176,8 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
   origen?: 'calculado' | 'jornales' | 'manual'
   titulo?: string
   testid?: string
+  /** Qué celda es: el punto manual abre su historial. */
+  celda?: CeldaDeHistorial
 }) {
   const formato = unidad === 'horas' ? nHoras : pesos
   return (
@@ -183,7 +186,7 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
       color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
       fontWeight: medio ? 500 : undefined,
     }}>
-      {formato(valor)}<MarcaDeOrigen origen={origen} compacta titulo={titulo} />
+      {formato(valor)}<MarcaDeOrigen origen={origen} compacta titulo={titulo} celda={celda} />
     </div>
   )
 }
@@ -282,6 +285,7 @@ export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicio
   }
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
-      origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />
+      origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined}
+      celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'horas' }} />
   )
 }
