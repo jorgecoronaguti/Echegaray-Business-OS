@@ -18,11 +18,15 @@ import { extensionDe } from '../../administracion/services/comprobanteEntrada.ts
 /** La migración que publica el módulo. Mientras no esté aplicada, las pantallas lo dicen. */
 export const MIGRACION_EFECTIVO = '20260922T1500'
 
-const ENTERO = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 })
+const ENTERO = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
+const CON_CENTAVOS = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-/** `800000` → `800.000`. Los centavos sólo aparecen si existen. */
+/**
+ * `800000` → `800.000`. Los centavos sólo aparecen si existen, y entonces son DOS: `96400.5` es `96.400,50`,
+ * nunca `96.400,5` (plata con un decimal se lee como un error de carga — QA del teléfono, 01/10/2026).
+ */
 export function cifra(n: number): string {
-  return ENTERO.format(n)
+  return Math.round(n * 100) % 100 === 0 ? ENTERO.format(n) : CON_CENTAVOS.format(n)
 }
 
 /** `800000` → `$ 800.000`, con el espacio que dibuja el mockup. El negativo lleva el signo adelante. */
@@ -302,7 +306,16 @@ export function textoYaTenes(t: Extract<TarjetaHoy, { tipo: 'recibir' }>): { tit
 export function accionesDelJefe(todas: readonly EntregaSaldo[]): { rendir: string | null; devolver: boolean } {
   const vivas = abiertas(todas)
   if (!vivas.length) return { rendir: null, devolver: false }
-  return { rendir: vivas.length === 1 ? `/rendir?entrega=${vivas[0].id}` : '/rendir', devolver: true }
+  return { rendir: vivas.length === 1 ? `/rendir?entrega=${vivas[0].id}` : '/rendir', devolver: tienePlataParaDevolver(todas) }
+}
+
+/**
+ * «DEVOLVER EFECTIVO» SÓLO EXISTE CON PLATA EN LA MANO: alguna entrega abierta con saldo en su poder. A quien no
+ * recibió nada, o ya rindió todo (o de más: el saldo queda en cero o negativo), el acceso lo llevaba a una pantalla
+ * que no tenía qué devolver (QA del teléfono, 01/10/2026).
+ */
+export function tienePlataParaDevolver(todas: readonly EntregaSaldo[]): boolean {
+  return abiertas(todas).some((e) => e.en_su_poder > 0)
 }
 
 export function entregaParaRendir(entregas: readonly EntregaSaldo[], pedida: string | null | undefined): EntregaSaldo | null {

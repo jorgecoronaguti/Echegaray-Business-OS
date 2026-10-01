@@ -6,7 +6,7 @@ import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import {
   aConfirmar, abiertas, cifra, conVuelta, destino, fraseTePiden, pesos, resumenMiEfectivo, tarjetaDeHoy,
-  textoTengoQueRendir,
+  textoTengoQueRendir, tienePlataParaDevolver,
 } from '@/features/efectivo/campo/logica'
 import {
   Caja, CifraGrande, Contorno, FilaAcceso, Pie, Primario, Renglon, Rotulo, SinPublicar,
@@ -125,7 +125,7 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <FilaAcceso href={ruta('/rendiciones')} cuenta={r.piden.length} testid="ir-rendiciones">Mis rendiciones</FilaAcceso>
           <FilaAcceso href="/mi-informacion/recibos" testid="ir-recibos-efectivo">Mis recibos</FilaAcceso>
-          <FilaAcceso href={ruta('/devolver')} testid="ir-devolver">Devolver efectivo</FilaAcceso>
+          {tienePlataParaDevolver(entregas) && <FilaAcceso href={ruta('/devolver')} testid="ir-devolver">Devolver efectivo</FilaAcceso>}
           {puedeRendir && <FilaAcceso href={ruta('/rendir/sin-foto')} testid="ir-rendir-sin-foto">Rendir sin foto</FilaAcceso>}
         </div>
 

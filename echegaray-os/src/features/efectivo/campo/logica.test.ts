@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  accionesDelJefe, aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, personaDePor, esRutaDeRendicion, estadoVisible, fraseTePiden,
+  accionesDelJefe, tienePlataParaDevolver, aNumero, conVuelta, destinoDeVuelta, entregaParaRendir, personaDePor, esRutaDeRendicion, estadoVisible, fraseTePiden,
   pesos, resumenMiEfectivo, rutaDeRendicion, sufijoDeVuelta, tarjetaDeHoy, textoTengoQueRendir, textoYaTenes,
   totalDelTicket,
 } from './logica.ts'
@@ -42,7 +42,9 @@ function ticket(p: Partial<TicketRendicion> = {}): TicketRendicion {
 test('pesos: el formato del mockup, con espacio y punto de miles', () => {
   assert.equal(pesos(800000), '$ 800.000')
   assert.equal(pesos(1159700), '$ 1.159.700')
-  assert.equal(pesos(96400.5), '$ 96.400,5')
+  assert.equal(pesos(96400.5), '$ 96.400,50')
+  assert.equal(pesos(-213432.88), '−$ 213.432,88')
+  assert.equal(pesos(1000.004), '$ 1.000')
 })
 
 test('aNumero lee el total del circuito en los dos formatos', () => {
@@ -208,4 +210,15 @@ test('el jefe rinde y devuelve aunque su plata sea de Estructura u otra obra (Ma
   assert.deepEqual(accionesDelJefe([todas[0], entrega({ id: 'e3', estado: 'cerrada' })]), { rendir: '/rendir?entrega=e1', devolver: true })
   // Sin abiertas: no hay qué rendir ni qué devolver.
   assert.deepEqual(accionesDelJefe([entrega({ id: 'e4', estado: 'cerrada' })]), { rendir: null, devolver: false })
+})
+
+test('«Devolver efectivo» sólo con plata en la mano: saldo en cero o negativo no lo ofrece, rendir sí', () => {
+  const enCero = entrega({ id: 'e5', en_su_poder: 0 })
+  const pasada = entrega({ id: 'e6', en_su_poder: -213_432.88 })
+  assert.equal(tienePlataParaDevolver([]), false)
+  assert.equal(tienePlataParaDevolver([enCero, pasada]), false)
+  assert.equal(tienePlataParaDevolver([entrega({ id: 'e7', estado: 'cerrada', en_su_poder: 5000 })]), false)
+  assert.equal(tienePlataParaDevolver([enCero, entrega({ id: 'e8', en_su_poder: 100 })]), true)
+  // El jefe con la entrega pasada sigue pudiendo rendir (le deben a él), pero no «devolver».
+  assert.deepEqual(accionesDelJefe([pasada]), { rendir: '/rendir?entrega=e6', devolver: false })
 })
