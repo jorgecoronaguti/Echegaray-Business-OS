@@ -58,7 +58,7 @@ test('la cabecera reserva EL ancho del panel que hay abierto, no un literal', ()
   assert.match(vista, /cabecera\(entregando \? undefined : accion, abiertas, entregando && ANCHO_PANEL\)/,
     'la lista dejó de reservar el ancho real del panel de entrega')
   // Los paneles de editar (25/09/2026) miden lo mismo que el de devolución: reservan ANCHO_PANEL.
-  assert.match(vista, /devolviendo \|\| imputando \|\| edicionPanel \? ANCHO_PANEL : observado \? ANCHO_PANEL_OBSERVADO : false/,
+  assert.match(vista, /devolviendo \|\| imputando \|\| edicionPanel \|\| rindiendo \? ANCHO_PANEL : observado \? ANCHO_PANEL_OBSERVADO : false/,
     'la ficha reserva un hueco que no es el del panel que abre')
   assert.equal(/espacioPanel=\{(true|\d)/.test(vista), false, 'volvió un ancho a mano en la vista')
 })

@@ -374,7 +374,7 @@ test('el ticket reconocido a mano (20261001T0100): «Escribiendo en Compras» co
   assert.equal(antes.importe, 5000)
   assert.equal(antes.fila, null)
   const compras = new Map([['fila:1050', {
-    fila: 1050, clave: null, fecha: '2026-09-25', proveedor: null, concepto: 'Planchas de telgopor · Aislantes Vicente',
+    fila: 1050, clave: 'p:aislantes vicente|0001-00000906', fecha: '2026-09-25', proveedor: null, concepto: 'Planchas de telgopor · Aislantes Vicente',
     tipo: null, comprobante: '0001-00000906', total: 5000, tipo_pago: 'A rendir',
   }]])
   const [despues] = filasDeLaFicha([c], [{ ...r, fila: 1050 }], compras)

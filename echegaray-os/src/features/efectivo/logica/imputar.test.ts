@@ -40,8 +40,8 @@ test('por defecto se ven Efectivo y «A rendir»; «todos los medios» agrega el
   const { candidatas } = candidatasDe([
     fila({}),
     fila({ fila: 7, clave: 'x', proveedor: 'Combustibles Barceló', obra: null }),
-    fila({ fila: 8, clave: 'y', proveedor: 'Corralón', tipo_pago: 'Transferencia' }),
-    fila({ fila: 9, clave: null, proveedor: null, concepto: 'Flete de arena', tipo_pago: 'A rendir' }),
+    fila({ fila: 8, clave: 'y', proveedor: 'Corralón', obra: null, tipo_pago: 'Transferencia' }),
+    fila({ fila: 9, clave: null, proveedor: null, obra: null, concepto: 'Flete de arena', tipo_pago: 'A rendir' }),
   ], sinTomar, new Set())
   assert.deepEqual(filtrarCandidatas(candidatas, '', false).map((c) => c.fila).sort((a, b) => a - b), [7, 9, 1008])
   assert.equal(filtrarCandidatas(candidatas, '', true).length, 4)
