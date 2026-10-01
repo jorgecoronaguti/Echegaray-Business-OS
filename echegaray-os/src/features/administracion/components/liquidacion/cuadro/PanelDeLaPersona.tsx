@@ -88,19 +88,21 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
           {!armando && (
             <button type="button" onClick={() => setArmando('pago')} data-testid="panel-recibo"
               style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-              Recibo
+              Generar recibo
             </button>
           )}
           {!armando && (
             <button type="button" onClick={() => setArmando('blanco')} data-testid="panel-recibo-blanco"
               style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-              Recibo en blanco
+              Ver blanco
             </button>
           )}
-          {/* «RECIBOS» DEL LEGAJO (dueño, 30/09/2026: «al hacer click en la persona [...] acceso a esto, ya te lo había
+          {/* TRES RÓTULOS QUE NO REPITEN LA PALABRA SOLA (dueño, 01/10/2026: «3 veces la palabra "recibo"… poné
+              "generar recibo" "ver blanco" "historial recibos"»): cada uno dice qué hace.
+              «HISTORIAL RECIBOS» DEL LEGAJO (dueño, 30/09/2026: «al hacer click en la persona [...] acceso a esto, ya te lo había
               solicitado»): los recibos en blanco del estudio y los firmados, en la solapa propia del legajo. */}
           <Link href={`/administracion/personas/${fila.personaId}?v=recibos`} prefetch={false} data-testid="panel-recibos-legajo"
-            style={{ fontSize: '12.5px', color: V.tinta, fontWeight: 600, textDecoration: 'underline' }}>Recibos</Link>
+            style={{ fontSize: '12.5px', color: V.tinta, fontWeight: 600, textDecoration: 'underline' }}>Historial recibos</Link>
           <Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>
         </div>
       }
