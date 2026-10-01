@@ -78,8 +78,10 @@ export function EncabezadoDeColumnas() {
         <RotuloCol titulo={AYUDA_FACTURA}>Factura</RotuloCol>
         <RotuloCol titulo={AYUDA_COBRO}>Cobro</RotuloCol>
         <RotuloCol titulo={AYUDA_CIRCUITO}>B/N</RotuloCol>
-        <span className={SOLO_ANCHO}><RotuloCol derecha>Neto</RotuloCol></span>
-        <span className={SOLO_ANCHO}><RotuloCol derecha>IVA</RotuloCol></span>
+        {/* `text-right` en el envoltorio: adentro de un `span` el rótulo ya no es hijo de la grilla y
+            su propia alineación no tiene de qué agarrarse. */}
+        <span className={`${SOLO_ANCHO} text-right`}><RotuloCol derecha>Neto</RotuloCol></span>
+        <span className={`${SOLO_ANCHO} text-right`}><RotuloCol derecha>IVA</RotuloCol></span>
         <RotuloCol derecha>Monto</RotuloCol>
         <RotuloCol titulo={AYUDA_ESTADO}>Estado</RotuloCol>
       </div>
@@ -165,7 +167,8 @@ export function FilaDeCobranza({ f, obra }: {
               </Link>
             )
             : 'sin obra atribuida'}
-          {oc && <span className="font-mono tabular-nums"> · OC {oc}</span>}
+          {/* El separador va FUERA del mono: un espacio en mono mide el doble y abre un hueco. */}
+          {oc && <> · OC <span className="font-mono tabular-nums">{oc}</span></>}
           {condicion && <span data-testid="condicion-cobranza"> · {condicion}</span>}
         </span>
         {/* LA VISTA ANGOSTA NO TIENE COLUMNAS: lo que la tabla reparte en cinco baja a esta línea,
