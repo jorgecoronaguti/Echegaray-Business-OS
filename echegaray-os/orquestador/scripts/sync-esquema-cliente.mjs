@@ -107,6 +107,10 @@ async function main() {
   // El orden se asigna por posición dentro del cliente, ordenado por fecha y desempatando por fila
   // del Sheet para que sea ESTABLE entre corridas. No se toca en el UPDATE: la pantalla 32 deja
   // reordenar a mano y pisarlo borraría ese trabajo en cada sync.
+  //
+  // 30/09/2026: la posición es una PROPUESTA. Una fila nueva en el medio de un cliente tomaba la
+  // posición de una vieja y el índice único tiraba la transacción entera (29 corridas seguidas).
+  // `guardarPagoDelSync` la corrige al primer orden libre del cliente si hace falta.
   const porCliente = new Map()
   for (const g of pagos) porCliente.set(g.cliente_id, [...(porCliente.get(g.cliente_id) ?? []), g])
   for (const lista of porCliente.values()) {

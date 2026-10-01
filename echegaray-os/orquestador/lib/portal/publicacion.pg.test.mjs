@@ -85,6 +85,24 @@ test('un cobro que el sync trae llega publicado al cliente', { skip: !hayBase },
         'select count(*)::int n from public.esquema_pago where cobranza_fila = $1', [OTRA_QA])
       assert.equal(rows[0].n, 1, 'dos corridas del sync no pueden dejar dos filas del mismo cobro')
     })
+
+    await t.test('una fila nueva con la posición de una vieja entra igual (29/09: filas 104 y 105)', async () => {
+      // El sync recalcula la posición sobre todos los pagos de hoy; la fila guardada conserva la de
+      // ayer. Si la nueva cae en el mismo (cliente, orden), antes reventaba el índice y hacía
+      // ROLLBACK de todo el sync. Ahora toma el primer orden libre y la vieja no se mueve.
+      const { rows: [{ max }] } = await q(
+        `select coalesce(max(orden), -1)::int max from public.esquema_pago
+          where cliente_id = $1 and obra_id is null and origen = 'sync_cobranzas'`, [cli.id])
+      const ocupado = Number(max) // el de OTRA_QA (900002), recién insertado
+      await guardarPagoDelSync(pago({ cliente_id: cli.id, cobranza_fila: 999904, orden: ocupado }), { query: q })
+      await guardarPagoDelSync(pago({ cliente_id: cli.id, cobranza_fila: 999905, orden: ocupado }), { query: q })
+      const { rows } = await q(
+        `select cobranza_fila, orden from public.esquema_pago
+          where cobranza_fila in (999902, 999904, 999905) order by cobranza_fila`)
+      assert.deepEqual(rows.map((r) => [r.cobranza_fila, r.orden]),
+        [[999902, ocupado], [999904, ocupado + 1], [999905, ocupado + 2]],
+        'la vieja conserva su orden y cada nueva toma el siguiente libre')
+    })
   } finally {
     await c.query('rollback')
     c.release()

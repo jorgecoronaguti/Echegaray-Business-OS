@@ -108,6 +108,17 @@ export const plataOculta = (grupos = []) => grupos.reduce((s, g) => s + g.total,
  *   · `visible_portal` y `publicado_at` van SÓLO en el `insert`. Apagar o despublicar una línea es
  *     una decisión de administración y el sync no puede deshacerla — ni siquiera para «corregir».
  *   · `orden` tampoco: la pantalla 32 deja reordenar a mano.
+ *
+ * EL `orden` DE UNA FILA NUEVA (30/09/2026). El índice único parcial `esquema_pago_sync_por_cliente`
+ * es `(cliente_id, orden) where obra_id is null and origen = 'sync_cobranzas'`. El sync le pasa a
+ * cada pago su posición cronológica dentro del cliente, pero esa posición se recalcula sobre TODOS
+ * los pagos de hoy mientras las filas ya guardadas conservan la posición del día en que nacieron.
+ * Basta que aparezca una fila nueva en el medio —las 104 y 105 de Cobranzas, del 29/09— para que su
+ * posición sea la de una fila vieja: el insert revienta el índice, el `on conflict (cobranza_fila)`
+ * no lo absorbe y la transacción entera hace ROLLBACK. El sync cayó así 29 veces seguidas, en
+ * silencio para el portal. Por eso el `insert` toma el MAYOR entre la posición y el primer orden
+ * libre del cliente: lo guardado no se mueve, la fila nueva entra, y la pantalla 32 la reordena si
+ * hace falta. Sólo rige en el insert: el `do update` sigue sin tocar `orden`.
  *   · `estado` y `medio` SÍ: los declara la columna O del Sheet, que es su fuente.
  *
  * @param query el ejecutor. Se inyecta para que el test pueda correr dentro de una transacción que
@@ -122,7 +133,12 @@ export async function guardarPagoDelSync(p, { query }) {
     `insert into public.esquema_pago
        (cliente_id, cobranza_fila, huella_comprobante, huella_monto, concepto, fecha, monto,
         estado, medio, orden, origen, sincronizado_en, visible_portal, publicado_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now(),$11,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+             -- Ver «EL orden DE UNA FILA NUEVA» arriba: nunca uno que el cliente ya tenga ocupado.
+             greatest($10, coalesce((select max(e.orden) + 1 from public.esquema_pago e
+                                       where e.cliente_id = $1 and e.obra_id is null
+                                         and e.origen = 'sync_cobranzas'), 0)),
+             'sync_cobranzas',now(),$11,
              case when $11 then now() else null end)
      on conflict (cobranza_fila) where cobranza_fila is not null do update
        set concepto = excluded.concepto, fecha = excluded.fecha, monto = excluded.monto,
