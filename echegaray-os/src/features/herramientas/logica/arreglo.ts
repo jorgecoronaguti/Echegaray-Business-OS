@@ -62,8 +62,11 @@ export function resumenAfuera(lista: Afuera[]): { cuantos: number; masViejo: num
 
 export const plazoDias = (n: number): string => (n === 0 ? 'hoy' : `${n} ${n === 1 ? 'día' : 'días'}`)
 
-/** Un activo en un lote no lleva arreglo: el estado es de todo el lote. */
-export const admiteArreglo = (a: Pick<Activo, 'estado' | 'cantidad'>): boolean => a.estado !== 'baja' && a.cantidad <= 1
+/**
+ * Un activo en un lote no lleva arreglo (el estado es de todo el lote), ni una prenda o EPP (se entrega y se
+ * repone, no se arregla), ni uno dado de baja.
+ */
+export const admiteArreglo = (a: Pick<Activo, 'estado' | 'cantidad' | 'clase'>): boolean => a.estado !== 'baja' && a.cantidad <= 1 && a.clase !== 'epp'
 
 /** Lo que la base también rechaza, dicho antes de mandar. `null` = se puede mandar. */
 export function errorDeIngreso(d: { falla: string; taller: string; ingreso: string; vueltaEstimada: string; hoy: string }): string | null {

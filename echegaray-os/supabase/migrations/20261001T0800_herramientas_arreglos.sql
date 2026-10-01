@@ -28,7 +28,7 @@
 -- ═══ QUÉ NO HACE ═══
 --
 -- · No escribe en Compras: `compra_ref` es texto (el número del comprobante) y el costo vive acá, una vez.
--- · No admite lotes (cantidad > 1): el estado es del activo entero; marcar «en el mecánico» un lote de 20
+-- · No admite EPP/ropa (se repone, no se arregla) ni lotes (cantidad > 1): el estado es del activo entero; marcar «en el mecánico» un lote de 20
 --   baldes por uno roto los dejaría a todos como no disponibles. Un lote roto se reporta como siempre.
 -- · No abre nada nuevo: la tabla sigue de sólo lectura para `authenticated` y escribe quien ya escribía
 --   (`_activo_usuario()`: cualquier usuario logueado; el mismo criterio para todos los niveles del módulo).
@@ -123,6 +123,7 @@ begin
   select * into v_act from activo where id = p_activo for update;
   if v_act.id is null then raise exception 'el activo no existe' using errcode = 'P0001'; end if;
   if v_act.estado = 'baja' then raise exception '% está dado de baja: no se le cargan eventos', v_act.codigo using errcode = 'P0001'; end if;
+  if v_act.clase = 'epp' then raise exception '% es EPP o ropa: se entrega y se repone, no se arregla', v_act.codigo using errcode = 'P0001'; end if;
   if v_act.cantidad > 1 then
     raise exception '% es un lote de % unidades: el arreglo es de una unidad; reportá el problema del lote', v_act.codigo, v_act.cantidad using errcode = 'P0001';
   end if;

@@ -44,6 +44,7 @@ test('el cierre exige qué se le hizo, no vuelve antes de entrar, y la baja usa 
   assert.match(codigo, /no puede haber vuelto antes de entrar al taller/)
   assert.match(codigo, /resultado is null or resultado in \('operativo', 'baja'\)/)
   assert.match(codigo, /dar_de_baja_activo\(.*'descartada'/)
+  assert.match(codigo, /es EPP o ropa/, 'una prenda no se arregla')
   assert.match(codigo, /es un lote de/, 'un lote no lleva arreglo: el estado es del lote entero')
 })
 

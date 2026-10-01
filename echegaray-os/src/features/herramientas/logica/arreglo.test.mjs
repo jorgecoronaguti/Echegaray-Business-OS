@@ -89,9 +89,10 @@ test('cierre: qué se le hizo es obligatorio; la vuelta ni futura ni antes del i
 })
 
 test('un lote o una baja no admiten arreglo; los candidatos excluyen lo que ya está afuera', () => {
-  assert.equal(admiteArreglo({ estado: 'operativo', cantidad: 1 }), true)
-  assert.equal(admiteArreglo({ estado: 'operativo', cantidad: 8 }), false)
-  assert.equal(admiteArreglo({ estado: 'baja', cantidad: 1 }), false)
+  assert.equal(admiteArreglo({ estado: 'operativo', cantidad: 1, clase: 'equipo' }), true)
+  assert.equal(admiteArreglo({ estado: 'operativo', cantidad: 8, clase: 'herramienta' }), false)
+  assert.equal(admiteArreglo({ estado: 'baja', cantidad: 1, clase: 'rodado' }), false)
+  assert.equal(admiteArreglo({ estado: 'operativo', cantidad: 1, clase: 'epp' }), false, 'una prenda no se arregla')
   const activos = [act('A'), act('B', { estado: 'operativo' }), act('C', { cantidad: 4 }), act('D', { estado: 'baja' })]
   const c = candidatosArreglo(activos, [ev({ activo_id: 'A' })])
   assert.deepEqual(c.map((x) => x.id), ['B'])

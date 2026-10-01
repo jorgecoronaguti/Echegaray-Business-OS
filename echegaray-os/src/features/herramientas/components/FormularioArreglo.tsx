@@ -14,11 +14,12 @@ import { SegmentedControl } from '@/shared/components/ui'
 import { errorDeCierre, errorDeIngreso, hoyIso } from '../logica/arreglo'
 import { NOMBRE_TIPO_EVENTO, TIPOS_EVENTO, type Evento, type TipoEvento } from '../logica/evento'
 import { avanzarEventoAction, registrarEventoAction } from '../services/acciones-evento'
+import type { Clase } from '../types'
 import { V, botonPrimarioGrande, campo, eyebrow } from './estilo'
 
 type Props = {
   activo: string
-  clase: 'herramienta' | 'equipo' | 'rodado'
+  clase: Clase
   proveedores: { id: string; nombre: string }[]
   /** Con `abierto` pendiente es un ingreso; con `abierto` en el mecánico, el cierre. */
   abierto?: Evento

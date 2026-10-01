@@ -13,7 +13,7 @@ import { historial } from '@/features/herramientas/logica/historial'
 import { conLugar } from '@/features/herramientas/logica/lugar'
 import { partesDeUnidad } from '@/features/herramientas/logica/unidades'
 import { seRevisa } from '@/features/herramientas/logica/revision'
-import { arregloEnTaller, diasFuera, hoyIso, plazoDias } from '@/features/herramientas/logica/arreglo'
+import { admiteArreglo, arregloEnTaller, diasFuera, hoyIso, plazoDias } from '@/features/herramientas/logica/arreglo'
 import { Unidades } from '@/features/herramientas/components/Unidades'
 import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, verificacionDe,
@@ -172,7 +172,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
             Ficha de revisión <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
         )}
-        {!baja && (a.cantidad <= 1 || enMecanico) && (
+        {!baja && (admiteArreglo(a) || enMecanico) && (
           <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/novedad`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-novedad"
             style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
             {a.clase === 'rodado' ? 'Novedad del rodado: taller, service, reparación' : 'Mecánico: lo llevé · ya volvió'}

@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { SegmentedControl } from '@/shared/components/ui'
 import { avanzarEventoAction, registrarEventoAction } from '../services/acciones-evento'
 import { NOMBRE_SITUACION, NOMBRE_TIPO_EVENTO, TIPOS_EVENTO, type Evento, type SituacionEvento, type TipoEvento } from '../logica/evento'
+import type { Clase } from '../types'
 import { V, botonPrimarioGrande, campo, eyebrow } from './estilo'
 
 const ZONA = 'America/Argentina/San_Juan'
@@ -22,7 +23,7 @@ const hoyIso = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA })
 
 export function FormularioEvento({ activo, clase = 'rodado', proveedores, abierto, variante = 'escritorio', onHecho, onCancelar }: {
   activo: string
-  clase?: 'herramienta' | 'equipo' | 'rodado'
+  clase?: Clase
   proveedores: { id: string; nombre: string }[]
   abierto?: Evento
   variante?: 'escritorio' | 'telefono'
