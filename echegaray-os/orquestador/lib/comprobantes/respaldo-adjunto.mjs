@@ -168,7 +168,11 @@ async function anotar(query, x, vinculo = {}) {
        -- ya guardado en el bucket. «coalesce» sobre lo que YA está: rellena el hueco y no toca un
        -- vínculo que alguien (o la conciliación) ya resolvió.
        compra_clave   = coalesce(public.compra_adjunto.compra_clave, excluded.compra_clave),
-       fila_compras   = coalesce(public.compra_adjunto.fila_compras, excluded.fila_compras),
+       -- La fila que trae el fajo CARGADO le gana a la pista que tuviera el suelto: sin clave, esa fila ES
+       -- el vínculo, y dejar la pista vieja declararía el papel en el renglón equivocado (auditoría 01/10).
+       fila_compras   = case when public.compra_adjunto.vinculado_por = 'sin_vincular' and excluded.vinculado_por = 'registro'
+                             then coalesce(excluded.fila_compras, public.compra_adjunto.fila_compras)
+                             else coalesce(public.compra_adjunto.fila_compras, excluded.fila_compras) end,
        vinculado_por  = case when public.compra_adjunto.compra_clave is null and (excluded.compra_clave is not null
                                   or (public.compra_adjunto.vinculado_por = 'sin_vincular' and excluded.vinculado_por = 'registro'))
                              then excluded.vinculado_por else public.compra_adjunto.vinculado_por end,
