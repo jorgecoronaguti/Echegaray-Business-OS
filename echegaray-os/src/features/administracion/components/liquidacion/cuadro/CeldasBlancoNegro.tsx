@@ -24,7 +24,7 @@ import { estadoDelPago, motivoSinCobra, sinSello, tituloDeJornales } from './est
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
-import { saldoRedondeado } from '../../../services/efectivoRedondeado'
+import { saldoConEfectivoRedondeado } from '../../../services/efectivoRedondeado'
 import { arrastreAplicado, conNetoDelRecibo, sumaDelBanco, textoDelArrastre } from '../../../services/liquidacionArrastre'
 import { MarcaDeArrastre } from './MarcaDeArrastre'
 
@@ -408,14 +408,18 @@ export function CeldaSaldo({ fila, lado, pago, sinDato }: {
  * (dueño, 16/09/2026: *«dame una columna más al lado de saldo en donde diga saldo redondeado como si lo que
  * resta pagar se pagara en efectivo»*).
  *
- * ES LECTURA, NO UNA DECISIÓN: se deriva del saldo de al lado, no se guarda y no entra en ninguna cuenta —la
- * columna que el dueño edita es «Efect. red.», que redondea otra cosa (lo que corresponde por el lado negro).
+ * SALE DEL «EFECT. RED.» DE LA MISMA FILA (dueño, 01/10/2026: «dice en efectivo redondeado una cosa y después
+ * muestra otra»): el banco va exacto y sólo se redondean los billetes —saldo − efectivo a pagar + efectivo
+ * redondeado—. Sin reparto por canal (mensual sin recibo) redondea el saldo entero, como el 16/09.
+ *
+ * ES LECTURA, NO UNA DECISIÓN: no se guarda y no entra en ninguna cuenta; lo que el dueño edita es «Efect. red.».
  * El `title` dice siempre el saldo exacto y cuánto se entrega de más o de menos: sin eso, dos números casi
  * iguales uno al lado del otro se leen como una diferencia que el cuadro perdió.
  */
 export function CeldaSaldoRedondeado({ fila, pago }: { fila: FilaDelEspejo; pago?: PagoDeLaLinea }) {
-  const saldo = (pago ?? fila.linea.pago).saldoTotal
-  const r = saldoRedondeado(saldo)
+  const p = pago ?? fila.linea.pago
+  const saldo = p.saldoTotal
+  const r = saldoConEfectivoRedondeado({ saldo, efectivo: p.aPagarEfectivo, efectivoRedondeado: fila.linea.efectivoRedondeado })
   const testid = `saldo-redondeado-${fila.personaId}`
   if (r.valor == null) {
     const porQue = saldo == null

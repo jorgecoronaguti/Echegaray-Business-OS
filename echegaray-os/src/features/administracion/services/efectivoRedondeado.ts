@@ -180,3 +180,37 @@ export function saldoRedondeado(saldo: number | null | undefined): SaldoRedondea
 export function sumaDelSaldoRedondeado(saldos: readonly (number | null | undefined)[]): number {
   return saldos.reduce<number>((s, v) => s + (saldoRedondeado(v).valor ?? 0), 0)
 }
+
+// ═══ EL SALDO REDONDEADO SALE DEL EFECTIVO REDONDEADO (dueño, 01/10/2026) ═══
+//
+// *«está mal el redondeo de liq de hs porque dice en efectivo redondeado una cosa y después muestra otra»*. La
+// columna redondeaba el saldo TOTAL de cada persona por su cuenta: con banco $236.619,38 y «Efect. red.» $298.000
+// decía $534.000, cuando lo que se le va a pagar es 236.619,38 + 298.000 = $534.619,38 (2ª de septiembre: 14 de
+// 15 filas no cerraban contra su propio «Efect. red.»). El banco se transfiere exacto; lo único que se redondea
+// son los billetes. Entonces: saldo redondeado = saldo − efectivo a pagar + efectivo redondeado (el guardado por
+// el dueño, o el sugerido). Sin reparto por canal (mensual sin recibo) no hay efectivo que separar y vale la
+// regla del 16/09: el saldo entero como si saliera en billetes.
+
+export interface BaseDelSaldoRedondeado {
+  saldo: number | null | undefined
+  /** Lo que falta pagar en efectivo, exacto. `null` = no hay reparto por canal. */
+  efectivo: number | null | undefined
+  /** El «Efect. red.» guardado por el dueño; `null` = se usa el sugerido. */
+  efectivoRedondeado: number | null
+}
+
+export function saldoConEfectivoRedondeado(e: BaseDelSaldoRedondeado): SaldoRedondeado {
+  const { saldo, efectivo } = e
+  if (saldo == null || !Number.isFinite(saldo) || saldo <= 0) return { valor: null, diferencia: 0 }
+  if (efectivo == null || !Number.isFinite(efectivo)) return saldoRedondeado(saldo)
+  const exacto = Math.max(efectivo, 0)
+  const billetes = exacto > 0 ? (efectivoMostrado({ efectivoRedondeado: e.efectivoRedondeado, enEfectivo: exacto }).valor ?? 0) : 0
+  const valor = Math.round((saldo - exacto + billetes) * 100) / 100
+  if (valor <= 0) return { valor: null, diferencia: 0 }
+  return { valor, diferencia: Math.round((valor - saldo) * 100) / 100 }
+}
+
+/** El pie: la suma de lo que muestra cada fila, para que el total cierre contra la columna. */
+export function sumaDelSaldoConEfectivoRedondeado(filas: readonly BaseDelSaldoRedondeado[]): number {
+  return Math.round(filas.reduce((s, f) => s + (saldoConEfectivoRedondeado(f).valor ?? 0), 0) * 100) / 100
+}

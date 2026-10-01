@@ -34,7 +34,7 @@
 // Puro: sin base, sin React. Tests en `liquidacionPorTipo.test.ts`.
 
 import { cierreDeLaFila, cierreDeTotales } from './cuadroDeJornales.ts'
-import { efectivoMostrado, saldoRedondeado } from './efectivoRedondeado.ts'
+import { efectivoMostrado, sumaDelSaldoConEfectivoRedondeado, type BaseDelSaldoRedondeado } from './efectivoRedondeado.ts'
 import { totalesDelEspejo, type FilaDelEspejo, type TotalesDelEspejo } from './espejoDeJornales.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import type { GrupoLiquidacion, ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
@@ -125,8 +125,8 @@ export function efectivoDelRedondeo(f: FilaDelEspejo): number | null {
 const redondeoDe = (filas: readonly FilaDelEspejo[]): number =>
   r2(filas.reduce((s, f) => s + (efectivoMostrado({ efectivoRedondeado: f.linea.efectivoRedondeado, enEfectivo: efectivoDelRedondeo(f) }).valor ?? 0), 0))
 
-const saldoRedDe = (saldos: readonly (number | null)[]): number =>
-  saldos.reduce<number>((s, v) => s + (saldoRedondeado(v).valor ?? 0), 0)
+// El mismo cálculo que la celda «Saldo red.» de cada fila: banco exacto + efectivo redondeado (dueño, 01/10/2026).
+const saldoRedDe = (filas: readonly BaseDelSaldoRedondeado[]): number => sumaDelSaldoConEfectivoRedondeado(filas)
 
 /** Días trabajados, horas y ausencias: referencia del mensual, que no cobra por ellas. */
 export function asistenciaDeReferencia(f: Pick<FilaDelEspejo, 'celdas' | 'linea'>): { dias: number; horas: number | null; ausencias: number; licencias: number } {
@@ -153,7 +153,9 @@ export function totalesDeJornaleros(filas: readonly FilaDelEspejo[]): TotalesDeJ
   return {
     ...t, sinSaldoImporte,
     redondeo: redondeoDe(filas),
-    saldoRedondeado: saldoRedDe(filas.map((f) => f.linea.pago.saldoTotal)),
+    saldoRedondeado: saldoRedDe(filas.map((f) => ({
+      saldo: f.linea.pago.saldoTotal, efectivo: f.linea.pago.aPagarEfectivo, efectivoRedondeado: f.linea.efectivoRedondeado,
+    }))),
   }
 }
 
@@ -186,7 +188,7 @@ export function totalesDeMensuales(filas: readonly FilaDelEspejo[]): TotalesDeMe
     pagadoBanco: 0, pagadoEfectivo: 0, pagado: 0, saldoTotal: 0, redondeo: redondeoDe(filas), saldoRedondeado: 0,
     noCierran: 0, diferencia: 0, sinSaldo: 0, sinSaldoImporte: 0,
   }
-  const saldos: (number | null)[] = []
+  const saldos: BaseDelSaldoRedondeado[] = []
   for (const f of filas) {
     const p = pagoDelMensual(f.linea)
     const cierre = cierreDeLaFila(f.linea)
@@ -199,7 +201,7 @@ export function totalesDeMensuales(filas: readonly FilaDelEspejo[]): TotalesDeMe
     t.pagado += p.pagado
     t.saldoTotal += p.saldoTotal ?? 0
     if (p.saldoTotal == null) { t.sinSaldo++; t.sinSaldoImporte += p.sueldo - p.pagado }
-    saldos.push(p.saldoTotal)
+    saldos.push({ saldo: p.saldoTotal, efectivo: p.aPagarEfectivo, efectivoRedondeado: f.linea.efectivoRedondeado })
     if (p.banco == null) t.sinRecibo++
     else { t.banco += p.banco; t.efectivo += p.negro ?? 0 }
   }
