@@ -37,13 +37,16 @@ test('una fila por persona aunque tenga varias entregas: no hay lista plana de e
   assert.equal(ps.find((p) => p.id === 'p-sosa')?.enMano, 2000)
 })
 
-test('el orden es por APELLIDO del legajo, no por el nombre que se muestra (bug del 28/09)', () => {
-  // Se muestra «Ana Zárate» pero el legajo dice ZÁRATE: si se ordenara por lo mostrado, «Ana» iría primero.
+test('el orden es por APELLIDO: lo que se muestra va apellido primero y la lista ordena por lo que dibuja', () => {
+  // Desde el 29/09/2026 (`claveDeOrden`, shared/personas/nombre.ts) el nombre para mostrar es «Apellido Nombre» y
+  // manda sobre el legajo: hay legajos cargados al revés. Este test afirmaba la regla del 28/09 (ordenar por el
+  // legajo con un nombre de pila adelante) y quedó rojo en main cuando la regla cambió.
   const es = [
-    entrega({ id: 'a', persona_id: 'p-z', persona: 'Ana Zárate', persona_legajo: 'ZÁRATE, Ana' }),
-    entrega({ id: 'b', persona_id: 'p-b', persona: 'Zoe Benítez', persona_legajo: 'BENÍTEZ, Zoe' }),
+    entrega({ id: 'a', persona_id: 'p-z', persona: 'Zárate Ana', persona_legajo: 'ZÁRATE, Ana' }),
+    entrega({ id: 'b', persona_id: 'p-b', persona: 'Benítez Zoe', persona_legajo: 'ZOE BENÍTEZ' }),
   ]
-  assert.deepEqual(agruparPorPersona(es, [], [], '2026-09-29').map((p) => p.id), ['p-b', 'p-z'])
+  assert.deepEqual(agruparPorPersona(es, [], [], '2026-09-29').map((p) => p.id), ['p-b', 'p-z'],
+    'Benítez antes que Zárate aunque su legajo esté cargado al revés')
 })
 
 test('la suma de «en su poder» de las filas es la cifra «En manos de la gente» de las tarjetas', () => {
