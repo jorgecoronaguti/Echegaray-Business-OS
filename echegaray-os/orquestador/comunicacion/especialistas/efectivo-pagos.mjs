@@ -26,6 +26,7 @@ import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import {
   armarPadron, interpretarPago, pareceUnPago, dijoDeDondeSalio, leerOrigen, leerEleccion, leerPlata, itemDePago,
   textoDePregunta, pesos, ddmm, elegirEmpleadoEnPadron, codigoDeEntrega, tenedorDicho, sinOrigenDeEntrega, plano,
+  beneficiarioDicho,
 } from '../../lib/efectivo-pago-texto.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
@@ -43,6 +44,7 @@ export const TEXTO = Object.freeze({
   SIN_PERSONA: 'No encuentro tu usuario en el padrón, y una carga queda firmada por quien la hace. Avisale a Administración. No cargué nada.',
   CANCELADO: 'Listo, no cargué nada.',
   NO_ENTENDI: 'No entendí la respuesta. Contestá con el número de la opción, o **no** para dejarlo.',
+  NO_ENTENDI_CONFIRMAR: 'No entendí la respuesta y no cargué nada. Contestá **sí** para rendirlo o **no** para dejarlo.',
   TRANSFERENCIA_A_PERSONA: 'Entendí una transferencia a una persona del plantel: esa no es un pago en efectivo y no va al «Pagado efectivo» de Liquidación. No cargué nada. Si fue un adelanto en efectivo, escribilo sin «transferí».',
   SIN_MIGRACION: 'Entendí el pago, pero el registro de pagos directos todavía no está habilitado en la base, así que no cargué nada. Avisale a Administración.',
   SIN_MIGRACION_ENTREGA: 'Entendí el gasto pagado con una entrega, pero rendirlo sin foto todavía no está habilitado en la base. No cargué nada. Avisale a Administración, o cargalo de la caja si salió de la caja.',
@@ -219,6 +221,23 @@ export async function registrarRendicionSinFoto({ port, entrega, perfilId, fecha
   throw new Error('la base no pudo registrar la rendición')
 }
 
+/**
+ * LA PREGUNTA ANTES DE RENDIR: importe, concepto, a quién se le pagó y de qué entrega (y de quién) sale la plata.
+ * El beneficiario sale del padrón; si no está, se muestra tal como se escribió, y si no se dijo, se dice que falta.
+ */
+export function textoConfirmarRendicion({ leido, entrega }) {
+  const a = leido.proveedor?.nombre ?? leido.persona?.nombre ?? beneficiarioDicho(leido.concepto)
+  return [
+    `Voy a rendir **sin comprobante** contra la entrega **${entrega.codigo}** de **${entrega.persona}**${entrega.en_su_poder != null ? ` (le quedan ${pesos(entrega.en_su_poder)})` : ''}:`,
+    `- Importe: **${pesos(leido.importe)}** · ${ddmm(leido.fecha)}`,
+    `- Concepto: ${String(leido.concepto ?? '').trim() || '**sin concepto**'}`,
+    `- Pagado a: ${a ? `**${a}**${leido.proveedor?.nombre || leido.persona?.nombre ? '' : ' (no figura entre los proveedores)'}` : '**sin identificar**'}`,
+    leido.obra?.nombre ? `- Obra: ${leido.obra.nombre}` : null,
+    '',
+    'Todavía no cargué nada. ¿Lo rindo? Contestá en este hilo **sí** o **no**.',
+  ].filter((x) => x != null).join('\n')
+}
+
 /** La confirmación: qué se cargó, a qué entrega y de quién, lo que le queda y dónde se ve. */
 export function textoRendidoSinFoto({ leido, r, yoSoyElTenedor }) {
   const l = `${URL_APP}/mi-informacion/efectivo/rendiciones${yoSoyElTenedor || !r.persona_id ? '' : `?por=${r.persona_id}`}`
@@ -333,7 +352,7 @@ export const especialista = {
       if (r.cancelar) { recordarPendientePago(actor, null); return { texto: TEXTO.CANCELADO, estado: 'cancelado', privado: false } }
       if (!r.leido) {
         if (pareceUnPago(texto)) { recordarPendientePago(actor, null); leido = interpretarPago(limpio(texto), ctx); textoBase = texto }
-        else return { texto: `${TEXTO.NO_ENTENDI}\n\n${textoDePregunta({ ...previo.leido, falta: previo.falta })}`, estado: 'pregunta_repetida', privado: false }
+        else return { texto: `${previo.falta === 'confirmar' ? TEXTO.NO_ENTENDI_CONFIRMAR : TEXTO.NO_ENTENDI}\n\n${previo.pregunta ?? textoDePregunta({ ...previo.leido, falta: previo.falta })}`, estado: 'pregunta_repetida', privado: false }
       } else leido = r.leido
     } else {
       leido = interpretarPago(limpio(texto), ctx)
@@ -408,6 +427,12 @@ export const especialista = {
   /** Lee la respuesta a la pregunta abierta. Devuelve {cancelar}|{leido}|{} (no se entendió). */
   responder({ texto, previo, ctx, limpio = (t) => t }) {
     const falta = previo.falta
+    if (falta === 'confirmar') {
+      const t = plano(texto).trim().replace(/[.!¡]+/g, '').trim()
+      if (/^(?:no|cancela(?:r|lo)?|dejalo|olvidalo|ninguno)$/.test(t)) return { cancelar: true }
+      return /^(?:si|sí|dale|ok|okey|confirmo|confirmado|cargalo|rendilo|si cargalo|si dale)$/.test(t)
+        ? { leido: { ...previo.leido, estado: 'listo', origen: 'entrega', confirmado: true } } : {}
+    }
     if (falta === 'origen') {
       const o = leerOrigen(texto)
       if (o?.cancelar) return { cancelar: true }
@@ -493,6 +518,16 @@ export const especialista = {
           : 'No tenés una entrega abierta contra la que rendir este gasto. No cargué nada. Si salió de la caja, escribilo con «de la caja».',
         estado: 'rechazado_sin_entrega', privado: false,
       }
+    }
+    // NADA SE RINDE SIN EL «SÍ» DE QUIEN ESCRIBE: baja la plata de una persona. Se repone el pendiente (el anterior
+    // ya se consumió) con la entrega elegida, para que el «sí» rinda exactamente lo que se mostró.
+    if (leido.confirmado !== true) {
+      const pregunta = textoConfirmarRendicion({ leido, entrega: sel.entrega })
+      recordarPendientePago(actor, {
+        falta: 'confirmar', texto: textoBase, origen: 'entrega', pregunta,
+        leido: { ...leido, falta: 'confirmar', entregaId: sel.entrega.id },
+      })
+      return { texto: pregunta, estado: 'pregunta_confirmar', privado: false }
     }
     const item = itemDePago(leido)
     const comp = {}

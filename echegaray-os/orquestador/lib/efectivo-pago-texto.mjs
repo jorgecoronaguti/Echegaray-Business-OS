@@ -73,9 +73,34 @@ export function pareceUnPago(texto) {
     || RE_A_CUENTA.test(t) && /\d/.test(t)
 }
 
-// «con la plata de Maldonado», «del efectivo de Nievas», «de la entrega de Nievas»: plata que tiene otra persona.
-// «la plata de la caja / de la oficina» NO es de nadie: es la caja.
-const RE_PLATA_DE_ALGUIEN = /\b(?:de|con|del)(?: la| el)? (?:plata|efectivo|entrega|rendicion)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)[a-z]{3,}/
+// ═══ DE DÓNDE SALIÓ LA PLATA ≠ A QUIÉN SE LE PAGÓ (auditor, 01/10/2026) ═══
+//
+// «con efectivo a Tello» / «en efectivo a Hormiserv» nombran el MEDIO y al BENEFICIARIO: no dicen de dónde salió la
+// plata. La versión anterior aceptaba «efectivo a X» como «la plata de X»: perdía al proveedor y rendía contra la
+// entrega de quien había COBRADO. Sólo es una entrega cuando el texto nombra la plata como DE alguien o de una
+// entrega: «con el efectivo DE Tello», «de la plata que tiene Maldonado», «de lo que le di a Nievas», «a rendir de
+// Nievas», «de mi entrega», «de la ER-0021». Ante la duda no hay origen y el bot pregunta.
+//
+// Una sola gramática para las tres preguntas (¿salió de una entrega?, ¿de quién?, ¿qué queda del texto sin eso?):
+// se aplica al texto plano (detectar) y al original en NFC (sacar), por eso las clases aceptan tildes y van con /i.
+const L = '[a-zñáéíóúü]'
+const NO_NOMBRE = '(?!(?:la|el|los|las|lo|mi|su|tu|que|caja|oficina|caj[oó]n|empresa|obra|adelanto|anticipo|sueldo|quincena|hoy|ayer)\\b)'
+const NO_SEGUNDO = '(?!(?:por|para|con|del|los|las|una|unos|que|hoy|ayer|sin|pero|en)\\b)'
+const NOMBRE = `(${NO_NOMBRE}${L}{3,}(?: ${NO_SEGUNDO}${L}{3,})?)`
+const PLATA = '(?:plata|efectivo|entrega|rendici[oó]n)'
+// Con tenedor nombrado: el grupo 1 es el nombre.
+const ORIGEN_CON_TENEDOR = [
+  `\\b(?:con|de|del)(?: la| el| los| las)? ${PLATA}(?: a rendir)? de ${NOMBRE}`,
+  `\\b(?:con|de|del)(?: la| el)? (?:plata|efectivo) que (?:tiene|tenia|tenía|le di|le dimos|le dio|le entregu[eé]|le entregamos)(?: a)? ${NOMBRE}`,
+  `\\b(?:con|de) lo que (?:tiene|le di|le dimos|le dio|le entregu[eé]|le entregamos)(?: a)? ${NOMBRE}`,
+  `\\b(?:con lo |de lo )?a rendir de ${NOMBRE}`,
+].map((s) => new RegExp(s, 'i'))
+// Sin tenedor: una entrega dicha como tal («de mi entrega», «con la plata a rendir», «de la ER-0021»).
+const ORIGEN_SIN_TENEDOR = [
+  /\b(?:con|de|del)(?: la| el| mi| su| tu)? (?:entrega|rendici[oó]n|plata a rendir|efectivo a rendir|plata que tengo)(?: m[ií]a)?\b/i,
+  /\b(?:con|de) lo que (?:tengo|me (?:dieron|diste|dio|entregaron))\b/i,
+  /\b(?:con|de|del|en)(?: la)? er-?\d{2,}\b|\ber-?\d{2,}\b/i,
+]
 // El que paga puede ir de sujeto: «Nievas le pagó 200.000 a Nasser».
 const RE_SUJETO_PAGA = /^(?:hoy |ayer )?([a-z]{3,}(?: [a-z]{3,})?) (?:le |les )?(?:pago|pagaron|abono|abonaron|gasto|compro|transferio)\b/
 const RE_NO_NOMBRE = /^(?:se|hoy|ayer|ya|yo|nosotros|alguien|el|la)$/
@@ -93,8 +118,13 @@ export function codigoDeEntrega(texto) {
  */
 export function tenedorDicho(texto) {
   const t = plano(texto)
-  const m1 = t.match(/\b(?:de|con|del)(?: la| el)? (?:plata|efectivo|entrega|rendicion)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)([a-z]{3,}(?: [a-z]{3,})?)/)
-  if (m1) return { palabras: m1[1].split(' ').filter((w) => w.length >= 4), sujeto: false }
+  for (const re of ORIGEN_CON_TENEDOR) {
+    const m1 = t.match(re)
+    if (m1) {
+      const palabras = m1[1].split(' ').filter((w) => w.length >= 4)
+      if (palabras.length) return { palabras, sujeto: false }
+    }
+  }
   const m2 = t.match(RE_SUJETO_PAGA)
   if (m2) {
     const palabras = m2[1].split(' ').filter((w) => w.length >= 4 && !RE_NO_NOMBRE.test(w) && w !== 'pago')
@@ -103,22 +133,43 @@ export function tenedorDicho(texto) {
   return null
 }
 
-/** El texto sin lo que sólo dice de dónde sale la plata, para que el que lee el pago no lo confunda con el destinatario. */
+/**
+ * El texto sin lo que sólo dice de dónde sale la plata, para que el que lee el pago no lo confunda con el destinatario.
+ * Saca SÓLO el origen («con el efectivo de Maldonado», «de mi entrega», «de la ER-0021»): «con efectivo a Tello» queda
+ * entero, porque Tello es a quien se le pagó.
+ */
 export function sinOrigenDeEntrega(texto) {
-  return String(texto ?? '')
-    .replace(/\b(?:con|de|del)(?: la| el)? (?:plata|efectivo|entrega|rendici[oó]n)(?: de| a)? (?!la\b|el\b|caja|oficina|cajon)[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}(?: [A-Za-zÁÉÍÓÚáéíóúñÑ]{3,})?/gi, '')
-    .replace(/\b(?:con|de|del)(?: la| el)? (?:entrega|plata a rendir)\b/gi, '')
-    .replace(/\b(?:con|de|en)(?: la)? ER-?\d{2,}\b|\bER-?\d{2,}\b/gi, '')
+  let s = String(texto ?? '').normalize('NFC')
+  for (const re of [...ORIGEN_CON_TENEDOR, ...ORIGEN_SIN_TENEDOR]) s = s.replace(new RegExp(re.source, 'gi'), '')
+  return s
     .replace(/^\s*(?:hoy |ayer )?[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}(?: [A-Za-zÁÉÍÓÚáéíóúñÑ]{3,})? (?=(?:le |les )?(?:pag[oó]|pagaron|abon[oó]|abonaron|gast[oó]|compr[oó]|transfiri[oó])\b)/i, (m) => (/^\s*(?:hoy|ayer)\b/i.test(m) ? m.match(/^\s*(?:hoy|ayer) /i)[0] : ''))
     .replace(/\s{2,}/g, ' ').trim()
 }
 
-/** ¿Dice de dónde salió la plata? «de la caja», «con la plata de ER-0012». */
+/**
+ * ¿Dice de dónde salió la plata? «de la caja» → caja; «con el efectivo de Tello», «de mi entrega», «de la ER-0012» →
+ * entrega. El medio solo («en efectivo», «con efectivo a X») NO es un origen: null, y el bot pregunta.
+ */
 export function dijoDeDondeSalio(texto) {
   const t = plano(texto)
-  if (RE_ENTREGA_ER.test(t) || /\b(?:de|con) (?:la )?(?:entrega|plata a rendir|plata que tengo)\b/.test(t)) return 'entrega'
-  if (RE_PLATA_DE_ALGUIEN.test(t)) return 'entrega'
+  if (RE_ENTREGA_ER.test(t) || [...ORIGEN_CON_TENEDOR, ...ORIGEN_SIN_TENEDOR].some((re) => re.test(t))) return 'entrega'
   if (/\b(?:de|con|por|desde) (?:la )?(?:caja|oficina|cajon)\b|\bcaja\b/.test(t)) return 'caja'
+  return null
+}
+
+const NO_BENEFICIARIO = /^(?:rendir|cuenta|credito|traves|partir|nombre|pagar|cobrar|la|el|los|las|lo|mi|su|tu|que)$/
+/**
+ * A quién se le pagó, tal como lo escribió («a Tello», «a Juan Pérez», «al plomero»). Se lee sobre el texto SIN el
+ * origen (`sinOrigenDeEntrega`), así «de lo que le di a Nievas» no se confunde con el beneficiario. Sólo para
+ * mostrarlo en la confirmación cuando el padrón no lo reconoce: quién es lo decide el padrón.
+ * @returns {string|null}
+ */
+export function beneficiarioDicho(texto) {
+  const s = String(texto ?? '').normalize('NFC')
+  const re = new RegExp(`(?:^|\\s)al? (${L}{3,}(?: ${NO_SEGUNDO}${L}{3,})?)`, 'gi')
+  for (const m of s.matchAll(re)) {
+    if (!NO_BENEFICIARIO.test(plano(m[1].split(' ')[0]))) return m[1]
+  }
   return null
 }
 
