@@ -92,8 +92,9 @@ export function BarraDeRecibos({ filas, marcados, quincena, alRegistrar, quitar 
 
   if (marcados.size === 0 && !aviso) return null
   return (
-    // PEGADA AL PIE de la grilla, en el flujo: no tapa la barra de navegación del teléfono ni empuja el cuadro de arriba.
-    <div data-testid="barra-recibos" className="bg-surface" style={{ position: 'sticky', bottom: 0, zIndex: 5, borderTop: `1px solid ${V.lineaFuerte}`, padding: '8px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px', fontSize: '12.5px' }}>
+    // PEGADA AL PIE de la grilla, en el flujo: no empuja el cuadro de arriba. En el teléfono se despega 64 px del
+    // borde: ahí abajo vive la barra de navegación (`BarraTelefono`), que le tapaba el botón (QA 01/10/2026, 390 px).
+    <div data-testid="barra-recibos" className="sticky bottom-0 bg-surface max-md:bottom-16" style={{ zIndex: 5, borderTop: `1px solid ${V.lineaFuerte}`, padding: '8px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px', fontSize: '12.5px' }}>
       {marcados.size > 0 && (
         <>
           <span data-testid="barra-recibos-cuenta" style={{ color: V.tinta, fontWeight: 600 }}>{textoDeSeleccion(marcados.size)}</span>
