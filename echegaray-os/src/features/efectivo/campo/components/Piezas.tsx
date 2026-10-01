@@ -170,6 +170,17 @@ export function SinPublicar({ testid = 'efectivo-sin-publicar' }: { testid?: str
   )
 }
 
+/** Operario con una entrega: la ve y la firma, pero no rinde (dueño, 01/10/2026). */
+export function NoRinde({ testid = 'efectivo-no-rinde' }: { testid?: string }) {
+  return (
+    <Caja testid={testid} gap={9} relleno="16px 18px">
+      <Rotulo>Rendición</Rotulo>
+      <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>Tus gastos los rinde Administración</div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Entregales los comprobantes.</div>
+    </Caja>
+  )
+}
+
 /** La columna de una pantalla de M01–M08: `padding:16px`, `gap:14px`, alto completo para empujar el pie. */
 export function Columna({ children, conPie }: { children: ReactNode; conPie?: boolean }) {
   return (

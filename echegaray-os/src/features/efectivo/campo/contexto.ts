@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { destinoDeVuelta, personaDePor, sufijoDeVuelta } from './logica'
 
 // LO QUE TODA PANTALLA DEL MÓDULO NECESITA ANTES DE LEER: quién es, qué persona es, y adónde vuelve.
@@ -16,6 +17,12 @@ export interface ContextoEfectivo {
   personaId: string | null
   /** True cuando se actúa A NOMBRE de otra persona: los textos dejan de decir «tu». */
   porOtro: boolean
+  /**
+   * QUIÉN RINDE (dueño, 01/10/2026): «sólo los usuarios con nivel jefe de obra y admin rinden gastos». Un operario
+   * con una entrega la ve y la firma; rendir, se lo rinde Administración. La base aplica lo mismo en
+   * `_efectivo_actua_por`: esto sólo evita mostrar un botón que la base va a rechazar.
+   */
+  puedeRendir: boolean
   vinculoDisponible: boolean
   /** `desde=obra&obra=…` o vacío: se pega a cada enlace entre pantallas del módulo. */
   sufijo: string
@@ -39,6 +46,7 @@ export async function contextoEfectivo(params: { desde?: string; obra?: string; 
     uid: user.id,
     personaId: actuaPor ?? perfil.data?.persona_id ?? null,
     porOtro: actuaPor !== null && actuaPor !== (perfil.data?.persona_id ?? null),
+    puedeRendir: esAdministracion((perfil.data?.rol ?? null) as Parameters<typeof esAdministracion>[0]),
     vinculoDisponible: perfil.data?.vinculoDisponible !== false,
     sufijo: sufijoDeVuelta(params.desde, params.obra, actuaPor),
     volverA: destinoDeVuelta(params.desde, params.obra, actuaPor),

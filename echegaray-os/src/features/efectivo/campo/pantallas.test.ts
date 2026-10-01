@@ -90,3 +90,28 @@ test('Hoy (empleado y jefe) muestra la tarjeta que decide `tarjetaDeHoy`', () =>
   assert.match(soloCodigo('src/app/(jefe)/obra/hoy/page.tsx'), /<EfectivoEnHoyJefe /)
   assert.match(soloCodigo(COMPONENTES[6]), /tarjetaDeHoy\(/)
 })
+
+// 01/10/2026 — dueño: «sólo los usuarios con nivel jefe de obra y admin rinden gastos, y admin tiene ABM de
+// efectivo». La base lo aplica en `_efectivo_actua_por`; acá se fija que ninguna pantalla ofrezca rendir a
+// quien la base va a rechazar, y que la migración lleve la regla.
+test('rendir es de jefe de obra y Administración: las tres pantallas de rendir se cierran y los botones se esconden', () => {
+  for (const r of ['rendir/page.tsx', 'rendir/sin-foto/page.tsx', 'rendir/confirmar/page.tsx']) {
+    const src = leer(`src/app/(empleado)/mi-informacion/efectivo/${r}`)
+    const guarda = src.indexOf('if (!ctx.puedeRendir)')
+    assert.ok(guarda > 0, `${r}: falta la guarda de nivel`)
+    assert.ok(guarda < src.indexOf('getMisEntregas(') || src.indexOf('getMisEntregas(') < 0, `${r}: la guarda va antes de leer datos`)
+    assert.match(src.slice(guarda, guarda + 220), /<NoRinde \/>/, `${r}: sin el aviso «lo rinde Administración»`)
+  }
+  assert.match(leer('src/app/(empleado)/mi-informacion/efectivo/page.tsx'), /const puedeRendir = ctx\.puedeRendir && /)
+  const escritorio = leer('src/app/(main)/mi-cuenta/efectivo/page.tsx')
+  assert.equal((escritorio.match(/\{rinde && <BotonEnlace href="\/mi-informacion\/efectivo\/rendir/g) ?? []).length, 2)
+  assert.match(leer('src/features/efectivo/campo/contexto.ts'), /puedeRendir: esAdministracion\(/)
+})
+
+test('la base cierra rendir por nivel: tener la entrega no alcanza, y el bot exige jefe de obra o Administración', () => {
+  const sql = leer('supabase/migrations/20261001T0100_efectivo_reconocer_y_asignar.sql')
+  const fn = sql.slice(sql.indexOf('create or replace function public._efectivo_actua_por('))
+  assert.match(fn.slice(0, 900), /p_persona = public\.mi_persona_id\(\), false\) and coalesce\(public\.es_administracion\(\), false\)\)\s+or coalesce\(public\.ve_economia\(\), false\)/)
+  assert.match(sql, /pf\.rol = 'jefe_obra', false\) and coalesce\(pf\.persona_id = v_persona, false\)/)
+  assert.match(sql, /and not exists \(select 1 from efectivo_rendicion r0 where r0\.comprobante_id = c\.id\)/)
+})

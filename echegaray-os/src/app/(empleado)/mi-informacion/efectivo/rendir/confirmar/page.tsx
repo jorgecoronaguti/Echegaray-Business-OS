@@ -7,7 +7,7 @@ import { getMiEfectivo, urlDeLaFoto } from '@/features/efectivo/campo/datos'
 import {
   aConfirmar, aNumero, conVuelta, destino, fechaLarga, pesos, renglonesDelTicket,
 } from '@/features/efectivo/campo/logica'
-import { Caja, Renglon, Rotulo, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
+import { Caja, NoRinde, Renglon, Rotulo, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { ConfirmarLectura } from '@/features/efectivo/campo/components/ConfirmarLectura'
 
 // M05 · LO QUE LEYÓ, A CONFIRMAR — porte de `efectivo-a-rendir.dc.html`, pantalla M05.
@@ -41,6 +41,14 @@ export default async function ConfirmarPage({ searchParams }: { searchParams: Pa
   const volver = ctx.porOtro
     ? { href: ctx.volverA, label: 'Efectivo' }
     : { href: conVuelta('/mi-informacion/efectivo', ctx.sufijo), label: 'Mi efectivo' }
+
+  if (!ctx.puedeRendir) {
+    return (
+      <PantallaEmpleado titulo="Confirmar el gasto" volver={{ ...volver }}>
+        <NoRinde />
+      </PantallaEmpleado>
+    )
+  }
 
   if (!ctx.personaId) {
     return (

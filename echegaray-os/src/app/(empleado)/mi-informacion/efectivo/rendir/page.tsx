@@ -5,7 +5,7 @@ import { AvisoError, mono } from '@/shared/components/movil/Piezas'
 import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMisEntregas } from '@/features/efectivo/campo/datos'
 import { abiertas, conVuelta, destino, entregaParaRendir, pesos } from '@/features/efectivo/campo/logica'
-import { FilaAcceso, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
+import { FilaAcceso, NoRinde, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo } from '@/features/efectivo/campo/components/TarjetasHoy'
 import { CamaraTicket } from '@/features/efectivo/campo/components/CamaraTicket'
 
@@ -23,6 +23,14 @@ type Params = Promise<{ desde?: string; obra?: string; por?: string; entrega?: s
 export default async function RendirPage({ searchParams }: { searchParams: Params }) {
   const sp = await searchParams
   const ctx = await contextoEfectivo(sp)
+
+  if (!ctx.puedeRendir) {
+    return (
+      <PantallaEmpleado titulo="Rendir un gasto" volver={{ href: ctx.volverA, label: ctx.porOtro ? 'Efectivo' : 'Mi efectivo' }}>
+        <NoRinde />
+      </PantallaEmpleado>
+    )
+  }
 
   if (!ctx.personaId) {
     return (

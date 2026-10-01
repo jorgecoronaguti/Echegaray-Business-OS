@@ -41,6 +41,10 @@
 -- 1 · QUÉ COLUMNAS SON «A MANO», DICHO UNA SOLA VEZ
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 -- columna de base → clave de `formulas` (el nombre del campo en la app: `COLUMNA_DE` de liquidacionOverrides.ts).
+-- El ALTER sobre `liquidacion_linea` no espera detrás de una consulta larga: si no consigue el candado en 5 s,
+-- la migración falla entera y se reintenta, en vez de encolar a toda la app detrás suyo.
+set local lock_timeout = '5s';
+
 create or replace function public.liquidacion_columnas_manuales()
 returns jsonb
 language sql immutable

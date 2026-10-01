@@ -185,8 +185,8 @@ begin
 end $$;
 
 -- ─── 2 · C · LA PUERTA DEL BOT ────────────────────────────────────────────────────────────────────────────
--- El bot escribe por la conexión directa, sin sesión: el usuario viaja explícito. Rinde quien tiene la entrega;
--- Dirección y Administración, por cualquiera. Idempotente por `p_clave` (`chat:<id del mensaje>`).
+-- El bot escribe por la conexión directa, sin sesión: el usuario viaja explícito. Rinde el jefe de obra que tiene
+-- la entrega; Dirección y Administración, por cualquiera. Idempotente por `p_clave` (`chat:<id del mensaje>`).
 create or replace function public.rendir_gasto_sin_foto_del_chat(
   p_usuario uuid, p_entrega uuid, p_fecha date, p_total numeric, p_concepto text,
   p_proveedor text, p_comprobante jsonb, p_clave text, p_post text)
@@ -202,8 +202,11 @@ begin
   if pf.id is null then raise exception 'no encuentro el usuario que escribe' using errcode = '42501'; end if;
   select persona_id into v_persona from public.efectivo_entrega where id = p_entrega;
   if not found then raise exception 'esa entrega no existe' using errcode = 'P0001'; end if;
-  if not (coalesce(pf.rol in ('direccion', 'administracion'), false) or coalesce(pf.persona_id = v_persona, false)) then
-    raise exception 'sólo rinde quien tiene la entrega, o Administración' using errcode = '42501';
+  -- 01/10/2026 (dueño): «sólo los usuarios con nivel jefe de obra y admin rinden gastos». El jefe, lo suyo;
+  -- Dirección y Administración, lo de cualquiera. Un operario con una entrega no rinde: se la rinde Administración.
+  if not (coalesce(pf.rol in ('direccion', 'administracion'), false)
+          or (coalesce(pf.rol = 'jefe_obra', false) and coalesce(pf.persona_id = v_persona, false))) then
+    raise exception 'sólo rinde el jefe de obra que tiene la entrega, o Administración' using errcode = '42501';
   end if;
   return public._efectivo_cargar_gasto_a_mano(
     p_entrega, p_usuario, p_fecha, p_total, p_concepto, p_proveedor, null, p_comprobante, '{}'::jsonb, null, p_clave, p_post);
@@ -232,7 +235,9 @@ language sql stable security definer set search_path = public as $$
             or exists (select 1 from jsonb_array_elements(coalesce(it.value -> 'copias', '[]'::jsonb)) cp
                         where cp ->> 'fileId' = ce.id::text)))
        or (c.mm_post_id is not null and it.value ->> 'postId' = c.mm_post_id))
-   order by f.ultimo_at desc nulls last
+   -- El fajo VIVO primero: al mudarse un pendiente (flujo.mjs) el fajo viejo queda `descartado` con sus ítems
+   -- adentro, y el mismo ticket vive en dos fajos. Cerrar el muerto y dejar el vivo lo cargaría después.
+   order by (f.estado in ('descartado', 'cargado')), f.ultimo_at desc nulls last
    limit 1
 $$;
 revoke all on function public._efectivo_fajo_del_ticket(uuid) from public, anon, authenticated;
@@ -276,6 +281,7 @@ declare
   v_item jsonb := '{}'::jsonb;
   v_extra jsonb := '{}'::jsonb;
   v_res jsonb;
+  v_vuelta integer;
 begin
   select * into c from public.efectivo_comprobante where id = p_comprobante for update;
   if c.id is null then raise exception 'ese ticket no existe' using errcode = 'P0001'; end if;
@@ -288,8 +294,10 @@ begin
   end if;
 
   -- EL FAJO QUE EL LECTOR DEJÓ ESPERANDO: se cierra, para que una respuesta tardía no lo cargue por segunda vez.
-  select * into t from public._efectivo_fajo_del_ticket(c.id);
-  if t.fajo_id is not null then
+  -- El mismo ticket puede vivir en más de un fajo (uno mudado y su original): se cierran todos los vivos.
+  for v_vuelta in 1..6 loop
+    select * into t from public._efectivo_fajo_del_ticket(c.id);
+    exit when t.fajo_id is null;
     select estado into v_estado_fajo from comunicacion.comprobante_fajos where id = t.fajo_id for update;
     if v_estado_fajo = 'confirmado' then
       raise exception 'ese ticket se está escribiendo en Compras ahora mismo: esperá un minuto y mirá de nuevo' using errcode = 'P0001';
@@ -297,18 +305,19 @@ begin
     if v_estado_fajo in ('cargado', 'encolado') then
       raise exception 'ese ticket ya salió hacia Compras: en unos minutos aparece rendido solo' using errcode = 'P0001';
     end if;
-    v_item := jsonb_strip_nulls(jsonb_build_object('origen', t.item -> 'origen', 'copias', t.item -> 'copias'));
-    if v_estado_fajo <> 'descartado' then
-      if t.items <= 1 then
-        -- Los ítems se conservan: es lo que `lectura_del_ticket_efectivo` vuelve a mostrar si esto se deshace.
-        update comunicacion.comprobante_fajos
-           set estado = 'descartado', error = 'reconocido a mano en la app', ultimo_at = now()
-         where id = t.fajo_id;
-      else
-        update comunicacion.comprobante_fajos set items = items - t.posicion, ultimo_at = now() where id = t.fajo_id;
-      end if;
+    if v_item = '{}'::jsonb then
+      v_item := jsonb_strip_nulls(jsonb_build_object('origen', t.item -> 'origen', 'copias', t.item -> 'copias'));
     end if;
-  end if;
+    exit when v_estado_fajo = 'descartado';
+    if t.items <= 1 then
+      -- Los ítems se conservan: es lo que `lectura_del_ticket_efectivo` vuelve a mostrar si esto se deshace.
+      update comunicacion.comprobante_fajos
+         set estado = 'descartado', error = 'reconocido a mano en la app', ultimo_at = now()
+       where id = t.fajo_id;
+    else
+      update comunicacion.comprobante_fajos set items = items - t.posicion, ultimo_at = now() where id = t.fajo_id;
+    end if;
+  end loop;
   perform public._efectivo_sacar_de_la_cola(c.id, 'reconocido a mano por Administración');
 
   if nullif(btrim(coalesce(p_numero, '')), '') is not null then
@@ -710,5 +719,86 @@ select cs.fila, cs.clave, cs.fecha, cs.proveedor, cs.obra_texto, cs.total, cs.mo
    and not exists (select 1 from public.efectivo_rendicion r
                     where r.compra_clave = cs.clave or r.fila = cs.fila);
 grant select on public.efectivo_a_rendir_sin_entrega to authenticated;
+
+-- ─── 11 · QUIÉN RINDE (dueño, 01/10/2026) ─────────────────────────────────────────────────────────────────
+-- «Sólo los usuarios con nivel jefe de obra y admin rinden gastos, y admin tiene ABM de efectivo.» El ABM ya es
+-- de Administración (`_efectivo_exigir_administracion` → `ve_economia`). Las puertas de rendir (foto, sin foto,
+-- rehacer la foto, confirmar la lectura, responder una observación) pasan todas por acá: antes alcanzaba con
+-- tener la entrega; ahora, además, hay que ser jefe de obra, Administración o Dirección (`es_administracion`).
+create or replace function public._efectivo_actua_por(p_persona uuid)
+returns boolean language sql stable security definer set search_path to 'public' as $function$
+  -- coalesce: con `mi_persona_id()` NULL (un usuario sin persona) la comparación da NULL, `NULL or false` da NULL y
+  -- `if not NULL` no levanta la excepción: la puerta quedaba ABIERTA justo para quien no tiene persona.
+  select (coalesce(p_persona = public.mi_persona_id(), false) and coalesce(public.es_administracion(), false))
+      or coalesce(public.ve_economia(), false)
+$function$;
+revoke all on function public._efectivo_actua_por(uuid) from public, anon;
+
+-- ─── 12 · EL VINCULADOR NO DESCUENTA DOS VECES UN TICKET RECONOCIDO ───────────────────────────────────────
+-- Copia de la definición vigente con una condición más (marcada 01/10/2026).
+CREATE OR REPLACE FUNCTION public.vincular_rendiciones_pendientes()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  n integer;
+  m integer := 0;
+  i record;
+  v_fila integer;
+begin
+  m := m + coalesce(public._efectivo_resolver_filas_manuales(), 0);
+  insert into efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, comprobante_id)
+  select distinct on (cc.clave) c.entrega_id, cc.clave, round(cc.total::numeric, 2),
+         coalesce(c.enviado_por, e.entregada_por), c.id
+    from efectivo_comprobante c
+    join efectivo_entrega e on e.id = c.entrega_id and e.anulada_en is null
+    left join comprobante_entrada ce on ce.id = c.entrada_id
+    join comunicacion.comprobantes_cargados cc
+      on (c.mm_post_id is not null and cc.plataforma = 'mattermost' and cc.post_id = c.mm_post_id)
+      or (ce.id is not null and exists (
+            select 1 from comunicacion.comprobante_fajos f
+             where f.id = cc.fajo_id and f.plataforma = 'web' and f.channel_id = ce.lote::text))
+   where c.descartado_en is null and cc.clave is not null and coalesce(cc.total, 0) > 0
+     -- 01/10/2026: un ticket ya reconocido a mano tiene su rendición; si el lector igual lo cargó, no descuenta otra vez.
+     and not exists (select 1 from efectivo_rendicion r0 where r0.comprobante_id = c.id)
+   order by cc.clave, c.enviado_en
+  on conflict (compra_clave) do nothing;
+  get diagnostics n = row_count;
+  for i in
+    select ei.id, ei.entrega_id, ei.clave, ei.enviado_por, e.entregada_por, round(cc.total::numeric, 2) as total
+      from efectivo_iniciales ei
+      join efectivo_entrega e on e.id = ei.entrega_id and e.anulada_en is null
+      join lateral (select total from comunicacion.comprobantes_cargados c2
+                     where c2.clave = ei.clave and c2.fajo_id = ei.fajo_id order by c2.creado_at desc limit 1) cc on true
+     where ei.estado = 'auto' and ei.vinculado_en is null and coalesce(cc.total, 0) > 0
+  loop
+    insert into efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, origen, tipo_pago_anterior)
+    values (i.entrega_id, i.clave, i.total, coalesce(i.enviado_por, i.entregada_por), 'iniciales', 'Efectivo')
+    on conflict (compra_clave) do nothing;
+    update efectivo_iniciales set vinculado_en = now() where id = i.id;
+    m := m + 1;
+  end loop;
+  for i in
+    select ei.id, ei.entrega_id, ei.clave, coalesce(ei.respondido_por, ei.enviado_por) as usr
+      from efectivo_iniciales ei
+     where ei.estado = 'si' and ei.vinculado_en is null and ei.entrega_id is not null
+  loop
+    select fila into v_fila from compra_sheet where clave = i.clave order by fila limit 1;
+    continue when v_fila is null;
+    begin
+      perform public._efectivo_imputar_fila(i.entrega_id, v_fila, i.clave, i.usr, 'iniciales');
+      update efectivo_iniciales set vinculado_en = now() where id = i.id;
+      m := m + 1;
+    exception when others then
+      if sqlerrm not like '%ya tiene un pago esperando%' then
+        update efectivo_iniciales set estado = 'error', motivo = sqlerrm where id = i.id;
+      end if;
+    end;
+  end loop;
+  return n + m;
+end $function$;
+
 
 notify pgrst, 'reload schema';

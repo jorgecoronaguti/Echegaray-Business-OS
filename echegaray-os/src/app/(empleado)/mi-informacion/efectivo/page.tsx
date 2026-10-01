@@ -61,7 +61,7 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
   // dato»: éste es el paso que frena la carga en Compras, el otro la completa.
   const porConfirmar = aConfirmar(tickets)
   const ruta = (h: string) => conVuelta(`/mi-informacion/efectivo${h}`, ctx.sufijo)
-  const puedeRendir = abiertas(entregas).length > 0
+  const puedeRendir = ctx.puedeRendir && abiertas(entregas).length > 0
 
   return (
     <PantallaEmpleado titulo="Mi efectivo" volver={{ ...volver }}>

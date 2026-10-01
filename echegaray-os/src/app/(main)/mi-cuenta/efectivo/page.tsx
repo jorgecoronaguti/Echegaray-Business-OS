@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
@@ -34,6 +35,8 @@ export default async function MiEfectivoEscritorioPage({ searchParams }: { searc
   const user = await getUsuarioActual(supabase)
   const perfil = user ? await getPerfilPropio(supabase, user.id) : null
   const personaId = perfil?.data?.persona_id ?? null
+  // Dueño, 01/10/2026: sólo jefe de obra y Administración rinden; el resto ve y firma (la base aplica lo mismo).
+  const rinde = esAdministracion((perfil?.data?.rol ?? null) as Parameters<typeof esAdministracion>[0])
   const lectura = personaId ? await getMiEfectivo(supabase, personaId) : null
 
   const entregas = lectura?.estado === 'ok' ? lectura.dato.entregas : []
@@ -92,8 +95,8 @@ export default async function MiEfectivoEscritorioPage({ searchParams }: { searc
 
             {abiertas(entregas).length > 0 && (
               <div className="flex flex-wrap items-center gap-2" data-testid="efectivo-acciones">
-                <BotonEnlace href="/mi-informacion/efectivo/rendir" variante="primaria" data-testid="mi-efectivo-rendir">Rendir un gasto</BotonEnlace>
-                <BotonEnlace href="/mi-informacion/efectivo/rendir/sin-foto" data-testid="mi-efectivo-rendir-sin-foto">Rendir sin foto</BotonEnlace>
+                {rinde && <BotonEnlace href="/mi-informacion/efectivo/rendir" variante="primaria" data-testid="mi-efectivo-rendir">Rendir un gasto</BotonEnlace>}
+                {rinde && <BotonEnlace href="/mi-informacion/efectivo/rendir/sin-foto" data-testid="mi-efectivo-rendir-sin-foto">Rendir sin foto</BotonEnlace>}
                 <BotonEnlace href="/mi-informacion/efectivo/devolver" data-testid="mi-efectivo-devolver">Declarar devolución</BotonEnlace>
               </div>
             )}

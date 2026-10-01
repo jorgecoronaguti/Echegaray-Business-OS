@@ -4,7 +4,7 @@ import { AvisoError } from '@/shared/components/movil/Piezas'
 import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMisEntregas } from '@/features/efectivo/campo/datos'
 import { abiertas, conVuelta, destino } from '@/features/efectivo/campo/logica'
-import { SinPublicar } from '@/features/efectivo/campo/components/Piezas'
+import { NoRinde, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo } from '@/features/efectivo/campo/components/TarjetasHoy'
 import { FormularioGastoManual } from '@/features/efectivo/components/FormularioGastoManual'
 
@@ -23,6 +23,14 @@ export default async function RendirSinFotoPage({ searchParams }: { searchParams
   const sp = await searchParams
   const ctx = await contextoEfectivo(sp)
   const volver = { href: ctx.volverA, label: ctx.porOtro ? 'Efectivo' : 'Mi efectivo' }
+
+  if (!ctx.puedeRendir) {
+    return (
+      <PantallaEmpleado titulo="Rendir sin foto" volver={volver}>
+        <NoRinde />
+      </PantallaEmpleado>
+    )
+  }
 
   if (!ctx.personaId) {
     return (
