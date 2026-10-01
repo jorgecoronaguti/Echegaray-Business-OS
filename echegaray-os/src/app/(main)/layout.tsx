@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual, getPerfilReal } from '@/features/auth/services/authService'
 import { estadoVerComo } from '@/features/auth/services/verComo'
 import { ROL_LABEL } from '@/features/auth/types'
-import { puedeVerRegistro, puedeVerRuta } from '@/features/auth/types/areas'
+import { ENTRADA_DE_ADMINISTRACION, puedeVerRegistro, puedeVerRuta, veEconomia } from '@/features/auth/types/areas'
 import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
@@ -98,6 +98,8 @@ async function HeaderConUsuario() {
       cargaAsistencia={puedeVerRuta(rol, '/administracion/personas')}
       // La obra en el teléfono (J01) es del jefe de obra: para los demás el ítem no existe en el HTML.
       miObraTelefono={rol === 'jefe_obra'}
+      // EL ISOTIPO Y EL NOMBRE LLEVAN A CLIENTES (dueño, 01/10/2026) para quien ve Clientes; el resto, a su inicio.
+      inicioDeMarca={veEconomia(rol) ? ENTRADA_DE_ADMINISTRACION : '/'}
       // «VER COMO» (dueño, 22/09/2026). Va con el rol REAL, no con el mirado: preguntando por el
       // mirado, un Dirección que se puso los ojos de `campo` perdería el menú desde el que salir.
       verComo={verComo}

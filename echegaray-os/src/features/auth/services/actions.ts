@@ -166,7 +166,10 @@ export async function contrasenaNuevaAction(_prev: ActionState, formData: FormDa
  */
 export async function logoutAction(): Promise<void> {
   const supabase = await createClient()
-  await supabase.auth.signOut()
+  // SÓLO ESTE APARATO (01/10/2026). Sin `scope` Supabase cierra TODAS las sesiones del usuario: el dueño salió
+  // en el teléfono y la PC quedó con una sesión muerta («se me cayó app ecsas»). Cerrar todas es otra acción,
+  // pedida a propósito, y vive en Mi cuenta → Sesiones.
+  await supabase.auth.signOut({ scope: 'local' })
   revalidatePath('/', 'layout')
   redirect('/login?cerraste=1')
 }

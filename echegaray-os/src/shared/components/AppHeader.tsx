@@ -59,6 +59,7 @@ export function AppHeader({
   verUsuarios,
   cargaAsistencia,
   miObraTelefono = false,
+  inicioDeMarca = '/',
   solapasSoloEscritorio = false,
   verComo,
   verRegistro = false,
@@ -76,6 +77,8 @@ export function AppHeader({
   cargaAsistencia: boolean
   /** ¿Es jefe de obra? El isotipo va a su obra y el menú le ofrece su efectivo. */
   miObraTelefono?: boolean
+  /** A dónde lleva el clic en el isotipo y el nombre. Administración: Clientes (dueño, 01/10/2026). */
+  inicioDeMarca?: string
   /** Con la barra de abajo del teléfono (`BarraTelefono`), las solapas se dibujan sólo desde `md`. */
   solapasSoloEscritorio?: boolean
   /** «Ver como»: si esta persona puede encender la lente, y con qué ojos está mirando ahora. */
@@ -88,7 +91,7 @@ export function AppHeader({
   // por dos saltos y sin obra en la URL: Next reusaba lo dibujado para la obra anterior. `miObraTelefono`
   // es «es jefe de obra» (lo decide el servidor con el rol).
   const obraRecordada = useObraRecordada()
-  const inicio = miObraTelefono ? conObraRecordada('/obra/hoy', obraRecordada) : '/'
+  const inicio = miObraTelefono ? conObraRecordada('/obra/hoy', obraRecordada) : inicioDeMarca
   // Cuál está encendida lo decide `navegacion.ts`, que es puro y está probado: acá vivía una
   // expresión regular en un componente de cliente, o sea una regla de navegación que `node --test`
   // no podía mirar. Fue exactamente la que se rompió el 24/08.
@@ -149,13 +152,7 @@ export function AppHeader({
           <span className="hidden text-[11.5px] font-semibold tracking-[0.04em] text-ink sm:block">
             ECHEGARAY<span className="hidden lg:inline"> CONSTRUCCIONES</span>
           </span>
-          {/* EL DESCRIPTOR DEL PRODUCTO, Y NUNCA CON PESO NI COLOR DE MARCA (`design/system/BRAND.md`).
-              «Business OS» describe qué es esto; la marca es ECHEGARAY CONSTRUCCIONES. En cuanto el
-              descriptor toma peso o color, la pantalla pasa a tener dos marcas compitiendo — y la
-              que gana es la que no lo es. Por eso va en 11,5px, `faint`, detrás de un separador. */}
-          <span className="hidden text-[11px] text-faint lg:inline" aria-hidden>
-            Business OS
-          </span>
+          {/* SIN «Business OS» AL LADO (dueño, 01/10/2026: «quitar lo de business os»). La marca va sola. */}
         </Link>
 
         {/* LA BARRA SE CORRE, NO SE MONTA ENCIMA (26/08/2026, medido a 390x844).

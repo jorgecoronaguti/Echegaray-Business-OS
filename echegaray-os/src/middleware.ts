@@ -18,6 +18,7 @@ import { clasificar, debeRegistrar, esDeFondo, registrar, uidDeCookies } from '@
 import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe, caraDeTelefonoDelJefe, obraQueSeMira } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
+import { cookiesDeSesion, salidaSinRol } from '@/lib/auth/sesion-sin-rol'
 import {
   COOKIE_VER_COMO, ROL_QUE_MIRA, RUTA_VER_COMO, esPeticionDeEscritura, leerVerComo,
 } from '@/lib/auth/ver-como'
@@ -267,12 +268,33 @@ async function middlewareConBackend(request: NextRequest) {
 
     let rol = secreto ? await leerRol(request.cookies.get(COOKIE_ROL)?.value, { uid: user.id }, secreto) : null
     if (rol === null) {
-      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+      const { data: perfil, error: errorDePerfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
       rol = perfil?.rol ?? null
       if (rol && secreto) {
         response.cookies.set(COOKIE_ROL, await sellarRol({ uid: user.id, rol }, secreto), {
           httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_ROL_SEGUNDOS,
         })
+      }
+      // SIN ROL NO SE SIGUE (01/10/2026): más abajo, quien no tiene rol rebota a `/obras`, y desde `/obras`
+      // eso es un bucle. Por qué y las tres salidas, en `lib/auth/sesion-sin-rol.ts`.
+      if (rol === null) {
+        const { data: enAuth, error: errorDeAuth } = await supabase.auth.getUser()
+        const salida = salidaSinRol({ sesionViva: !errorDeAuth && !!enAuth?.user, errorDePerfil: !!errorDePerfil })
+        if (salida === 'sin_backend') return sinBackend(request)
+        if (salida === 'sin_perfil') {
+          return new NextResponse('Tu usuario no tiene un nivel asignado en el OS. Pedile a Administración que lo revise.', {
+            status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+          })
+        }
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        url.search = ''
+        url.searchParams.set('volver', pathname + request.nextUrl.search)
+        const alLogin = NextResponse.redirect(url)
+        for (const nombre of [...cookiesDeSesion(request.cookies.getAll().map((c) => c.name)), COOKIE_ROL, COOKIE_MFA]) {
+          alLogin.cookies.delete(nombre)
+        }
+        return alLogin
       }
     }
     QUIEN.set(request, { uid: user.id, rol })
@@ -505,5 +527,7 @@ async function middlewareConBackend(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // `marca/` (el isotipo y el logo, públicos) no pasa por el portero: el logo no puede depender del estado de
+  // la sesión —01/10/2026, con una sesión cerrada el isotipo rebotaba y se dibujaba roto—.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|marca/).*)'],
 }
