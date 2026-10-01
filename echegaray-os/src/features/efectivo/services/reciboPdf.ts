@@ -62,7 +62,7 @@ export async function pdfDeRecibo(r: ReciboParaFirmar): Promise<Uint8Array> {
 
   // El cuerpo: la frase del recibo con el importe en letras y en números.
   y -= 26
-  const cuerpo = `Recibí de ${RAZON_SOCIAL_RECIBO} la suma de pesos ${r.montoEnLetras} ($ ${r.montoTexto}).`
+  const cuerpo = `Recibí de ${RAZON_SOCIAL_RECIBO} la suma de pesos ${r.montoEnLetras} ($\u00A0${r.montoTexto}).`
   for (const l of partir(cuerpo, ANCHO_UTIL, normal, 11.5)) { texto(l, M, y, normal, 11.5); y -= 16 }
 
   y -= 6
