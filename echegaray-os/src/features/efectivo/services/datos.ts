@@ -16,7 +16,7 @@ import { conteosDeCampanita, diaAR } from '../logica/entregas'
 import { faltaMigracion } from '../logica/formularios'
 import {
   COLUMNAS_COMPROBANTE, COLUMNAS_DEVOLUCION, COLUMNAS_ENTREGA, COLUMNAS_RENDICION,
-  type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type ObraOpcion, type PersonaOpcion, type Rendicion,
+  type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type LeidoDelPapel, type ObraOpcion, type PersonaOpcion, type Rendicion,
 } from '../types'
 import { nombresDeUsuarios as nombresDeUsuariosTodos } from '../../../shared/personas/nombresDeUsuarios.ts'
 import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
@@ -224,6 +224,22 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[], fila
 async function firmar(supabase: SupabaseClient, ruta: string): Promise<string | null> {
   const { data } = await supabase.storage.from('comprobantes').createSignedUrl(ruta, VIGENCIA)
   return data?.signedUrl ?? null
+}
+
+/**
+ * LO QUE EL LECTOR LEYÓ DE UN TICKET QUE QUEDÓ ESPERANDO (01/10/2026). Un ticket frenado por «proveedor nuevo» o
+ * «parece un remito» no deja lo leído en `comprobante_entrada.resultado`: vive en el fajo, que la sesión no lee.
+ * La base lo devuelve sólo a Administración (`lectura_del_ticket_efectivo`); con eso se precarga «Reconocer el gasto».
+ */
+export async function leerLecturaDelTicket(comprobante: string): Promise<LeidoDelPapel | null> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('lectura_del_ticket_efectivo', { p_comprobante: comprobante })
+    if (error || !data || typeof data !== 'object') return null
+    return data as LeidoDelPapel
+  } catch {
+    return null
+  }
 }
 
 /** El enlace firmado a la foto de UN ticket (D04). `null` si no hay archivo o Storage no lo firma. */

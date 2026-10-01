@@ -2,9 +2,9 @@
 
 // IMPUTAR UN COMPROBANTE YA CARGADO (dueño, 24/09/2026) — panel sobre la ficha de la entrega (D03).
 //
-// Corrige el caso que se escapaba: un ticket pagado con plata de la entrega que entró a Compras como
-// «Efectivo» (por #comprobantes-gastos sin número ni iniciales). Se elige la fila, se ve qué va a pasar y
-// se imputa. La base lo verifica todo de nuevo y encola el cambio de Tipo pago; el ✓ en el Sheet lo dice
+// Corrige el caso que se escapaba: una compra pagada con plata de la entrega que entró a Compras por otro
+// lado (#comprobantes-gastos, la libreta, a mano en el Sheet), con cualquier medio de pago y con o sin número
+// (01/10/2026). Se elige la fila, se ve qué va a pasar y se imputa. La base lo verifica todo de nuevo y encola el cambio de Tipo pago; el ✓ en el Sheet lo dice
 // la cola, no esta pantalla. Mismo patrón visual que D06 (PanelDevolucion).
 
 import { useRouter } from 'next/navigation'
@@ -16,17 +16,18 @@ import { urlEfectivo } from '../logica/url'
 import { desimputarCompraAction, imputarCompraAction } from '../services/acciones'
 import type { LecturaImputar } from '../services/imputar'
 import { Cerrar, ErrorPanel, PANEL_CLASE } from './Piezas'
-import { MONO, V, botonClaro, botonOscuroGrande, cajaConfirmar, campo, eyebrow, panel } from './estilo'
+import { MONO, V, botonClaro, botonOscuroGrande, cajaConfirmar, campo, chip, eyebrow, panel } from './estilo'
 
 export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: string; lectura: LecturaImputar }) {
   const router = useRouter()
   const cerrarHref = urlEfectivo({ entrega: e.codigo })
   const [busca, setBusca] = useState('')
+  const [todos, setTodos] = useState(false)
   const [elegida, setElegida] = useState<Candidata | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hecho, setHecho] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()
-  const candidatas = useMemo(() => (lectura.estado === 'ok' ? filtrarCandidatas(lectura.candidatas, busca) : []), [lectura, busca])
+  const candidatas = useMemo(() => (lectura.estado === 'ok' ? filtrarCandidatas(lectura.candidatas, busca, todos) : []), [lectura, busca, todos])
 
   const imputar = () => {
     if (!elegida) return
@@ -34,7 +35,9 @@ export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: str
     empezar(async () => {
       const r = await imputarCompraAction({ entrega: e.id, fila: elegida.fila, clave: elegida.clave })
       if (!r.ok) { setError(r.error); return }
-      setHecho(`Fila ${r.dato.fila} imputada a ${r.dato.codigo}. El cambio a «A rendir» quedó en cola para el Sheet.`)
+      setHecho(r.dato.cambio
+        ? `Fila ${r.dato.fila} imputada a ${r.dato.codigo}. El cambio a «A rendir» quedó en cola para el Sheet.`
+        : `Fila ${r.dato.fila} imputada a ${r.dato.codigo}. Ya decía «A rendir»: no hay nada que cambiar en el Sheet.`)
       setElegida(null)
       router.refresh()
     })
@@ -54,7 +57,7 @@ export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: str
     <aside style={panel} className={PANEL_CLASE} aria-label="Imputar un comprobante ya cargado" data-testid="panel-imputar">
       <Cerrar titulo="Imputar un comprobante ya cargado" bajada={`${e.codigo} · ${e.persona} · ${destino}`} href={cerrarHref} />
       <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.5 }}>
-        Compras cargadas en <strong>Efectivo</strong> en los últimos 30 días que no están imputadas a ninguna entrega.
+        Compras pagadas de los últimos 90 días que no están imputadas a ninguna entrega.
         Si {e.persona} pagó alguna con esta plata, elegila: pasa a «A rendir» y baja lo que tiene en su poder.
       </div>
 
@@ -62,9 +65,14 @@ export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: str
       {lectura.estado === 'ok' && (
         <>
           <input
-            type="search" value={busca} onChange={(x) => setBusca(x.target.value)} placeholder="Proveedor, obra, número o fila"
+            type="search" value={busca} onChange={(x) => setBusca(x.target.value)} placeholder="Proveedor, concepto, obra, número o fila"
             style={campo} aria-label="Buscar compra" data-testid="imputar-buscar"
           />
+          {/* Abre en lo más probable; el resto de los medios, a un toque. Buscar siempre mira todos. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12.5px' }}>
+            <button type="button" onClick={() => setTodos(false)} aria-pressed={!todos} style={chip(!todos)} data-testid="imputar-solo-efectivo">Efectivo y «A rendir»</button>
+            <button type="button" onClick={() => setTodos(true)} aria-pressed={todos} style={chip(todos)} data-testid="imputar-todos">Todos los medios</button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflowY: 'auto' }} data-testid="imputar-lista">
             {candidatas.map((c) => {
               const activa = elegida?.fila === c.fila
@@ -80,9 +88,9 @@ export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: str
                 >
                   <span style={{ fontFamily: MONO, fontSize: '12px', color: V.apagado }}>{ddmm(c.fecha)}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span className="truncate" style={{ display: 'block' }}>{c.proveedor ?? 'sin proveedor'}</span>
+                    <span className="truncate" style={{ display: 'block' }}>{c.proveedor ?? c.concepto ?? 'sin proveedor'}</span>
                     <span className="truncate" style={{ display: 'block', fontSize: '11.5px', color: V.tenue }}>
-                      fila {c.fila}{c.obra ? ` · ${c.obra}` : ''}{c.conPagoEnCola ? ' · tiene un pago esperando al Sheet' : ''}
+                      fila {c.fila} · {c.tipoPago || 'sin medio de pago'}{c.obra ? ` · ${c.obra}` : ''}{c.conPagoEnCola ? ' · tiene un pago esperando al Sheet' : ''}
                     </span>
                   </span>
                   <span style={{ textAlign: 'right', fontFamily: MONO }}>{numero(c.total)}</span>
@@ -91,20 +99,19 @@ export function PanelImputar({ e, destino, lectura }: { e: Entrega; destino: str
             })}
             {!candidatas.length && (
               <div style={{ padding: '14px 0', fontSize: '12.5px', color: V.apagado }} data-testid="imputar-vacia">
-                {busca ? 'Ninguna compra en efectivo coincide con la búsqueda.' : 'No hay compras en efectivo sin imputar en los últimos 30 días.'}
+                {busca ? 'Ninguna compra pagada coincide con la búsqueda.' : todos ? 'No hay compras pagadas sin imputar en los últimos 90 días.' : 'No hay compras en Efectivo ni «A rendir» sin imputar. Probá «Todos los medios».'}
               </div>
             )}
           </div>
-          {lectura.sinNumero > 0 && (
-            <div style={{ fontSize: '12px', color: V.warn }} data-testid="imputar-sin-numero">
-              {lectura.sinNumero} {lectura.sinNumero === 1 ? 'compra en efectivo no tiene' : 'compras en efectivo no tienen'} número de comprobante:
-              sin número no se pueden atar a una entrega desde acá.
+          {lectura.sinPagar > 0 && (
+            <div style={{ fontSize: '12px', color: V.apagado }} data-testid="imputar-sin-pagar">
+              {lectura.sinPagar} {lectura.sinPagar === 1 ? 'compra sin pagar no se lista' : 'compras sin pagar no se listan'}: primero se registra el pago en Compras.
             </div>
           )}
 
           {elegida && (
             <div style={cajaConfirmar} data-testid="imputar-efecto">
-              {efectoDeImputar({ total: elegida.total, enSuPoder: e.en_su_poder, persona: e.persona, codigo: e.codigo }).map((t) => (
+              {efectoDeImputar({ total: elegida.total, enSuPoder: e.en_su_poder, persona: e.persona, codigo: e.codigo, tipoPago: elegida.tipoPago, yaARendir: elegida.yaARendir }).map((t) => (
                 <div key={t} style={{ fontSize: '12.5px', lineHeight: 1.5 }}>{t}</div>
               ))}
             </div>

@@ -359,6 +359,30 @@ test('la tarjeta «Por imputar» lleva al comprobante que espera hace más tiemp
   assert.equal(resumir([], [comp('en_compras')], [], '2026-09-29').primeroPorImputar, null)
 })
 
+test('el ticket reconocido a mano (20261001T0100): «Escribiendo en Compras» con lo tipeado hasta que su fila existe, y después por fila', () => {
+  const c = comp('en_compras', { id: 'c-rec', entrega: 'ER-0021', enviado_en: '2026-09-25T12:43:00Z' })
+  const r: Rendicion = {
+    id: 'r-rec', entrega_id: 'e1', compra_clave: 'm:r-rec', monto: 5000, imputada_en: '2026-10-01T12:00:00Z',
+    comprobante_id: 'c-rec', adelanto_persona_id: null, adelanto_quincena: null, adelanto_expresion: null,
+    origen: 'manual', fila: null, fajo_id: 'fajo-2', fecha: '2026-09-25', concepto: 'Planchas de telgopor', proveedor: 'Aislantes Vicente',
+  }
+  const [antes, ...resto] = filasDeLaFicha([c], [r], new Map())
+  assert.equal(resto.length, 0, 'la rendición del ticket no aparece dos veces')
+  assert.equal(antes.estado, 'escribiendo')
+  assert.equal(antes.proveedor, 'Aislantes Vicente')
+  assert.equal(antes.rubro, 'Planchas de telgopor')
+  assert.equal(antes.importe, 5000)
+  assert.equal(antes.fila, null)
+  const compras = new Map([['fila:1050', {
+    fila: 1050, clave: null, fecha: '2026-09-25', proveedor: null, concepto: 'Planchas de telgopor · Aislantes Vicente',
+    tipo: null, comprobante: '0001-00000906', total: 5000, tipo_pago: 'A rendir',
+  }]])
+  const [despues] = filasDeLaFicha([c], [{ ...r, fila: 1050 }], compras)
+  assert.equal(despues.estado, 'en_compras')
+  assert.equal(despues.fila, 1050)
+  assert.equal(despues.rubro, 'Planchas de telgopor · Aislantes Vicente')
+})
+
 test('la rendición manual (20261001T0010) se muestra con lo tipeado mientras el cargador la escribe, y por fila cuando ya está en Compras', () => {
   const r: Rendicion = {
     id: 'r-man', entrega_id: 'e1', compra_clave: 'm:r-man', monto: 15000, imputada_en: '2026-09-30T20:00:00Z',

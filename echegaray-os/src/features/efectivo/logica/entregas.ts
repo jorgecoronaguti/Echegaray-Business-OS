@@ -370,17 +370,19 @@ export function filasDeLaFicha(
     const r = rendiciones.find((x) => x.comprobante_id === c.id || (c.compra_clave != null && x.compra_clave === c.compra_clave))
     const clave = c.compra_clave ?? r?.compra_clave ?? null
     if (r) atadas.add(r.id)
-    const f = clave ? compras.get(clave) : undefined
+    // EL TICKET RECONOCIDO A MANO (20261001T0100) tiene una rendición manual: su clave (`m:<id>`) no está en
+    // Compras, el puente es la fila; y hasta que el cargador la escribe se muestra lo que Administración tipeó.
+    const f = (clave ? compras.get(clave) : undefined) ?? (r?.fila != null ? compras.get('fila:' + r.fila) : undefined)
     const l = leidoDe(c)
     return {
       comprobante: c,
-      fecha: f?.fecha ?? l?.fecha ?? c.enviado_en,
-      proveedor: f?.proveedor ?? l?.proveedor ?? null,
-      rubro: f?.concepto ?? null,
+      fecha: f?.fecha ?? r?.fecha ?? l?.fecha ?? c.enviado_en,
+      proveedor: f?.proveedor ?? r?.proveedor ?? l?.proveedor ?? null,
+      rubro: f?.concepto ?? r?.concepto ?? null,
       // LO QUE RINDE, NO LO QUE DICE LA FACTURA: desde el 25/09 el importe rendido se corrige desde la
       // ficha, y la fila tiene que mostrar el corregido (sin corrección son iguales: nace del Total).
       importe: r ? Number(r.monto) : (f?.total ?? totalLeido(c)),
-      estado: c.estado,
+      estado: r?.origen === 'manual' && !f && c.estado === 'en_compras' ? 'escribiendo' : c.estado,
       fila: f?.fila ?? null,
       rendicion: r ?? null,
     }

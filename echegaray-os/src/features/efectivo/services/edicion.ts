@@ -115,6 +115,42 @@ export async function rendirGastoManualAction(
   return r
 }
 
+export interface GastoReconocido extends GastoManual { numero?: string }
+
+/**
+ * RECONOCER UN TICKET A MANO (dueño, 01/10/2026: «quiero reconocer ese gasto, dárselo por ok y listo»). El lector
+ * lo dejó esperando —proveedor nuevo, parece un remito, sin CUIT— y Administración lo da por rendido con los datos
+ * que escribe: la base (`reconocer_comprobante_efectivo`, 20261001T0100) lo saca de la cola, cierra el fajo en
+ * espera y manda el gasto a Compras «A rendir» con la foto colgada. El saldo de la entrega baja en el acto.
+ */
+export async function reconocerComprobanteAction(
+  comprobante: string, g: GastoReconocido,
+): Promise<Resultado<{ rendicion: string; codigo: string; en_su_poder: number }>> {
+  if (!id.safeParse(comprobante).success) return { ok: false, error: 'Falta el ticket' }
+  if (!fechaIso.safeParse(g.fecha?.trim() ?? '').success) return { ok: false, error: 'Poné la fecha del gasto' }
+  const m = validarMonto(g.total)
+  if (!m.ok) return { ok: false, error: m.error }
+  const concepto = g.concepto?.trim() ?? ''
+  if (!concepto) return { ok: false, error: 'Escribí qué se compró o pagó' }
+  if (concepto.length > 300) return { ok: false, error: 'El concepto es demasiado largo' }
+  const proveedor = g.proveedor?.trim() || null
+  if (proveedor && proveedor.length > 120) return { ok: false, error: 'El proveedor es demasiado largo' }
+  const cuit = g.cuit?.replace(/\D/g, '') || null
+  if (cuit && cuit.length !== 11) return { ok: false, error: 'El CUIT tiene 11 dígitos (o dejalo vacío)' }
+  const numero = g.numero?.trim() || null
+  if (numero && numero.length > 40) return { ok: false, error: 'El número de comprobante es demasiado largo' }
+  const r = await rpc<{ rendicion: string; codigo: string; en_su_poder: number }>('reconocer_comprobante_efectivo', {
+    p_comprobante: comprobante, p_fecha: g.fecha.trim(), p_total: m.dato, p_concepto: concepto,
+    p_proveedor: proveedor, p_cuit: cuit, p_numero: numero,
+  })
+  if (r.ok) {
+    revalidatePath('/mi-informacion/efectivo')
+    revalidatePath('/mi-cuenta/efectivo')
+    revalidatePath('/obra/efectivo')
+  }
+  return r
+}
+
 export async function borrarRendicionAction(rendicion: string): Promise<Resultado> {
   if (!id.safeParse(rendicion).success) return { ok: false, error: 'Rendición inválida' }
   return rpc('borrar_rendicion_efectivo', { p_rendicion: rendicion, p_motivo: null })

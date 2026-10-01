@@ -8,27 +8,38 @@
 // hace en la pantalla de Compras, que es la verdad del gasto.
 
 import Link from 'next/link'
-import type { Comprobante, Entrega, FilaDeCompras } from '../types'
-import { ddmm, ddmmHora, esperando, leidoDe, numero, pesos, ROTULO_COMPROBANTE, totalLeido } from '../logica/entregas'
+import type { Comprobante, Entrega, FilaDeCompras, LeidoDelPapel, Rendicion } from '../types'
+import { ddmm, ddmmHora, diaAR, esperando, leidoDe, numero, pesos, ROTULO_COMPROBANTE, totalLeido } from '../logica/entregas'
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import { DescartarComprobante, FotoDelTicket, ObservarComprobante } from './AccionesComprobante'
-import { COLOR_TONO, MONO, SUPERFICIE, V, botonOscuroGrande, cajaConfirmar, eyebrow, punto } from './estilo'
+import { ReconocerComprobante } from './ReconocerComprobante'
+import { COLOR_TONO, MONO, SUPERFICIE, V, botonClaroGrande, botonOscuroGrande, cajaConfirmar, eyebrow, punto } from './estilo'
 
-export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
+export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino, rendicion = null, lectura = null, puedeReconocer = false }: {
   e: Entrega
   c: Comprobante
+  /** La rendición del ticket, si la tiene: la de un ticket reconocido a mano es `manual` y trae lo tipeado. */
+  rendicion?: Rendicion | null
+  /** Lo leído que quedó en el fajo en espera (sólo Administración; `leerLecturaDelTicket`). */
+  lectura?: LeidoDelPapel | null
+  /** Dirección y Administración: pueden escribir los campos y reconocer el gasto a mano. */
+  puedeReconocer?: boolean
   /** Los tickets de la entrega que todavía esperan, en el orden en que llegaron. */
   cola: Comprobante[]
   fotoUrl: string | null
   fila: FilaDeCompras | null
   destino: string
 }) {
-  const l = leidoDe(c)
-  const total = fila?.total ?? totalLeido(c)
+  const l = leidoDe(c) ?? lectura
+  const manual = rendicion?.origen === 'manual' ? rendicion : null
+  const total = fila?.total ?? (manual ? Number(manual.monto) : null) ?? totalLeido(c) ?? (typeof l?.total === 'number' ? l.total : null)
+  // RECONOCIDO A MANO Y TODAVÍA SIN FILA: el saldo ya bajó, pero «En Compras» sería afirmar una fila que no existe.
+  const estadoVisto = manual && !fila && c.estado === 'en_compras' ? 'escribiendo' : c.estado
+  const reconocer = puedeReconocer && esperando(c) && e.estado === 'abierta'
   const pos = cola.findIndex((x) => x.id === c.id)
   const siguiente = pos >= 0 ? cola[pos + 1] ?? null : cola[0] ?? null
   const sumaCola = cola.reduce((s, x) => s + (totalLeido(x) ?? 0), 0)
-  const estado = ROTULO_COMPROBANTE[c.estado]
+  const estado = ROTULO_COMPROBANTE[estadoVisto]
   const volver = urlEfectivo({ entrega: e.codigo })
   // El nombre entero, el mismo de la lista (src/shared/personas): «Miguel» a secas era el ÚLTIMO
   // nombre del legajo, y hay dos Emilianos en el plantel.
@@ -41,8 +52,31 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
       {nota}
     </div>
   )
+  // Con el formulario a la vista la acción primaria es «Reconocer el gasto»: las demás pasan a segundo plano.
+  const acciones = (primario: boolean) => (
+    <>
+            <Link href={siguiente ? urlEfectivo({ entrega: e.codigo, comprobante: siguiente.id }) : volver} prefetch={false} style={primario ? botonOscuroGrande : botonClaroGrande} data-testid="revisar-seguir">
+              {siguiente ? 'Seguir' : 'Volver a la entrega'}
+            </Link>
+            {/* El teléfono de la persona confirma «lo que se leyó»; cuando no puede (o no contesta) lo confirma
+                Administración por ella, por la misma pantalla. */}
+            {c.estado === 'a_confirmar' && (
+              <Link href={`/mi-informacion/efectivo/rendir/confirmar?ticket=${c.id}&por=${e.persona_id}`} prefetch={false} style={primario ? botonOscuroGrande : botonClaroGrande} data-testid="confirmar-por-otro">
+                Confirmar lo leído por {quien}
+              </Link>
+            )}
+            {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={quien} />}
+            {esperando(c) && <DescartarComprobante id={c.id} alTerminar={volver} />}
+            {siguiente && (
+              <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: V.apagado }}>
+                Sigue: {leidoDe(siguiente)?.proveedor ?? 'ticket sin proveedor legible'}
+                {totalLeido(siguiente) != null && <> · <span style={{ fontFamily: MONO }}>$ {numero(totalLeido(siguiente) as number)}</span></>}
+              </span>
+            )}
+    </>
+  )
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="revisar-comprobante" data-estado={c.estado}>
+    <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="revisar-comprobante" data-estado={estadoVisto}>
       <div style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 14, padding: '0 20px', background: SUPERFICIE, borderBottom: `1px solid ${V.linea}`, fontSize: '13px', flexWrap: 'wrap' }}>
         <Link href={volver} prefetch={false} className="inline-flex items-center max-md:min-h-11" style={{ fontWeight: 500 }}>{e.codigo} · {e.persona} · {destino}</Link>
         <span style={{ color: V.apagado }}>
@@ -67,12 +101,28 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
             </div>
             <div style={{ fontSize: '17px', fontWeight: 600 }}>Lo que leyó el sistema</div>
             <div style={{ fontSize: '12.5px', color: V.apagado }}>
-              El sistema lo carga solo a Compras. Si algo quedó mal, se corrige en la fila de Compras; si falta un dato, se le pide a {quien}.
+              {reconocer
+                ? `Corregí lo que haga falta y reconocelo: va a Compras como «A rendir» y baja el saldo de ${quien}.`
+                : `El sistema lo carga solo a Compras. Si algo quedó mal, se corrige en la fila de Compras; si falta un dato, se le pide a ${quien}.`}
             </div>
           </div>
 
+          {reconocer ? (
+            <ReconocerComprobante
+              id={c.id} destino={destino} persona={quien} enSuPoder={e.en_su_poder}
+              inicial={{
+                proveedor: l?.proveedor ?? '', cuit: l?.cuit ?? '', numero: l?.numero ?? '',
+                total: total != null ? String(total).replace('.', ',') : '',
+                fecha: l?.fecha && /^\d{4}-\d{2}-\d{2}/.test(l.fecha) ? l.fecha.slice(0, 10) : diaAR(c.enviado_en),
+                concepto: l?.concepto ?? '',
+              }}
+              estado={<Estado c={c} e={e} fila={fila} total={total} destino={destino} manual={manual} />}
+              acciones={acciones(false)}
+            />
+          ) : (
+            <>
           <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: '18px 26px' }}>
-            {dato('Proveedor', fila?.proveedor ?? l?.proveedor ?? <span style={{ color: V.tenue }}>no se leyó</span>,
+            {dato('Proveedor', fila?.proveedor ?? manual?.proveedor ?? l?.proveedor ?? <span style={{ color: V.tenue }}>no se leyó</span>,
               l?.cuit
                 ? <div style={{ fontSize: '12px', color: V.pos }}>CUIT leído · {l.cuit}</div>
                 : <div style={{ fontSize: '12px', color: V.warn }}>sin CUIT · clave débil</div>)}
@@ -80,33 +130,18 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
               fila?.comprobante ? `${fila.tipo ? `${fila.tipo} ` : ''}${fila.comprobante}` : l?.numero ? `${l.tipo ? `${l.tipo} ` : ''}${l.numero}` : <span style={{ color: V.tenue }}>no se leyó</span>,
               c.estado === 'duplicado' ? <div style={{ fontSize: '12px', color: V.warn }}>Ya estaba cargado en otra fila: no se duplicó</div> : undefined, true)}
             {dato('Importe total', total != null ? pesos(total) : <span style={{ color: V.tenue }}>no se leyó</span>, undefined, true)}
-            {dato('Fecha', fila?.fecha ? ddmm(fila.fecha) : l?.fecha ? ddmm(l.fecha) : <span style={{ color: V.tenue }}>no se leyó</span>, undefined, true)}
+            {dato('Fecha', fila?.fecha ? ddmm(fila.fecha) : manual?.fecha ? ddmm(manual.fecha) : l?.fecha ? ddmm(l.fecha) : <span style={{ color: V.tenue }}>no se leyó</span>, undefined, true)}
             {dato('Obra', destino, <div style={{ fontSize: '12px', color: V.apagado }}>Viene de la entrega.</div>)}
-            {dato('Rubro', fila?.concepto ?? <span style={{ color: V.tenue }}>lo pone la fila de Compras</span>)}
+            {dato('Rubro', fila?.concepto ?? manual?.concepto ?? <span style={{ color: V.tenue }}>lo pone la fila de Compras</span>)}
           </div>
 
-          <Estado c={c} e={e} fila={fila} total={total} destino={destino} />
+              <Estado c={c} e={e} fila={fila} total={total} destino={destino} manual={manual} />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto', flexWrap: 'wrap' }}>
-            <Link href={siguiente ? urlEfectivo({ entrega: e.codigo, comprobante: siguiente.id }) : volver} prefetch={false} style={botonOscuroGrande} data-testid="revisar-seguir">
-              {siguiente ? 'Seguir' : 'Volver a la entrega'}
-            </Link>
-            {/* El teléfono de la persona confirma «lo que se leyó»; cuando no puede (o no contesta) lo confirma
-                Administración por ella, por la misma pantalla. */}
-            {c.estado === 'a_confirmar' && (
-              <Link href={`/mi-informacion/efectivo/rendir/confirmar?ticket=${c.id}&por=${e.persona_id}`} prefetch={false} style={botonOscuroGrande} data-testid="confirmar-por-otro">
-                Confirmar lo leído por {quien}
-              </Link>
-            )}
-            {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={quien} />}
-            {esperando(c) && <DescartarComprobante id={c.id} alTerminar={volver} />}
-            {siguiente && (
-              <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: V.apagado }}>
-                Sigue: {leidoDe(siguiente)?.proveedor ?? 'ticket sin proveedor legible'}
-                {totalLeido(siguiente) != null && <> · <span style={{ fontFamily: MONO }}>$ {numero(totalLeido(siguiente) as number)}</span></>}
-              </span>
-            )}
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto', flexWrap: 'wrap' }}>
+                {acciones(true)}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -114,9 +149,20 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
 }
 
 /** Lo que ya pasó con el ticket, en el lugar donde el diseño decía «Al confirmar». */
-function Estado({ c, e, fila, total, destino }: { c: Comprobante; e: Entrega; fila: FilaDeCompras | null; total: number | null; destino: string }) {
+function Estado({ c, e, fila, total, destino, manual }: { c: Comprobante; e: Entrega; fila: FilaDeCompras | null; total: number | null; destino: string; manual: Rendicion | null }) {
   const titulo = { fontSize: '12.5px', fontWeight: 600 } as const
   const cuerpo = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 } as const
+  if (c.estado === 'en_compras' && manual && !fila) {
+    return (
+      <div style={cajaConfirmar} data-testid="revisar-estado">
+        <div style={titulo}>Reconocido a mano · escribiéndose en Compras</div>
+        <div style={cuerpo}>
+          <div>{manual.concepto ?? 'Gasto'}{manual.proveedor ? ` · ${manual.proveedor}` : ''}{total != null ? ` · ${pesos(total)}` : ''} · medio de pago <b>A rendir {e.codigo}</b>.</div>
+          <div>La fila aparece en Compras en un minuto. El saldo de {e.persona} ya bajó.</div>
+        </div>
+      </div>
+    )
+  }
   if (c.estado === 'en_compras') {
     return (
       <div style={cajaConfirmar} data-testid="revisar-estado">

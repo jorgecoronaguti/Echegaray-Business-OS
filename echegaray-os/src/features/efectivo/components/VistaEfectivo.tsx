@@ -19,7 +19,7 @@ import { destinoDe, esperando, filtroDeLista, pesos, resumir } from '../logica/e
 import { agruparPorPersona, cronologiaDePersona } from '../logica/personas'
 import { MIGRACION } from '../logica/formularios'
 import { urlEfectivo } from '../logica/url'
-import { leerComprasPorClave, leerEfectivo, leerExtraDeFicha, urlDeFoto, type DatosEfectivo } from '../services/datos'
+import { leerComprasPorClave, leerEfectivo, leerExtraDeFicha, leerLecturaDelTicket, urlDeFoto, type DatosEfectivo } from '../services/datos'
 import { leerParaImputar } from '../services/imputar'
 import { leerEdicionDeFicha } from '../services/edicionDatos'
 import { PanelEditarComprobante, PanelEditarDevolucion, PanelEditarEntrega } from './Edicion'
@@ -148,9 +148,18 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
 
   // D04 — el ticket ocupa la pantalla entera (sin la fila de secciones: es un modo de trabajo, no una vista).
   if (elegido && elegido.estado !== 'observado') {
-    const fila = elegido.compra_clave ? extra.compras.get(elegido.compra_clave) ?? null
-      : extra.compras.get(rendiciones.find((r) => r.comprobante_id === elegido.id)?.compra_clave ?? '') ?? null
-    return <RevisarComprobante e={e} c={elegido} cola={cola} fotoUrl={foto} fila={fila} destino={destino} />
+    const rend = rendiciones.find((r) => r.comprobante_id === elegido.id) ?? null
+    // LA FILA: por la clave del comprobante; la de un ticket reconocido a mano, por `fila:<n>` (su clave es `m:<id>`).
+    const fila = (elegido.compra_clave ? extra.compras.get(elegido.compra_clave) : null)
+      ?? (rend ? extra.compras.get(rend.compra_clave) ?? (rend.fila != null ? extra.compras.get('fila:' + rend.fila) : null) : null) ?? null
+    // Lo leído que quedó en el fajo en espera: sólo hace falta para precargar «Reconocer el gasto».
+    const lectura = d.veEconomia && esperando(elegido) ? await leerLecturaDelTicket(elegido.id) : null
+    return (
+      <RevisarComprobante
+        e={e} c={elegido} cola={cola} fotoUrl={foto} fila={fila} destino={destino}
+        rendicion={rend} lectura={lectura} puedeReconocer={d.veEconomia}
+      />
+    )
   }
 
   const devolviendo = sp.panel === 'devolucion' && e.estado === 'abierta'

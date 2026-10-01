@@ -193,18 +193,20 @@ export async function conformidadEnPapelAction(entrada: z.input<typeof papelSche
   return rpc<null>('firmar_conformidad_entrega', { p_entrega: p.data.entrega, p_trazo: null, p_papel_url: p.data.ruta })
 }
 
-const imputarSchema = z.object({ entrega: uuid, fila: z.number().int().min(4), clave: z.string().min(3).max(200) })
+const imputarSchema = z.object({ entrega: uuid, fila: z.number().int().min(4), clave: z.string().min(3).max(200).nullable() })
 
 /**
- * «IMPUTAR UN COMPROBANTE YA CARGADO» (dueño, 24/09/2026): una compra cargada en Efectivo pasa a «A rendir»,
- * queda atada a la entrega y el saldo baja. La base (`imputar_compra_a_entrega`, migración 20260925T1000)
- * vuelve a verificar todo —la fila sigue siendo esa compra, dice «Efectivo», no está imputada a otra— y
- * encola la celda. Lo que devuelve es «encolado»: el ✓ en el Sheet lo dice la cola.
+ * «IMPUTAR UN COMPROBANTE YA CARGADO» (dueño, 24/09 y 01/10/2026): una compra ya cargada y pagada —con cualquier
+ * medio de pago— pasa a «A rendir», queda atada a la entrega y el saldo baja. La base (`imputar_compra_a_entrega`,
+ * migraciones 20260925T1000 y 20261001T0100) vuelve a verificar todo —la fila sigue siendo esa compra, está
+ * pagada, no está imputada a otra— y encola la celda (o la ata sin encolar si ya decía «A rendir»). Lo que
+ * devuelve es «encolado»: el ✓ en el Sheet lo dice la cola.
  */
-export async function imputarCompraAction(entrada: z.input<typeof imputarSchema>): Promise<Resultado<{ codigo: string; fila: number }>> {
+export async function imputarCompraAction(entrada: z.input<typeof imputarSchema>): Promise<Resultado<{ codigo: string; fila: number; cambio: string | null }>> {
   const p = imputarSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: 'Elegí la compra que querés imputar.' }
-  return rpc<{ codigo: string; fila: number }>('imputar_compra_a_entrega', { p_entrega: p.data.entrega, p_fila: p.data.fila, p_clave: p.data.clave })
+  // `clave` null = la fila no tiene número de comprobante: la base la ata por fila (20261001T0100).
+  return rpc<{ codigo: string; fila: number; cambio: string | null }>('imputar_compra_a_entrega', { p_entrega: p.data.entrega, p_fila: p.data.fila, p_clave: p.data.clave })
 }
 
 /** Deshacer una imputación hecha a mano (o por las iniciales): vuelve el Tipo pago de antes por la misma cola. */

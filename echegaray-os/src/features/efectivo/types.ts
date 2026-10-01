@@ -65,6 +65,8 @@ export interface LeidoDelPapel {
   fecha?: string | null
   clave?: string | null
   fila?: number | null
+  /** Qué se compró, cuando lo leído sale del fajo en espera (`lectura_del_ticket_efectivo`). */
+  concepto?: string | null
 }
 
 /** Una fila de `public.efectivo_comprobante_estado`. */
