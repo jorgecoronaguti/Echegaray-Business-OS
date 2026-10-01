@@ -21,7 +21,7 @@ function portFalso({ canal = true, perfil = 'perf-jefe', abiertas = [], subs = [
   return {
     async query(sql) {
       if (/comunicacion\.canales_area/.test(sql)) return { rows: canal ? [{ area_clave: 'rendicion', canal_nombre: 'Efectivo' }] : [] }
-      if (/comunicacion\.identidades/.test(sql)) return { rows: perfil ? [{ perfil_id: perfil, persona_id: 'p-jefe', es_prueba: false, nombre: 'Jefe', rol: 'admin' }] : [] }
+      if (/comunicacion\.identidades/.test(sql)) return { rows: perfil ? [{ perfil_id: perfil, persona_id: 'p-jefe', es_prueba: false, nombre: 'Jefe', rol: 'jefe_obra' }] : [] }
       if (/from public\.efectivo_entrega e/.test(sql)) return { rows: abiertas }
       if (/from public\.personas p/.test(sql)) return { rows: PERSONAS }
       if (/from public\.subcontrato s/.test(sql) && /join public\.obra_canonica/.test(sql)) return { rows: subs }

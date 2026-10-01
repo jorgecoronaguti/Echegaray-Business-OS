@@ -52,6 +52,7 @@ export const TEXTO = Object.freeze({
   SIN_MIGRACION_ENTREGA: 'Entendí el gasto pagado con una entrega, pero rendirlo sin foto todavía no está habilitado en la base. No cargué nada. Avisale a Administración, o cargalo de la caja si salió de la caja.',
   SIN_PERMISO_ENTREGA: 'La base no te deja rendir contra esa entrega: sólo la rinde el jefe de obra que la tiene, o Dirección/Administración. No cargué nada.',
   NO_RINDE: TEXTO_NO_RINDE.CHAT,
+  NO_CARGA: TEXTO_NO_RINDE.CAJA,
 })
 
 // ═══ LA PREGUNTA QUE QUEDÓ ABIERTA, POR HILO ═══ (misma mecánica que adelantos-sueldo: 10 minutos, en memoria)
@@ -440,7 +441,7 @@ export const especialista = {
     if (origenDicho === 'entrega' && conEntrega) {
       return this.rendirDeEntrega({ leido, textoBase, port, actor, perfilId, perfil, yo, entregas, idMensaje, postId, log, rendir, adelantar })
     }
-    if (leido.tipo === 'sueldo') return this.pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, log, registrar })
+    if (leido.tipo === 'sueldo') return this.pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, perfil, log, registrar })
     if (origenDicho === 'entrega') {
       return {
         texto: `Entendí un gasto de ${pesos(leido.importe)} pagado con tu entrega. Para rendirlo mandá el ticket (foto) en este canal, que es lo que baja lo que te queda por rendir. No cargué nada.`,
@@ -493,7 +494,19 @@ export const especialista = {
     return {}
   },
 
-  async pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, log, registrar = registrarPagoDirecto }) {
+  /**
+   * EL PAGO A CUENTA CON LA CAJA (sin entrega): escribe en Liquidación. Misma regla de nivel que lo que descuenta
+   * de una entrega (auditoría de cierre, 01/10/2026: un `campo` cargaba «le pagué 30000 a Fulano de la caja»).
+   * La usan este especialista y `adelantos-sueldo`; si no llega el perfil se lee acá, y sin perfil no se escribe.
+   */
+  async pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, perfil, log, registrar = registrarPagoDirecto }) {
+    try {
+      if (perfil === undefined) perfil = await perfilDeMattermost(port, actor?.plataforma_user_id)
+    } catch (e) {
+      log?.warn?.('efectivo-pagos: no pude leer quién escribe', { error: String(e?.message ?? e) })
+      return { texto: TEXTO.NO_VERIFICABLE, estado: 'rechazado_no_verificable', privado: false }
+    }
+    if (!rinde(perfil)) return { texto: TEXTO.NO_CARGA, estado: 'rechazado_no_rinde', privado: false }
     const clave = `pago-efectivo:${idMensaje ?? `${leido.persona.id}|${leido.fecha}|${leido.importe}`}`
     try {
       const r = await registrar({
@@ -515,6 +528,7 @@ export const especialista = {
         estado: r.estado === 'ya_estaba' ? 'ya_estaba' : 'pago_cargado', privado: false,
       }
     } catch (e) {
+      if (e?.code === '42501') return { texto: TEXTO.NO_CARGA, estado: 'rechazado_sin_permiso', privado: false }
       const m = String(e?.message ?? e)
       log?.error?.('efectivo-pagos: no se pudo cargar', { error: m.slice(0, 300) })
       return { texto: `No cargué el pago de ${pesos(leido.importe)} a **${leido.persona.nombre}**: ${motivoDe(m)}\nNo se tocó Liquidación.`, estado: 'error', privado: false }
@@ -632,6 +646,8 @@ export const especialista = {
 
   async cargarGasto({ leido, port, actor, perfil, log, abrir, escribir }) {
     if (!perfil?.perfil_id) return { texto: TEXTO.SIN_PERSONA, estado: 'rechazado_sin_perfil', privado: false }
+    // El gasto sin ticket pagado con la caja va a Compras: lo carga quien rinde (misma regla que con entrega).
+    if (!rinde(perfil)) return { texto: TEXTO.NO_CARGA, estado: 'rechazado_no_rinde', privado: false }
     const item = itemDePago(leido)
     const fajo = await abrir(port, {
       plataforma: actor?.plataforma ?? 'mattermost',

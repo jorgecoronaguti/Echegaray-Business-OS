@@ -326,6 +326,7 @@ export const especialista = {
     const { especialista: pagos } = await import('./efectivo-pagos.mjs')
     return pagos.pagarSueldo({
       leido, port, idMensaje: commEventId ?? postId ?? actor?.root_post_id ?? null, actor, postId, perfilId: yo.perfilId, log,
+      perfil: { perfil_id: yo.perfilId, rol: yo.rol ?? null },
       registrar: registrarDirecto,
     })
   },

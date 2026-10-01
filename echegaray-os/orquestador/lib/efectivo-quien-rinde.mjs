@@ -22,6 +22,8 @@ export const rindePorOtro = (x) => ROLES_QUE_RINDEN_POR_OTRO.includes(rolDe(x))
 export const TEXTO_NO_RINDE = Object.freeze({
   /** Chat escrito: no se carga nada. */
   CHAT: 'No cargué nada: los gastos y pagos hechos con una entrega los rinden sólo los jefes de obra y Administración, así que los tuyos los rinde Administración. Pasale el detalle.',
+  /** Chat escrito, pago o gasto con la caja (sin entrega): tampoco se carga nada. */
+  CAJA: 'No cargué nada: por acá los pagos y gastos en efectivo los cargan sólo los jefes de obra y Administración. Pasale el detalle a Administración.',
   /** Foto o «ER-nnnn»: el comprobante sigue como compra común, sin tocar la entrega. */
   COMUN: 'No lo rendí contra ninguna entrega: los gastos de efectivo los rinden sólo los jefes de obra y Administración, así que los tuyos los rinde Administración. El comprobante sigue como compra común.',
 })

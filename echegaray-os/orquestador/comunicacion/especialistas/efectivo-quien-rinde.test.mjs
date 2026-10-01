@@ -195,3 +195,65 @@ test('sin rol legible (fail-closed): tampoco rinde', async () => {
   const r = await enPagos('gasté 12000 de mi entrega en nafta', { rol: null, a, ev: 'ev-x1', s })
   assert.equal(r.estado, 'rechazado_no_rinde'); assert.equal(s.total(), 0)
 })
+
+// ───── AUDITORÍA DE CIERRE 01/10 · las dos puertas que escribían SIN entrega: pago con la caja y gasto a Compras ─────
+const conPuerto = (esp, texto, { port, a, ev, s }) => esp.atender({
+  texto, port, actor: a, commEventId: ev, ahora,
+  registrar: esp === pagos ? s.registrar : s.adelantar, registrarDirecto: s.registrar,
+  adelantar: s.adelantar, rendir: s.rendir, abrir: s.abrir, escribir: s.escribir,
+})
+
+test('CAMPO «de la caja»: ni el pago a cuenta (Liquidación) ni el gasto sin ticket (Compras); se le dice quién lo carga', async () => {
+  for (const texto of ['le pagué 30000 a Rodrigo Sosa de la caja', 'pagué 50.000 de gasoil de la caja']) {
+    const s = espias(); const a = actor()
+    const r = await enPagos(texto, { rol: 'campo', a, ev: `ev-k${n}`, s })
+    assert.equal(r.estado, 'rechazado_no_rinde', texto); assert.equal(s.total(), 0, texto)
+    assert.match(r.texto, /No cargué nada/, texto); assert.match(r.texto, /Administración/, texto)
+  }
+})
+
+test('CAMPO con entrega que contesta «caja» a «¿de la caja o de la entrega?»: tampoco escribe', async () => {
+  for (const texto of ['pagué 50.000 de flete', 'le pagué 30000 a Rodrigo Sosa']) {
+    const s = espias(); const a = actor()
+    const q = await enPagos(texto, { rol: 'campo', a, ev: `ev-q${n}`, s })
+    assert.equal(q.estado, 'pregunta_origen', texto)
+    const r = await enPagos('de la caja', { rol: 'campo', a, ev: `ev-q${n}-r`, s })
+    assert.equal(r.estado, 'rechazado_no_rinde', texto); assert.equal(s.total(), 0, texto)
+  }
+})
+
+test('CAMPO SIN entrega: el gasto y el pago van derecho a la caja, y tampoco se escriben', async () => {
+  for (const texto of ['pagué 50.000 de gasoil', 'le pagué 30000 a Rodrigo Sosa']) {
+    const s = espias(); const a = actor()
+    const r = await conPuerto(pagos, texto, { port: portFalso({ rol: 'campo', vista: [] }), a, ev: `ev-s${n}`, s })
+    assert.equal(r.estado, 'rechazado_no_rinde', texto); assert.equal(s.total(), 0, texto)
+  }
+})
+
+test('CAMPO sin entrega que pide un adelanto (adelantos-sueldo → caja): no escribe en Liquidación', async () => {
+  const s = espias(); const a = actor()
+  const r = await conPuerto(adelantos, 'le di 8500 de adelanto a Rodrigo', { port: portFalso({ rol: 'campo', vista: [] }), a, ev: 'ev-s9', s })
+  assert.equal(r.estado, 'rechazado_no_rinde'); assert.equal(s.total(), 0)
+  assert.match(r.texto, /Administración/)
+})
+
+test('sin rol legible, «de la caja»: fail-closed', async () => {
+  const s = espias(); const a = actor()
+  const r = await enPagos('le pagué 30000 a Rodrigo Sosa de la caja', { rol: null, a, ev: 'ev-x2', s })
+  assert.equal(r.estado, 'rechazado_no_rinde'); assert.equal(s.total(), 0)
+})
+
+test('la puerta sigue abierta para quien corresponde: jefe y Dirección cargan el pago «de la caja»', async () => {
+  for (const rol of ['jefe_obra', 'direccion', 'administracion']) {
+    const s = espias(); const a = actor()
+    const r = await enPagos('le pagué 30000 a Rodrigo Sosa de la caja', { rol, a, ev: `ev-j${n}`, s })
+    assert.equal(r.estado, 'pago_cargado', rol); assert.equal(s.pagosCaja.length, 1, rol); assert.equal(s.total(), 1, rol)
+  }
+})
+
+test('si igual llega el 42501 de la base, se dice y no se da por cargado', async () => {
+  const s = espias(); const a = actor()
+  s.registrar = async () => { throw Object.assign(new Error('un pago en efectivo a cuenta lo carga un jefe de obra o Administración'), { code: '42501' }) }
+  const r = await enPagos('le pagué 30000 a Rodrigo Sosa de la caja', { rol: 'jefe_obra', a, ev: 'ev-b1', s })
+  assert.equal(r.estado, 'rechazado_sin_permiso'); assert.match(r.texto, /No cargué nada/)
+})
