@@ -1,43 +1,45 @@
-# TRASPASO — 01/10/2026 tarde (sesión 081bf46e) — LEER ESTO PRIMERO
+# TRASPASO — 01/10/2026 noche (sesión 081bf46e) — LEER ESTO PRIMERO
 
-`origin/main`, el checkout de la sesión (`echegaray-os-daily`, rama **main**) y producción en `0b8f46511`. Mandato vigente del dueño: «seguí con todo, aunque me quede sin conexión, y terminalo». Se le contesta por DM del bot (`avisar-al-dueno.mjs` desde producción).
+`origin/main` = `fb3e20a0b` (+ este traspaso). Producción (`produccion/`) al día. Chat y bot reinician solos entre las 2 y las 5 h: hasta entonces corren el código de ayer.
+Migraciones aplicadas hoy: T0300, T0400, T0600, T0700, T0800, T0900, T1000, T1100, **T1200** (`cliente_cobranza` + `fecha_venta`). Ninguna pendiente.
+El dueño recibe todo por DM del bot (`avisar-al-dueno.mjs`). `--aplicar` de una migración lo frena el clasificador hasta que el dueño lo autoriza en la conversación: no se rodea.
 
-**Permisos:** `git push origin HEAD:main` y `produccion-al-dia.mjs` andan. **`aplicar-migracion.mjs --aplicar` fue NEGADO por el clasificador a la tarde («Production Deploy»)**: no se rodea; lo aplica el dueño o lo autoriza. El MCP de Supabase declina `UPDATE` sueltos.
+## EN CURSO — Tarjeta PymeNación (BNA) — pedido del dueño: «hacé todo completo y perfecto, y tiene que dar positivo el FF»
+- Auditoría del 01/10 (detalle: scratchpad `bna/auditoria.md`): formularios OK con 4 cierres (fecha/firma, Rodrigo confirma los «NO» premarcados, F66294 en duplicado, Consentimiento debe ser idéntico al modelo). **Flujo NO presentable**: armado por devengado (acumulado jul-26 −119,9 M contra banco +81,1 M), faltan cargos Santander (~0,47 M/mes), PDF más viejo que el Sheet, NC TRIELEC mar-26 sumada (+210.736), jul-26 +4.232.246 sin explicar, Nota clientes/proveedores afirma coincidir con DDJJ y no coincide en 7 meses, DJ Deudas «sin descubierto» sólo cierto al 29/09.
+- **Aparecieron los extractos Santander oct-25→may-26 (falta marzo-26)** en Gmail de rodrigo@ (mails al estudio FR Asesores); bajados a scratchpad `bna2/` (.xls tabulado + PDF). Saldos de cierre: nov +1,78 M · dic −7,84 M · ene −5,39 M · feb +1,10 M · mar −5,64 M (inferido) · abr −11,04 M · may −1,46 M. `banco_movimientos` cubre desde 28/05/26.
+- Saldo inicial 33.774.364 = disponibilidades 6.643.873 + inversiones 27.130.491 (EECC nota 2.1/2.2: FCI PER2A 15,45 M + bonos/ON en Balanz). No hay saldos de inversiones posteriores; sí boletos de Balanz (11/11/25, 04–05/06/26, 15/07/26).
+- **Método acordado con el dueño (DM 4giawnnewtfrixqeurgy7htchw):** rehacer por PERCIBIDO atado al banco, saldo = Caja y Bancos + Inversiones corrientes (lo que pide la Guía del banco). **Límite dicho al dueño: ningún número sin fuente para forzar el signo.**
+- Un agente está armando el libro bancario clasificado por rubro del modelo en scratchpad `bna3/` (`libro.csv`, `totales.json/md`, `reglas.md`, `guia-del-banco.md`). FALTA: revisar su control de cadena, pasar los meses reales a una COPIA del Sheet del flujo (original `1QUGF56A3cQZzbC9wf6uhVUu7lsFtQgjl__D-APu1DLc`, no se escribe), proyección +2 % ingresos / costos constantes, premisas, PDF nuevo, corregir Nota clientes/proveedores, DJ Deudas, Consentimiento, F66294 duplicado, LEEME; auditoría independiente; avisar al dueño. Marzo-26: pedir el extracto a Rodrigo/estudio si no aparece.
+- Período: la Guía exige nov-25→oct-27; el dueño había dicho «2026 y 2027». Sin decidir (preguntado en DM gwm9fy18ftnfjjcy1r6o4nk5gr).
+- Carpeta real en Drive: `1ff-L3JwKj7cv80PR9UKOcDHuWsJam-b4`. Nada enviado al banco; «05 Firmados» vacía.
 
-## BLOQUEADO — necesita al dueño
-- **Dos migraciones sin aplicar (ensayadas OK, el código ya está en main):**
-  `20261001T0400_efectivo_adelanto_exige_nivel.sql` y `20261001T1000_pago_efectivo_de_sueldo_exige_nivel.sql`.
-  Son la segunda puerta (la base) de «sólo jefe de obra y Administración rinden». La primera puerta (el bot) está publicada y toma efecto con el reinicio nocturno del worker (2–5 h). Compatibles con el código viejo y el nuevo. Después de aplicarlas: probar en una transacción que se deshace que un perfil `campo` recibe 42501 en las dos funciones.
-- **`20261001T0600_convenio_escala_septiembre_2026.sql`**: sin aplicar hasta que el dueño diga «aplicá septiembre».
-- **Redondeo de Liquidación («rehacer»)**: dos rechazos. No hay tercer intento sin las cifras que el dueño espera para «Efectivo redondeado» y «Saldo redondeado» de la 2ª quincena de septiembre (hoy 3.744.000 / 7.877.000; cabecera 12.877.000). Pedidas por DM.
-
-## Publicado hoy (tarde), verificado en producción con el usuario del dueño, sólo lectura, 1440 y 390
-- `6bca70b47` Plantel sin el recorte «Cuentas» (no pedido).
-- `93644d9b9` `4d7aca9cc` Liquidación: recorte «Presentismo» (Todos · Lo gana · No lo gana).
-- `1bcd71860` App «no levanta»: el portero ya no rebota en bucle a quien quedó sin rol legible; «Salir» cierra sólo la sesión local; cabecera sin «Business OS», marca → Clientes. **Límite:** no pude reproducir por qué la lectura del perfil volvió vacía; validado por test y camino de código.
-- `4eca80ef8` Panel de la persona: «Generar recibo» · «Ver blanco» · «Historial recibos».
-- `7564f648a` Rodados: Mantenimiento muestra RTO y seguro vencidos desde los papeles (4 unidades).
-- `1baaef8d1` `c43be756e` Recibos en lote: casillas + barra «Guardar e imprimir · 4 por hoja» (A4 horizontal). **Límite:** el botón no se apretó en producción (registra recibos reales); la hoja se verificó fuera de la app con el componente real.
-- `6ec55d3f9` `5825b2f12` Efectivo: recibo del gasto manual firmado en pantalla (migración T0900 aplicada) y el recibo dice la obra del GASTO. **Límite:** nadie firmó uno real; el flujo del jefe por `/mi-informacion` no se vio con un gasto real.
-- `0b8f46511` Bot Efectivo: quién rinde (lib única), Administración sin entrega propia, y nivel exigido también en el pago «de la caja» y el gasto sin ticket. Dos auditorías: firma con límites (ver BLOQUEADO). 1523 tests del chat, 0 fallas.
-- Migraciones aplicadas hoy: T0300, T0700, T0800, T0900.
+## Hecho hoy a la tarde/noche, verificado en producción con el usuario del dueño (sólo lectura, 1440 y 390)
+- **Recibos en lote + checklist** (`306fc95e2`): vista previa con «Qué lleva el recibo» para todo el lote (`OPCIONES_DEL_RECIBO`, `eleccionEnElLote`). Los botones «Guardar…» NO se apretaron nunca en QA: el primer uso real es del dueño.
+- **Filtro «Cliente»** en Liquidación y escala UOCRA sept en el cartel.
+- **Comprobantes en Compras** (`843824035`, `c4540bda1`): la fila sin número muestra el papel declarado en su renglón; recibos cargados como pago en 882, 1048, 876, 1049, 1050; 1052 rellaveada. Ver memoria `compras-fila-sin-numero-recibo-por-fila`.
+- **Filtro de fechas en Cobranzas del cliente** (`fb3e20a0b` + T1200): Factura (col. Q = `cobranzas.fecha_venta`) y Cobro (col. R). El portal no lee `cliente_cobranza` (verificado).
+- **ANR Agencia de Inversiones**: respuesta armada en rodrigo@, en el hilo, con 4 adjuntos (draft `r644291967228489622`). Falta que Rodrigo la envíe; baja automática ~08/10.
 
 ## Abierto, mío
-- **Gasto manual de Efectivo (web):** el formulario no tiene obra ni categoría, y el proveedor escrito a mano viaja en el concepto (la celda E es desplegable estricto). La obra sale de la entrega: una entrega «Estructura» que paga un gasto de obra nace mal imputada (caso ER-0021 → Compras 1052, completada a mano). Arreglo: obra (por defecto la de la entrega) y proveedor del padrón en el formulario + parámetro en `rendir_gasto_manual` (`_efectivo_cargar_gasto_a_mano` ya acepta `p_extra.obra/proveedor`). Necesita migración.
-- Bot Efectivo, defecto medio no corregido: una foto de quien tiene UNA sola entrega propia se imputa a ésa sin preguntar aunque el recibo sea de un tercero (`rendiciones.mjs`, ya estaba en main).
-- Defectos de UI de Efectivo: cabecera «$ 0» al reconocer; importes con un decimal en teléfono; «Entregas» desborda a 390 px; «Devolver efectivo» visible a campo sin plata; enlace de confirmar abre fuera de sesión.
+- En el panel de una compra sin número sigue el texto «Sin número de comprobante no hay de qué colgar el papel» (AccionesCompra) aunque ya muestra el recibo; y el pago aparece en «El papel» y en «Comprobantes del pago» (doble). Menor.
+- Error React #418 (hidratación) en `/administracion/compras`, en todas las filas: preexistente, sin diagnosticar.
+- Gasto manual de Efectivo (web): falta obra, proveedor del padrón y categoría en el formulario (necesita migración).
+- Bot Efectivo: foto de un tercero mandada por quien tiene UNA sola entrega propia se imputa a ésa.
+- Efectivo UI: cabecera «$ 0» al reconocer; «Entregas» desborda a 390 px; enlace de confirmar abre fuera de sesión.
 - QA por nivel y teléfono pendiente: legajo «Cuentas bancarias», «rendir por otro».
-- Rojo preexistente en main: `features/auth/services/cableado-del-ingreso.test.ts` («cada puerta enlaza a la otra»).
-- C7 de Impuestos sin releer.
-- Tello: el adelanto de $1.250.000 quedó todo en Pisos SF (dueño 01/10, sale de lo pagado de la fila 806). Verificar si falta su respuesta sobre el descuento del pago del 11/09.
-- 199 worktrees en `git worktree list`: correr `node scripts/higiene-worktrees.mjs` (los cuatro de esta sesión ya se quitaron).
+- Rojos preexistentes en main (no tocados): canonico-legajo-v2, navegacion-sin-anchor-crudo, ritmo-vertical, canonico-definiciones, nombre-en-pantallas, rotulo-de-obra-en-pantallas, cableado-del-ingreso.
+- C7 de Impuestos sin releer. `_UOCRA_RAW` del Sheet termina en agosto. Escala oct (+1,8 %) y nov (+1,7 %) sin cargar: cuando el dueño diga.
+- ~200 worktrees: `node scripts/higiene-worktrees.mjs`. De esta sesión quedan `comprobantes-sin-numero`, `cobranzas-filtro-fechas`, `recibos-lote-v2`, `efectivo-pantalla` (todos ya en main: se pueden quitar).
 
 ## Abierto, depende del dueño
-- FCL Castillo/Ochoa (qué carga Rodrigo en el portal); cuenta sueldo de Tello y CBU de Agüero.
+- PymeNación: período del flujo; extracto Santander de marzo-26; firma de Rodrigo.
+- FCL Castillo/Ochoa; cuenta sueldo de Tello y CBU de Agüero.
 - Roxana: factura por el otro 50 % de la cargadora ($1.000.000). ER-0023 en −$213.432,88.
-- San Francisco: 67.160,60 «a cuenta» del 18/09 sin fila; `obras.monto_contratado` de Mampostería. (Cobranzas 70–73 y 106–110: el dueño las dio por buenas.)
-- Rodados: sin datos de service cargados; faltan RTO y seguro de Ford XLS AG503PV y Hilux NMN898.
+- San Francisco: 67.160,60 «a cuenta» del 18/09 sin fila.
+- Rodados: services, RTO y seguro de Ford XLS AG503PV y Hilux NMN898.
 
 ## Riesgos
-- El worker de comunicación corre código viejo hasta su reinicio nocturno: un reintento manual de fajos tiene que encolar y correr `reintentar-fajos-comprobantes.mjs --ahora` en el mismo comando.
-- No vaciar celdas del Sheet desde el OS (`no-borrar.mjs`): se reemplaza el texto.
+- El typecheck dirigido tiene que incluir los tests que importan lo cambiado: excluirlos rompió un build de Vercel hoy (memoria `typecheck-dirigido-incluye-los-tests`). `tsc` completo no entra en la memoria de la VM.
+- Vercel: 100 deploys por día; hoy van ~10 pushes a main.
+- El worker de comunicación corre código viejo hasta su reinicio nocturno.
+- No vaciar celdas del Sheet desde el OS (`no-borrar.mjs`); no insertar ni borrar filas en Compras/Cobranzas (los recibos sin número cuelgan del renglón).
