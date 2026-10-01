@@ -18,6 +18,7 @@ import { faltaMigracion } from '../logica/falta-migracion'
 import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
 import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type RecuentoLinea } from '../logica/recuento'
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
+import { vigentesConPapeles } from '../logica/revisionDesdePapeles'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
 import { nombresDeUsuariosPlano, ordenDeUsuariosPlano } from '../../../shared/personas/nombresDeUsuarios.ts'
 import { compararPorApellido, nombreDePersona } from '../../../shared/personas/nombre.ts'
@@ -150,6 +151,9 @@ export async function leerParque(): Promise<Lectura> {
     const lecs = lecturas.error ? null : ((lecturas.data ?? []) as unknown as LecturaUso[]).map((l) => ({
       ...l, lectura: l.lectura == null ? null : Number(l.lectura),
     }))
+    const papelesLeidos = papeles.error ? null : ((papeles.data ?? []) as unknown as Papel[]).map((p) => ({
+      ...p, dias: p.dias == null ? null : Number(p.dias),
+    }))
     const exs = existencias.error ? undefined : ((existencias.data ?? []) as unknown as Existencia[])
     const ajs = ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[])
     const movs = (movimientos.data ?? []) as unknown as Movimiento[]
@@ -175,15 +179,17 @@ export async function leerParque(): Promise<Lectura> {
         personas,
         existencias: exs,
         ajustes: ajs,
-        papeles: papeles.error ? null : ((papeles.data ?? []) as unknown as Papel[]).map((p) => ({
-          ...p, dias: p.dias == null ? null : Number(p.dias),
-        })),
+        papeles: papelesLeidos,
         unidades: unidades.error ? null : ((unidades.data ?? []) as unknown as Unidad[]),
         // `lectura` y `costo` son numeric: PostgREST los manda como string; se normalizan al leer.
         revisiones: revisiones.error ? null : ((revisiones.data ?? []) as unknown as Revision[]).map(numerosDeRevision),
-        revisionesVigentes: vigentes.error ? null : ((vigentes.data ?? []) as unknown as RevisionVigente[]).map((r) => ({
-          ...numerosDeRevision(r), dias: r.dias == null ? null : Number(r.dias),
-        })),
+        // La RTO y el seguro se cargan en Papeles: la revisión vigente los toma de ahí (`revisionDesdePapeles.ts`).
+        revisionesVigentes: vigentesConPapeles(
+          vigentes.error ? null : ((vigentes.data ?? []) as unknown as RevisionVigente[]).map((r) => ({
+            ...numerosDeRevision(r), dias: r.dias == null ? null : Number(r.dias),
+          })),
+          papelesLeidos,
+        ),
         eventos: eventos.error ? null : ((eventos.data ?? []) as unknown as Evento[]).map(numerosDeEvento),
         recuentos: recuentos.error ? null : ((recuentos.data ?? []) as unknown as Recuento[]),
         recuentoLineas: recuentoLineas.error ? null : ((recuentoLineas.data ?? []) as unknown as RecuentoLinea[]),
