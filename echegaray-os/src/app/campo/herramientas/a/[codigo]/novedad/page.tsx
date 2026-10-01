@@ -7,7 +7,8 @@ import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
 import { conLugar } from '@/features/herramientas/logica/lugar'
 import { MIGRACION_EVENTO } from '@/features/herramientas/logica/evento'
 
-// NOVEDAD DEL RODADO EN EL TELÉFONO — «hay que llevarlo», «en el mecánico», «ya hecho» (30/09).
+// ARREGLO EN EL TELÉFONO — «lo llevé al mecánico» y «ya volvió» de una herramienta, una máquina o un rodado
+// (30/09 rodados; 01/10 todas las clases). Pocos campos a la vista: el resto, en «Más datos».
 // Los mismos permisos que el resto de la ficha: la base decide con el usuario logueado, sin nivel aparte.
 export const dynamic = 'force-dynamic'
 
@@ -29,13 +30,13 @@ export default async function NovedadCampo({ params, searchParams }: { params: P
     </MarcoTelefono>
   )
   if (a.estado === 'baja') return aviso(`${a.nombre} está dado de baja: no se le cargan novedades.`)
-  if (a.clase !== 'rodado') return aviso('La novedad de taller es para rodados.')
   if (p.eventos == null) return aviso(`Falta aplicar la migración ${MIGRACION_EVENTO} del libro de vida: todavía no se puede cargar. El resto del módulo anda igual.`)
   return (
     <MarcoTelefono titulo={titulo} volver={ficha}>
       <LibroDeVida
         variante="telefono"
-        activo={{ id: a.id, estado: a.estado, nombre: a.nombre }}
+        activo={{ id: a.id, estado: a.estado, nombre: a.nombre, clase: a.clase, cantidad: a.cantidad }}
+        nombres={p.nombres}
         eventos={p.eventos}
         proveedores={(p.proveedores ?? []).map((x) => ({ id: x.id, nombre: x.nombre }))}
       />

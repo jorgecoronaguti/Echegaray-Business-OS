@@ -3,9 +3,11 @@
 // NOVEDAD DEL RODADO — una sola pantalla, en escritorio y en el teléfono (`variante`).
 //
 // Dos usos de la misma pieza:
-//   · nuevo: «hay que llevarlo» · «en el mecánico» · «ya hecho», con tipo, fecha, km, descripción, taller,
+//   · nuevo: «hay que llevarlo» · «ya hecho», con tipo, fecha, km, descripción, taller,
 //     costo opcional, referencia de compra opcional y próximo service (km o fecha).
-//   · avanzar (`abierto`): un evento abierto pasa a «en el mecánico» o a «hecho».
+//   · avanzar (`abierto`): un «hay que llevarlo» que se resolvió sin mecánico pasa a «hecho».
+// El paso por el mecánico (ingreso y vuelta) es de `FormularioArreglo`: lleva quién lo llevó, la vuelta estimada,
+// qué se le hizo y cómo quedó, y no se carga por dos caminos.
 // El taller es un proveedor del padrón si el nombre coincide; si no, texto libre. Lo que no se carga queda
 // vacío: vacío no es cero.
 
@@ -18,8 +20,9 @@ import { V, botonPrimarioGrande, campo, eyebrow } from './estilo'
 const ZONA = 'America/Argentina/San_Juan'
 const hoyIso = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA })
 
-export function FormularioEvento({ activo, proveedores, abierto, variante = 'escritorio', onHecho, onCancelar }: {
+export function FormularioEvento({ activo, clase = 'rodado', proveedores, abierto, variante = 'escritorio', onHecho, onCancelar }: {
   activo: string
+  clase?: 'herramienta' | 'equipo' | 'rodado'
   proveedores: { id: string; nombre: string }[]
   abierto?: Evento
   variante?: 'escritorio' | 'telefono'
@@ -28,15 +31,13 @@ export function FormularioEvento({ activo, proveedores, abierto, variante = 'esc
 }) {
   const tel = variante === 'telefono'
   const opciones: { value: SituacionEvento; label: string }[] = abierto
-    ? [
-        ...(abierto.situacion === 'pendiente' ? [{ value: 'en_taller' as const, label: NOMBRE_SITUACION.en_taller }] : []),
-        { value: 'hecho', label: 'Ya está hecho' },
-      ]
-    : [{ value: 'pendiente', label: NOMBRE_SITUACION.pendiente }, { value: 'en_taller', label: NOMBRE_SITUACION.en_taller }, { value: 'hecho', label: 'Ya está hecho' }]
+    ? [{ value: 'hecho', label: 'Ya está hecho' }]
+    : [{ value: 'pendiente', label: NOMBRE_SITUACION.pendiente }, { value: 'hecho', label: 'Ya está hecho' }]
   const [situacion, setSituacion] = useState<SituacionEvento>(opciones[0].value)
   const [tipo, setTipo] = useState<TipoEvento>(abierto?.tipo ?? 'reparacion')
   const [fecha, setFecha] = useState(hoyIso())
   const [descripcion, setDescripcion] = useState('')
+  const [trabajo, setTrabajo] = useState('')
   const [km, setKm] = useState('')
   const [taller, setTaller] = useState('')
   const [costo, setCosto] = useState('')
@@ -61,18 +62,18 @@ export function FormularioEvento({ activo, proveedores, abierto, variante = 'esc
       proximoKm: cierra ? proximoKm : '', proximoFecha: cierra ? proximoFecha : '',
     }
     const r = await (abierto
-      ? avanzarEventoAction({ evento: abierto.id, situacion: situacion as 'en_taller' | 'hecho', fecha: situacion === 'hecho' ? fecha : '', ...comun })
+      ? avanzarEventoAction({ evento: abierto.id, situacion: 'hecho', fecha, trabajo, ...comun })
       : registrarEventoAction({ activo, tipo, situacion, fecha, descripcion, ...comun })
     ).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : 'No se pudo registrar' }))
     setEnviando(false)
     if (!r.ok) return setError(r.error)
-    onHecho(situacion === 'pendiente' ? 'Novedad cargada: hay que llevarlo.' : situacion === 'en_taller' ? 'Quedó en el mecánico.' : 'Trabajo registrado.')
+    onHecho(situacion === 'pendiente' ? 'Novedad cargada: hay que llevarlo.' : 'Trabajo registrado.')
   }
 
   return (
     <div data-testid="formulario-evento" style={{ display: 'flex', flexDirection: 'column', gap: tel ? 16 : 12 }}>
       <div>
-        <span style={rotulo}>{abierto ? `A dónde pasa · ${abierto.descripcion}` : 'En qué está'}</span>
+        <span style={rotulo}>{abierto ? `Ya se resolvió · ${abierto.descripcion}` : 'En qué está'}</span>
         <SegmentedControl options={opciones} value={situacion} onChange={setSituacion} size="control" ariaLabel="Situación del rodado" testid="evento-situacion" />
       </div>
 
@@ -91,16 +92,22 @@ export function FormularioEvento({ activo, proveedores, abierto, variante = 'esc
             <input type="date" value={fecha} max={hoyIso()} onChange={(e) => setFecha(e.target.value)} style={estiloCampo} data-testid="evento-fecha" />
           </label>
         )}
+        {abierto && cierra && (
+          <label style={{ gridColumn: tel ? undefined : '1 / -1' }}>
+            <span style={rotulo}>Qué se le hizo</span>
+            <input type="text" value={trabajo} maxLength={1000} onChange={(e) => setTrabajo(e.target.value)} style={estiloCampo} data-testid="evento-trabajo" />
+          </label>
+        )}
         {!abierto && (
           <label style={{ gridColumn: tel ? undefined : '1 / -1' }}>
-            <span style={rotulo}>Qué pasa</span>
+            <span style={rotulo}>{cierra ? 'Qué se le hizo' : 'Qué pasa'}</span>
             <input type="text" value={descripcion} maxLength={1000} onChange={(e) => setDescripcion(e.target.value)} placeholder="Pierde aceite, hace ruido al frenar…" style={estiloCampo} data-testid="evento-descripcion" />
           </label>
         )}
-        <label>
+        {clase === 'rodado' && <label>
           <span style={rotulo}>Kilometraje</span>
           <input type="number" inputMode="decimal" min={0} step="0.1" value={km} onChange={(e) => setKm(e.target.value)} placeholder="km" style={estiloCampo} data-testid="evento-km" />
-        </label>
+        </label>}
         {pideTaller && (
           <label>
             <span style={rotulo}>Taller o mecánico</span>
@@ -118,10 +125,10 @@ export function FormularioEvento({ activo, proveedores, abierto, variante = 'esc
               <span style={rotulo}>Factura o compra (opcional)</span>
               <input type="text" value={compraRef} maxLength={80} onChange={(e) => setCompraRef(e.target.value)} style={estiloCampo} data-testid="evento-compra" />
             </label>
-            <label>
+            {clase === 'rodado' && <label>
               <span style={rotulo}>Próximo service (km)</span>
               <input type="number" inputMode="decimal" min={0} value={proximoKm} onChange={(e) => setProximoKm(e.target.value)} placeholder="km" style={estiloCampo} data-testid="evento-proximo-km" />
-            </label>
+            </label>}
             <label>
               <span style={rotulo}>Próximo service (fecha)</span>
               <input type="date" value={proximoFecha} min={fecha} onChange={(e) => setProximoFecha(e.target.value)} style={estiloCampo} data-testid="evento-proximo-fecha" />

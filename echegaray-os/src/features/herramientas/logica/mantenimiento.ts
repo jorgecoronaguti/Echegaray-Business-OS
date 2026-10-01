@@ -5,6 +5,7 @@
 // esos bloques no se dibujan vacíos.
 
 import type { Activo, Incidencia } from '../types.ts'
+import { estaAfuera } from './arreglo.ts'
 import { conProblema, diasDesde, tipoDe, vivo, type Parque } from './parque.ts'
 
 export type GrupoMant = 'en_obra' | 'en_taller' | 'externa' | 'otros'
@@ -30,10 +31,15 @@ export function grupoDe(p: Parque, a: Activo): GrupoMant {
   return 'otros'
 }
 
-/** La cola por grupo, lo más viejo primero dentro de cada uno. */
+/**
+ * La cola por grupo, lo más viejo primero dentro de cada uno. Lo que está en el mecánico CON un arreglo cargado
+ * no entra acá: tiene su propio cuadro (ingreso, mecánico, días, vuelta estimada) y listarlo dos veces
+ * duplicaría el conteo. Lo que está en reparación externa SIN arreglo cargado sigue acá: es lo que falta cargar.
+ */
 export function colaDeMantenimiento(p: Parque, hoy: Date = new Date()): Record<GrupoMant, ItemMant[]> {
   const out: Record<GrupoMant, ItemMant[]> = { en_obra: [], en_taller: [], externa: [], otros: [] }
-  for (const a of p.activos.filter((x) => vivo(x) && conProblema(x))) {
+  const enMecanico = new Set((p.eventos ?? []).filter(estaAfuera).map((e) => e.activo_id))
+  for (const a of p.activos.filter((x) => vivo(x) && conProblema(x) && !enMecanico.has(x.id))) {
     const incidencia = p.incDe.get(a.id)?.find((i) => !i.cerrada_en) ?? null
     out[grupoDe(p, a)].push({ activo: a, incidencia, dias: diasDesde(incidencia?.creado_en ?? a.estado_desde, hoy) })
   }

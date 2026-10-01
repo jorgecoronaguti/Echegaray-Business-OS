@@ -35,3 +35,20 @@ test('la cola separa obra, taller, externa y el resto; lo operativo y la baja no
   assert.deepEqual(c.externa.map((x) => x.activo.id), ['4'])
   assert.deepEqual(c.otros.map((x) => x.activo.id), ['5'])
 })
+
+test('lo que está en el mecánico con arreglo cargado sale del cuadro de la cola: tiene el suyo y no se cuenta dos veces', () => {
+  const p = armarParque({
+    ubicaciones: [ubicacion({ id: 's', tipo: 'servicio_tecnico', nombre: 'Bosch' })],
+    obras: [],
+    activos: [
+      activo({ id: '1', codigo: 'HER-0001', nombre: 'A', ubicacion_id: 's', estado: 'reparacion_externa' }),
+      activo({ id: '2', codigo: 'HER-0002', nombre: 'B', ubicacion_id: 's', estado: 'reparacion_externa' }),
+    ],
+    movimientos: [], incidencias: [], nombres: {},
+    eventos: [{ id: 'e1', activo_id: '1', tipo: 'reparacion', situacion: 'en_taller', fecha: '2026-09-20', km: null, descripcion: 'x', proveedor_id: null, taller_texto: 'Bosch',
+      costo: null, compra_ref: null, proximo_km: null, proximo_fecha: null, ubicacion_origen: null, ubicacion_taller: 's', enviado_en: null, cerrado_en: null, cerrado_por: null,
+      creado_en: '2026-09-20T10:00:00Z', creado_por: null }],
+  })
+  const c = colaDeMantenimiento(p, HOY)
+  assert.deepEqual(c.externa.map((x) => x.activo.id), ['2'], 'el 2 sigue: está afuera SIN arreglo cargado, es lo que falta cargar')
+})

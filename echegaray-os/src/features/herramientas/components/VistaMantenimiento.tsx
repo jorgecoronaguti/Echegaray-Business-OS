@@ -14,25 +14,29 @@ import { operadorDe } from '../logica/historial'
 import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
 } from '../logica/verificacion'
+import { afuera, hoyIso } from '../logica/arreglo'
+import { ArreglosAfuera } from './ArreglosAfuera'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
 import { FichaRevision } from './FichaRevision'
 import { RevisionesMantenimiento } from './RevisionesMantenimiento'
-import { SUPERFICIE, V, bajadaPagina, eyebrow, tituloPagina } from './estilo'
+import { SUPERFICIE, V, bajadaPagina, botonSecundario, eyebrow, tituloPagina } from './estilo'
 
 const COLS = 'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.2fr) 80px'
 const ORDEN: GrupoMant[] = ['en_obra', 'en_taller', 'externa', 'otros']
 
 export function VistaMantenimiento({ activo, revision }: { activo: string | null; revision: string | null }) {
-  const { parque, abierto: panel } = useHerramientas()
+  const { parque, abierto: panel, abrir } = useHerramientas()
   // Con un panel abierto (mover, alta, reportar…) el panel ocupa la derecha: la ficha se esconde para
   // que el listado no quede apretado entre las dos columnas.
   const conPanel = !!panel && panel.tipo !== 'baja'
   const router = useRouter()
   const ruta = usePathname()
   const cola = colaDeMantenimiento(parque)
-  const total = ORDEN.reduce((s, g) => s + cola[g].length, 0)
-  const viejo = Math.max(0, ...ORDEN.flatMap((g) => cola[g].map((x) => x.dias)))
+  const mecanico = afuera(parque.eventos, parque.activoPorId, hoyIso())
+  const total = ORDEN.reduce((s, g) => s + cola[g].length, 0) + mecanico.length
+  const viejo = Math.max(0, ...ORDEN.flatMap((g) => cola[g].map((x) => x.dias)), ...mecanico.map((x) => x.dias ?? 0))
+  const elegir = (codigo: string) => router.replace(`${ruta}?activo=${encodeURIComponent(codigo)}`, { scroll: false })
   const elegido = activo ? parque.activos.find((a) => a.codigo === activo) ?? null : null
   // `?revision=<código>` abre la ficha de revisión (RTO, service, seguro, inspección) en vez de la del activo.
   const revisado = revision ? parque.activos.find((a) => a.codigo === revision) ?? null : null
@@ -40,12 +44,16 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 640 }}>
       <div style={{ flex: 1, minWidth: 0, padding: '22px 26px 30px', display: 'flex', flexDirection: 'column', gap: 26 }} data-testid="mantenimiento">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <h1 style={tituloPagina}>Mantenimiento</h1>
-          <div style={bajadaPagina}>
-            {total === 0 ? 'Nada abierto: ningún activo tiene un problema reportado.' : `${total} ${total === 1 ? 'abierto' : 'abiertos'} · el más viejo hace ${viejo} ${viejo === 1 ? 'día' : 'días'}`}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <h1 style={tituloPagina}>Mantenimiento</h1>
+            <div style={bajadaPagina}>
+              {total === 0 ? 'Nada abierto: ningún activo tiene un problema reportado.' : `${total} ${total === 1 ? 'abierto' : 'abiertos'} · el más viejo hace ${viejo} ${viejo === 1 ? 'día' : 'días'}`}
+            </div>
           </div>
+          <button type="button" onClick={() => abrir({ tipo: 'arreglo' })} style={botonSecundario} data-testid="registrar-arreglo">Registrar un arreglo</button>
         </div>
+        <ArreglosAfuera parque={parque} elegido={elegido?.codigo ?? null} onElegir={elegir} />
         {ORDEN.filter((g) => cola[g].length > 0).map((g) => (
           <div key={g} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid={`grupo-${g}`}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -61,7 +69,7 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
               return (
                 <button
                   key={a.id} type="button" data-testid="item-mantenimiento" className="hover:bg-surface-quiet"
-                  onClick={() => router.replace(`${ruta}?activo=${encodeURIComponent(a.codigo)}`, { scroll: false })}
+                  onClick={() => elegir(a.codigo)}
                   style={{ display: 'grid', gridTemplateColumns: COLS, gap: 18, minHeight: 42, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '13.5px', textAlign: 'left', background: on ? SUPERFICIE : undefined }}
                 >
                   <div style={{ fontWeight: 500 }}>{a.nombre}</div>

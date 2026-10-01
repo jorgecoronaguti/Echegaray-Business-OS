@@ -19,7 +19,6 @@ import { semaforo } from '../../src/features/herramientas/logica/revision.ts'
 
 const MIGRACION = '20260930T2300_rodados_libro_de_vida.sql'
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
-const FIRMA = 'public.registrar_evento_activo(uuid,text,text,date,text,numeric,uuid,text,numeric,text,numeric,date)'
 
 const iso = (d) => d.toISOString().slice(0, 10)
 const enDias = (n) => { const d = new Date(); d.setUTCHours(12, 0, 0, 0); d.setUTCDate(d.getUTCDate() + n); return d }
@@ -28,7 +27,9 @@ async function preparar(c) {
   await c.query('begin')
   await c.query('select pg_advisory_xact_lock(20260930)')
   await c.query(`set local lock_timeout = '5s'`)
-  if (!(await c.query(`select to_regprocedure('${FIRMA}') f`)).rows[0].f) {
+  // La firma de las funciones cambió con 20261001T0800 (arreglos): se mira la tabla, no la firma, para no
+  // reaplicar la migración vieja encima de la nueva y dejar dos sobrecargas.
+  if (!(await c.query(`select to_regclass('public.activo_evento') f`)).rows[0].f) {
     await c.query(readFileSync(join(import.meta.dirname, '..', '..', 'supabase', 'migrations', MIGRACION), 'utf8'))
   }
   const q = async (sql, params) => (await c.query(sql, params)).rows

@@ -7,9 +7,11 @@
 import type { Activo } from '../types.ts'
 
 export const MIGRACION_EVENTO = '20260930T2300'
+/** Los datos del arreglo (llevó, ingreso, vuelta estimada, qué se hizo, repuestos, resultado). */
+export const MIGRACION_ARREGLO = '20261001T0800'
 
 export const COLUMNAS_EVENTO =
-  'id, activo_id, tipo, situacion, fecha, km, descripcion, proveedor_id, taller_texto, costo, compra_ref, proximo_km, proximo_fecha, ubicacion_origen, ubicacion_taller, enviado_en, cerrado_en, cerrado_por, creado_en, creado_por'
+  'id, activo_id, tipo, situacion, fecha, km, descripcion, proveedor_id, taller_texto, costo, compra_ref, proximo_km, proximo_fecha, ubicacion_origen, ubicacion_taller, enviado_en, cerrado_en, cerrado_por, creado_en, creado_por, llevado_por, ingreso_taller, vuelta_estimada, trabajo_hecho, repuestos, vuelta_en, resultado'
 
 export type TipoEvento = 'reparacion' | 'service' | 'neumaticos' | 'bateria' | 'chapa' | 'otro'
 export type SituacionEvento = 'pendiente' | 'en_taller' | 'hecho'
@@ -43,6 +45,15 @@ export type Evento = {
   cerrado_por: string | null
   creado_en: string
   creado_por: string | null
+  // El arreglo (20261001T0800). Opcionales: antes de la migración la columna no existe, y en lo cargado antes es null.
+  llevado_por?: string | null
+  /** Día (YYYY-MM-DD) que entró al taller: el reloj de los días fuera. */
+  ingreso_taller?: string | null
+  vuelta_estimada?: string | null
+  trabajo_hecho?: string | null
+  repuestos?: string | null
+  vuelta_en?: string | null
+  resultado?: 'operativo' | 'baja' | null
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))

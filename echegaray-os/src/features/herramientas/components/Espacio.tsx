@@ -16,6 +16,7 @@ import { PanelMover } from './PanelMover'
 import { PanelAlta } from './PanelAlta'
 import { DialogoBaja } from './DialogoBaja'
 import { PanelReportar } from './PanelReportar'
+import { PanelArreglo } from './PanelArreglo'
 import { PanelEditar } from './PanelEditar'
 import { PanelVerificar } from './PanelVerificar'
 import { PanelRecuento } from './PanelRecuento'
@@ -29,6 +30,8 @@ type PanelAbierto =
   | { tipo: 'baja'; id: string }
   | { tipo: 'reportar'; ids: string[] }
   | { tipo: 'editar'; id: string }
+  /** Registrar un arreglo (lo llevaron al mecánico); con `id` el activo ya viene elegido. */
+  | { tipo: 'arreglo'; id?: string }
   | { tipo: 'verificar'; id: string }
   | { tipo: 'recuento'; ubicacionId: string }
   | null
@@ -94,6 +97,7 @@ export function EspacioHerramientas({ datos, obras, yo, children }: {
         {abierto?.tipo === 'mover' && <PanelMover key={abierto.ids.join(',')} idsIniciales={abierto.ids} destinoInicial={abierto.destino} origenInicial={abierto.origen} onHecho={hecho} />}
         {abierto?.tipo === 'alta' && <PanelAlta key={`${abierto.destino ?? ''}|${abierto.clase ?? ''}`} destinoInicial={abierto.destino} claseInicial={abierto.clase} onHecho={hecho} />}
         {abierto?.tipo === 'reportar' && <PanelReportar ids={abierto.ids} onHecho={hecho} />}
+        {abierto?.tipo === 'arreglo' && <PanelArreglo key={abierto.id ?? ''} idInicial={abierto.id} onHecho={hecho} />}
         {abierto?.tipo === 'editar' && <PanelEditar id={abierto.id} onHecho={hecho} />}
         {abierto?.tipo === 'verificar' && <PanelVerificar key={abierto.id} id={abierto.id} onHecho={hecho} />}
         {abierto?.tipo === 'recuento' && <PanelRecuento key={abierto.ubicacionId} ubicacionId={abierto.ubicacionId} onHecho={hecho} />}

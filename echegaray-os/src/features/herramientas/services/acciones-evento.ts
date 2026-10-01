@@ -5,9 +5,13 @@
 // «Hay que llevarlo», «en el mecánico» y «hecho» se deciden en la base (`registrar_evento_activo`,
 // `avanzar_evento_activo`): ella mueve el rodado al taller, lo devuelve a donde estaba y asienta el próximo
 // service como vencimiento. Acá sólo se valida la forma con Zod. Mismos permisos para todos los niveles.
+//
+// EL ARREGLO (20261001T0800): al mecánico lleva quién lo llevó y la vuelta estimada; al cierre, qué se le hizo
+// (obligatorio), repuestos y cómo quedó (operativo o baja). El costo y el N° de comprobante se guardan acá:
+// NUNCA se escribe en Compras.
 
 import { z } from 'zod'
-import { MIGRACION_EVENTO } from '../logica/evento'
+import { MIGRACION_ARREGLO } from '../logica/evento'
 import { rpcHerramientas, type Resultado } from './rpc'
 
 const fechaIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va como día/mes/año')
@@ -30,6 +34,10 @@ const comunes = {
   compraRef: textoOpcional(80),
   proximoKm: numeroOpcional(9_999_999, 'El km del próximo service es un número de 0 o más'),
   proximoFecha: fechaOpcional,
+  llevadoPor: z.string().trim().max(120).optional().transform((v) => v || null),
+  vueltaEstimada: fechaOpcional,
+  repuestos: textoOpcional(500),
+  resultado: z.union([z.literal(''), z.enum(['operativo', 'baja'])]).optional().transform((v) => v || null),
 }
 
 const nuevo = z.object({
@@ -37,6 +45,7 @@ const nuevo = z.object({
   tipo: z.enum(['reparacion', 'service', 'neumaticos', 'bateria', 'chapa', 'otro'], { message: 'Elegí qué trabajo es' }),
   situacion: z.enum(['pendiente', 'en_taller', 'hecho'], { message: 'Elegí en qué está' }),
   fecha: fechaIso,
+  trabajo: textoOpcional(1000),
   descripcion: z.string().trim().min(3, 'Contá en una línea qué pasa (3 letras o más)').max(1000),
   ...comunes,
 })
@@ -59,13 +68,17 @@ export async function registrarEventoAction(entrada: EntradaEvento): Promise<Res
     p_activo: d.activo, p_tipo: d.tipo, p_situacion: d.situacion, p_fecha: d.fecha, p_descripcion: d.descripcion,
     p_km: d.km, p_proveedor: d.proveedor, p_taller: d.taller, p_costo: d.costo, p_compra_ref: d.compraRef,
     p_proximo_km: d.proximoKm, p_proximo_fecha: d.proximoFecha,
-  }, MIGRACION_EVENTO)
+    p_llevado_por: d.llevadoPor, p_vuelta_estimada: d.vueltaEstimada, p_trabajo: d.trabajo, p_repuestos: d.repuestos, p_resultado: d.resultado,
+  }, MIGRACION_ARREGLO)
 }
 
 const avance = z.object({
   evento: z.string().uuid(),
   situacion: z.enum(['en_taller', 'hecho'], { message: 'Elegí a dónde pasa' }),
   fecha: fechaOpcional,
+  /** Qué se le hizo: obligatorio al cerrar. */
+  trabajo: textoOpcional(1000),
+  descripcion: textoOpcional(1000),
   ...comunes,
 })
 export type EntradaAvance = z.input<typeof avance>
@@ -74,8 +87,11 @@ export async function avanzarEventoAction(entrada: EntradaAvance): Promise<Resul
   const p = avance.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const d = p.data
+  if (d.situacion === 'hecho' && (d.trabajo ?? '').length < 3) return { ok: false, error: 'Contá qué se le hizo (3 letras o más).' }
   return rpcHerramientas<string>('avanzar_evento_activo', {
     p_evento: d.evento, p_situacion: d.situacion, p_fecha: d.fecha, p_km: d.km, p_proveedor: d.proveedor, p_taller: d.taller,
     p_costo: d.costo, p_compra_ref: d.compraRef, p_proximo_km: d.proximoKm, p_proximo_fecha: d.proximoFecha,
-  }, MIGRACION_EVENTO)
+    p_descripcion: d.descripcion, p_llevado_por: d.llevadoPor, p_vuelta_estimada: d.vueltaEstimada, p_trabajo: d.trabajo,
+    p_repuestos: d.repuestos, p_resultado: d.resultado,
+  }, MIGRACION_ARREGLO)
 }

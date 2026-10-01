@@ -13,6 +13,7 @@ import { historial } from '@/features/herramientas/logica/historial'
 import { conLugar } from '@/features/herramientas/logica/lugar'
 import { partesDeUnidad } from '@/features/herramientas/logica/unidades'
 import { seRevisa } from '@/features/herramientas/logica/revision'
+import { arregloEnTaller, diasFuera, hoyIso, plazoDias } from '@/features/herramientas/logica/arreglo'
 import { Unidades } from '@/features/herramientas/components/Unidades'
 import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, verificacionDe,
@@ -47,6 +48,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
   const quien = m ? autorDe(p, m) : null
   const inc = p.incDe.get(a.id)?.find((i) => !i.cerrada_en)
   const baja = a.estado === 'baja'
+  const enMecanico = arregloEnTaller(p.eventos, a.id, hoyIso())
   const renglones = historial(p, a.id)
   const verificable = seVerifica(a)
   const verif = verificable ? verificacionDe(p, a.id) : null
@@ -170,10 +172,12 @@ export default async function UnaHerramienta({ params, searchParams }: {
             Ficha de revisión <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
         )}
-        {!baja && a.clase === 'rodado' && (
+        {!baja && (a.cantidad <= 1 || enMecanico) && (
           <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/novedad`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-novedad"
             style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
-            Novedad del rodado: taller, service, reparación <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
+            {a.clase === 'rodado' ? 'Novedad del rodado: taller, service, reparación' : 'Mecánico: lo llevé · ya volvió'}
+            {enMecanico && <span style={{ marginLeft: 8, fontSize: '12.5px', color: V.warn }} data-testid="en-el-mecanico">en el mecánico · {plazoDias(diasFuera(enMecanico, hoyIso()) ?? 0)}</span>}
+            <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
         )}
         {!baja && (

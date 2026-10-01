@@ -8,6 +8,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { aplicarBusqueda, cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
+import { arregloEnTaller, diasFuera, hoyIso } from '../logica/arreglo'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, rotuloLugares, rotuloQuien, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
@@ -355,6 +356,9 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
   const tiene = rotuloQuien(parque, a)
   const visto = vistoEn(parque, a.id)
   const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
+  // En el mecánico con arreglo cargado: lo dice con los días que lleva afuera (no disponible hasta que vuelva).
+  const arreglo = baja ? null : arregloEnTaller(parque.eventos, a.id, hoyIso())
+  const diasAfuera = arreglo ? diasFuera(arreglo, hoyIso()) : null
   // EPP y ropa: el stock se ve siempre (también 0) y en 0 dice «sin stock», no «sin ubicación cargada».
   const personal = esPersonal(a)
   const sinStock = personal && !a.ubicacion_id && !baja
@@ -373,7 +377,7 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
       <div style={a.categoria ? { color: V.tintaSuave } : vacio}>{a.categoria ?? 'sin categoría'}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: baja ? V.tintaSuave : tono }}>
         {!baja && a.estado !== 'fuera_servicio' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: tono, flexShrink: 0 }} />}
-        {baja ? `Baja · ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? ''} ${a.baja_en ? diaMes(a.baja_en) : ''}` : ETIQUETA_ESTADO_CORTA[a.estado]}
+        {baja ? `Baja · ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? ''} ${a.baja_en ? diaMes(a.baja_en) : ''}` : arreglo ? `En el mecánico${diasAfuera != null ? ` · ${diasAfuera} d` : ''}` : ETIQUETA_ESTADO_CORTA[a.estado]}
       </div>
       <div style={a.ubicacion_id ? { color: V.tintaSuave } : sinStock ? { color: V.apagado } : vacio}>
         {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : sinStock ? 'sin stock' : lugares}
