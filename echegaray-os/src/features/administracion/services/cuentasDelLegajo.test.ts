@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-  PATRON_CONVENIO_FCL, cbuValido, controlDeCuentas, conteoPorControl, esquemaCuentas, exigeFcl,
+  PATRON_CONVENIO_FCL, cbuValido, controlDeCuentas, esquemaCuentas, exigeFcl,
   type CuentasDePersona,
 } from './cuentasDelLegajo.ts'
 
@@ -85,11 +85,6 @@ test('el formulario no acepta «creada» sin número', () => {
   assert.equal(esquemaCuentas.safeParse(formulario({ fcl_estado: 'creada' })).success, false)
   assert.equal(esquemaCuentas.safeParse(formulario({ cuenta_sueldo_estado: 'creada' })).success, false)
   assert.equal(esquemaCuentas.safeParse(formulario({ fcl_estado: 'abierta' })).success, false, 'estado fuera del check')
-})
-
-test('conteo: quien no vino en la lectura no se cuenta como «falta todo»', () => {
-  const m = new Map([['a', 'completo' as const], ['b', 'falta_fcl' as const]])
-  assert.deepEqual(conteoPorControl(['a', 'b', 'c'], m), { completo: 1, falta_sueldo: 0, falta_fcl: 1, falta_todo: 0 })
 })
 
 // ── La migración ────────────────────────────────────────────────────────────────────────────────

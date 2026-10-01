@@ -45,8 +45,3 @@ export async function leerCuentas(supabase: SupabaseClient, personaId?: string):
   if (error) return { estado: 'error', mensaje: error.message }
   return { estado: 'ok', filas: (data ?? []) as FilaDeCuentas[] }
 }
-
-/** El control por persona, para la lista. Sólo las que vinieron: quien falta no es «falta todo». */
-export function controlPorPersona(filas: FilaDeCuentas[]): Map<string, ControlDeCuentas> {
-  return new Map(filas.map((f) => [f.persona_id, f.control]))
-}

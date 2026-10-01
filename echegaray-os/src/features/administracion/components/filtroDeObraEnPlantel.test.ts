@@ -142,7 +142,8 @@ test('la tabla vacía por el recorte dice que es el recorte', () => {
   const src = sinComentarios(pagina())
   assert.match(src, /function vacioDe\(filtro: FiltroPersonal, q\?: string, obra\?: string\)/)
   assert.match(src, /if \(obra\) return '[^']*«Todas»[^']*'/)
-  // El recorte por CUENTAS (01/10/2026) es la tercera fila y dice lo suyo primero, con la misma salida.
-  assert.match(src, /vacio=\{(vacioCuentas \?\? )?vacioDe\(filtro, sp\.q, obraElegida\)\}/)
-  assert.match(src, /const vacioCuentas = cuentaElegida && personas\.length > 0\s*\?\s*`[^`]*«Todas»[^`]*`/)
+  assert.match(src, /vacio=\{vacioDe\(filtro, sp\.q, obraElegida\)\}/)
+  // EL RECORTE POR CUENTAS NO VA EN EL PLANTEL (dueño, 01/10/2026: «no me interesan y no autoricé esos
+  // filtros en sección plantel, quitar»). Las cuentas se miran en el legajo de cada persona.
+  assert.doesNotMatch(src, /filtro-cuentas|cuentaElegida|leerCuentas/)
 })

@@ -113,20 +113,3 @@ export const ROTULO_ESTADO: Record<EstadoCuenta, string> = {
 export const ROTULO_CONTROL: Record<ControlDeCuentas, string> = {
   completo: 'En regla', falta_sueldo: 'Falta sueldo', falta_fcl: 'Falta FCL', falta_todo: 'Falta todo',
 }
-
-/** Cuántos hay en cada control, sobre las personas que la lista está mostrando. `null` = esa persona
- *  no vino en la lectura de cuentas y no se cuenta en ningún lado: no es un «falta todo». */
-export function conteoPorControl(
-  ids: string[], control: Map<string, ControlDeCuentas>,
-): Record<ControlDeCuentas, number> {
-  const r: Record<ControlDeCuentas, number> = { completo: 0, falta_sueldo: 0, falta_fcl: 0, falta_todo: 0 }
-  for (const id of ids) {
-    const c = control.get(id)
-    if (c) r[c] += 1
-  }
-  return r
-}
-
-export function esControl(v: string | undefined): v is ControlDeCuentas {
-  return (CONTROLES as readonly string[]).includes(v ?? '')
-}
