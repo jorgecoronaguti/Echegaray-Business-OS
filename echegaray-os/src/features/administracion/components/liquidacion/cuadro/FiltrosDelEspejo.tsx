@@ -40,7 +40,7 @@ export function FiltrosDelEspejo({ periodos, grupos, presentismo, busqueda, cerr
     }}>
       <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
       <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
-      {presentismo && <Grupo rotulo="Presentismo" opciones={presentismo} testid="espejo-presentismo" />}
+      {presentismo && <Grupo rotulo="Presentismo" opciones={presentismo} testid="espejo-presentismo" rotuloEnTelefono />}
       {busqueda && (
         <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {Object.entries(busqueda.ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
@@ -71,17 +71,19 @@ export function FiltrosDelEspejo({ periodos, grupos, presentismo, busqueda, cerr
   )
 }
 
-function Grupo({ rotulo, opciones, testid }: {
+function Grupo({ rotulo, opciones, testid, rotuloEnTelefono }: {
   rotulo: string
   opciones: { texto: string; activo: boolean; href: string }[]
   testid: string
+  /** «Lo gana / No lo gana» no dicen de qué hablan sin su rótulo: en el teléfono éste no se calla. */
+  rotuloEnTelefono?: boolean
 }) {
   if (opciones.length === 0) return null
   return (
     // EN EL TELÉFONO (24/09/2026) el grupo toma el renglón entero, el rótulo se calla —las opciones ya
     // dicen qué son— y el período elegido ocupa el centro: «← anterior» se partía en dos renglones.
     <div data-testid={testid} className="max-md:w-full" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span className="max-md:hidden" style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
+      <span className={rotuloEnTelefono ? undefined : 'max-md:hidden'} style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
         {rotulo}
       </span>
       {opciones.map((o) => (
