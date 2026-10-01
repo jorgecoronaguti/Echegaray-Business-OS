@@ -198,7 +198,7 @@ export async function registrarRendicionSinFoto({ port, entrega, perfilId, fecha
     let r
     try {
       r = (await port.query(
-        'select public.rendir_gasto_sin_foto_del_chat($1,$2,$3,$4,$5,$6,$7,$8,$9) as r',
+        'select public.rendir_gasto_sin_foto_del_chat($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) as r',
         [perfilId, entrega.id, fecha, total, concepto, proveedor, JSON.stringify(comprobante ?? {}), clave, post])).rows[0].r
     } catch (e) {
       if (e?.code === '42883' || e?.code === '42P01') return { estado: 'sin_migracion' }
