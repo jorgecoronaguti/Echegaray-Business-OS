@@ -74,6 +74,9 @@ test('firmar el recibo de un gasto manual: se guarda una vez, con los datos del 
     await q('savepoint a')
     await q(`set local role anon`)
     await assert.rejects(q(`select 1 from efectivo_recibo_firma limit 1`), /permission denied/)
+    await q('rollback to savepoint a')
+    await q('savepoint a')
+    await q(`set local role anon`)
     await assert.rejects(q(`select public.firmar_recibo_gasto_manual($1, $2, 'Juan Pérez', null)`, [manual.id, TRAZO]), /permission denied/)
     await q('rollback to savepoint a')
   } finally {
