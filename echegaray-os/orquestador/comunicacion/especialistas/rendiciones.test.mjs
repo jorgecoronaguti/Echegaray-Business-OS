@@ -33,14 +33,14 @@ test('sólo reclama en su área; con foto rinde, sin foto explica', async () => 
   assert.equal((await especialista.reconoce('cómo rindo', { area: 'rendicion', fileIds: [] })).destino, 'ayuda')
 })
 
-function portFalso({ canal = true, persona = 'p1', abiertas = [A], esPrueba = false } = {}) {
+function portFalso({ canal = true, persona = 'p1', abiertas = [A], esPrueba = false, rol = 'jefe_obra' } = {}) {
   const q = []
   return {
     q,
     async query(sql, args) {
       q.push(sql)
       if (/comunicacion\.canales_area/.test(sql)) return { rows: canal ? [{ canal_nombre: 'Rendiciones' }] : [] }
-      if (/comunicacion\.identidades/.test(sql)) return { rows: persona ? [{ perfil_id: 'u1', persona_id: persona, es_prueba: esPrueba }] : [{ perfil_id: 'u1', persona_id: null }] }
+      if (/comunicacion\.identidades/.test(sql)) return { rows: persona ? [{ perfil_id: 'u1', persona_id: persona, es_prueba: esPrueba, rol }] : [{ perfil_id: 'u1', persona_id: null, rol }] }
       if (/from public\.efectivo_entrega e/.test(sql)) return { rows: abiertas }
       return { rows: [] }
     },
@@ -116,4 +116,36 @@ test('la foto de un VALE no se carga como ticket: es plata saliendo, no un gasto
   })
   assert.equal(cargo, false)
   assert.equal(r.estado, 'entregada_con_vale')
+})
+
+// ═══ QUIÉN RINDE (dueño, 01/10/2026: «solo los usuarios con nivel jefe de obra y admin, rinden gastos») ═══
+
+test('un CAMPO con entrega que manda la foto: NO se rinde contra su entrega; va como compra común y se le dice', async () => {
+  for (const [rol, abiertas] of [['campo', [A]], ['campo', []], [null, [A]]]) {
+    const port = portFalso({ rol, abiertas })
+    const llamadas = []
+    const r = await especialista.atender({
+      texto: 'nafta', port, actor, fileIds: ['f1'], postId: 'postC',
+      procesar: async (_d, m) => { llamadas.push({ d: _d, m }); return { texto: 'Cargado en Compras.', estado: 'cargado', fajoId: 'f9' } },
+    })
+    assert.equal(llamadas.length, 1, `${rol}: el comprobante no se pierde`)
+    assert.equal(llamadas[0].m.forzar, undefined, `${rol}: ni «A rendir» ni pagado forzado`)
+    assert.equal(llamadas[0].m.texto, 'nafta', `${rol}: el texto es el suyo, no la obra de la entrega`)
+    assert.equal(llamadas[0].m.postId, 'postC')
+    assert.ok(!port.q.some((x) => /insert into public\.efectivo_comprobante/.test(x)), `${rol}: no registra el ticket contra la entrega`)
+    assert.ok(!port.q.some((x) => /vincular_rendiciones_pendientes/.test(x)), `${rol}: no vincula nada`)
+    assert.match(r.texto.split('\n')[0], /los rinde Administración/, `${rol}: una línea que lo dice`)
+    assert.match(r.texto, /Cargado en Compras/)
+    assert.equal(r.estado, 'cargado'); assert.doesNotMatch(r.texto, /ER-0147/)
+  }
+})
+
+test('Dirección y Administración con entrega propia siguen rindiendo la foto como siempre', async () => {
+  for (const rol of ['direccion', 'administracion', 'jefe_obra']) {
+    const port = portFalso({ rol })
+    const llamadas = []
+    await especialista.atender({ texto: '', port, actor, fileIds: ['f1'], postId: `post-${rol}`, procesar: async (_d, m) => { llamadas.push(m); return { texto: 'ok', estado: 'cargado' } } })
+    assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true }, rol)
+    assert.equal(port.q.filter((x) => /insert into public\.efectivo_comprobante/.test(x)).length, 1, rol)
+  }
 })

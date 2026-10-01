@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { cuentaNueva, especialista, finDeQuincena, textoCargado, TEXTO } from './adelantos-sueldo.mjs'
 import { especialista as entregas } from './entregas-efectivo.mjs'
 import { especialista as libreta } from './libreta.mjs'
+import { especialista as pagos } from './efectivo-pagos.mjs'
 import { resolver } from '../director.mjs'
 
 const actor = (root = 'post-1') => ({ plataforma_user_id: 'mm-jefe', channel_id: 'ch-efectivo', root_post_id: root })
@@ -21,17 +22,39 @@ const PERSONAS = [
 ]
 const ENTREGA = { id: 'e21', codigo: 'ER-0021', estructura: true, es_prueba: false, obra: null }
 
-function portFalso({ canal = true, persona = 'nievas', perfil = 'perf-jefe', abiertas = [ENTREGA], esPrueba = false } = {}) {
+// Quien escribe es jefe de obra (01/10/2026: sólo rinden jefe de obra, Dirección y Administración).
+function portFalso({ canal = true, persona = 'nievas', perfil = 'perf-jefe', abiertas = [ENTREGA], esPrueba = false, rol = 'jefe_obra' } = {}) {
   return {
     async query(sql) {
       if (/comunicacion\.canales_area/.test(sql)) return { rows: canal ? [{ canal_nombre: 'Efectivo' }] : [] }
-      if (/comunicacion\.identidades/.test(sql)) return { rows: perfil ? [{ perfil_id: perfil, persona_id: persona, es_prueba: esPrueba }] : [] }
+      if (/comunicacion\.identidades/.test(sql)) return { rows: perfil ? [{ perfil_id: perfil, persona_id: persona, es_prueba: esPrueba, rol, nombre: 'Juan Pablo' }] : [] }
+      // La vista de saldos: las abiertas de quien escribe, con su tenedor (las de prueba no salen de la vista).
+      if (/from public\.efectivo_entrega_saldo/.test(sql)) return { rows: abiertas.filter((e) => !e.es_prueba).map((e) => ({ ...e, persona_id: persona, persona: 'NIEVAS VILLEGAS JUAN PABLO', en_su_poder: 100000 })) }
       if (/from public\.efectivo_entrega e/.test(sql)) return { rows: abiertas }
       if (/from public\.personas p/.test(sql)) return { rows: PERSONAS }
       if (/from public\.proveedores/.test(sql)) return { rows: [{ nombre: 'Pedro Tello', razon_social: null }] }
       return { rows: [] }
     },
   }
+}
+
+const CARGADO = { estado: 'cargado', codigo: 'ER-0021', desde: '2026-09-16', hasta: '2026-09-30', grupo: 'obreros', pagada: false }
+
+/**
+ * DESDE EL 01/10/2026 NADA SE RINDE SIN EL «SÍ» (auditoría): el adelanto contra una entrega deja una pregunta, y el
+ * «sí» lo reclama `efectivo-pagos` (la única puerta de lo que descuenta de una entrega). Esto contesta «sí» en el
+ * mismo hilo y devuelve lo que se escribió.
+ */
+async function confirmar(q, o = {}) {
+  assert.equal(q.r.estado, 'pregunta_confirmar', q.r.texto)
+  assert.equal(q.escrituras.length, 0, 'nada se escribe antes del «sí»')
+  const escrituras = q.escrituras
+  const r = await pagos.atender({
+    texto: 'sí', port: o.port ?? portFalso(o), actor: o.actor ?? actor(), commEventId: 'ev-si', ahora: new Date('2026-09-25T15:00:00Z'),
+    registrar: async () => { throw new Error('no debía pagar con la caja') },
+    adelantar: o.adelantar ?? (async (p) => { escrituras.push(p); return o.resultado ?? CARGADO }),
+  })
+  return { r, escrituras, pregunta: q.r }
 }
 
 const atender = (texto, o = {}) => {
@@ -79,7 +102,8 @@ test('el Director manda el adelanto a este especialista en el canal Efectivo', a
 })
 
 test('carga lo que dice el mensaje contra la entrega de QUIEN ESCRIBE, con la clave del mensaje', async () => {
-  const { r, escrituras } = await atender('le di 8500 de adelanto a Pastrán')
+  const { r, escrituras, pregunta } = await confirmar(await atender('le di 8500 de adelanto a Pastrán'))
+  assert.match(pregunta.texto, /8\.500/); assert.match(pregunta.texto, /Marcelo Pastran/); assert.match(pregunta.texto, /ER-0021/)
   assert.equal(escrituras.length, 1)
   const p = escrituras[0]
   assert.equal(p.entrega.codigo, 'ER-0021')
@@ -124,7 +148,7 @@ test('ante la duda pregunta en el hilo, y la respuesta en ESE hilo completa la c
   const ruta = await especialista.reconoce('2', { area: 'rendicion', actor: a })
   assert.equal(ruta?.destino, 'respuesta')
   const idx = q.r.texto.includes('1 · Emiliano Maldonado') ? '1' : '2'
-  const r = await atender(idx, { actor: a, port, intencion: ruta, commEventId: 'ev-respuesta' })
+  const r = await confirmar(await atender(idx, { actor: a, port, intencion: ruta, commEventId: 'ev-respuesta' }), { actor: a, port })
   assert.equal(r.r.estado, 'adelanto_cargado')
   assert.equal(r.escrituras[0].persona.id, 'maldonado')
   assert.equal(r.escrituras[0].importe, 20000)
@@ -151,13 +175,17 @@ test('con dos entregas abiertas pregunta cuál, y el código en el hilo la elige
   const q = await atender('adelanto 7600 a Nievas', { actor: a, port })
   assert.equal(q.r.estado, 'pregunta_entrega')
   assert.match(q.r.texto, /ER-0020/)
-  const r = await atender('ER-0020', { actor: a, port, intencion: { destino: 'respuesta', confianza: 0.95 } })
+  // La pregunta la dejó la puerta única (`efectivo-pagos`): la respuesta en el hilo la reclama ella.
+  assert.equal((await pagos.reconoce('ER-0020', { area: 'rendicion', actor: a }))?.destino, 'respuesta')
+  const e = await pagos.atender({ texto: 'ER-0020', port, actor: a, commEventId: 'ev-cod', ahora: new Date('2026-09-25T15:00:00Z') })
+  const r = await confirmar({ r: e, escrituras: q.escrituras }, { actor: a, port })
   assert.equal(r.r.estado, 'adelanto_cargado')
   assert.equal(r.escrituras[0].entrega.codigo, 'ER-0020')
 })
 
 test('la quincena cerrada no recibe el adelanto: se dice qué pasó y que no se rindió', async () => {
-  const { r } = await atender('adelanto 20 mil a Pastrán', { resultado: { estado: 'cerrada', desde: '2026-09-01', hasta: '2026-09-15', grupo: 'obreros' }, actor: actor('p-cerrada') })
+  const resultado = { estado: 'cerrada', desde: '2026-09-01', hasta: '2026-09-15', grupo: 'obreros' }
+  const { r } = await confirmar(await atender('adelanto 20 mil a Pastrán', { actor: actor('p-cerrada') }), { resultado, actor: actor('p-cerrada') })
   assert.equal(r.estado, 'rechazado_quincena_cerrada')
   assert.match(r.texto, /01\/09–15\/09/)
   assert.match(r.texto, /cerrada/)
@@ -166,13 +194,12 @@ test('la quincena cerrada no recibe el adelanto: se dice qué pasó y que no se 
 
 test('un error de la base se dice, y dice que no se tocó nada', async () => {
   const port = portFalso()
-  const r = await especialista.atender({
-    texto: 'adelanto 900 mil a Pastrán', port, actor: actor('p-err'), commEventId: 'ev-x', ahora: new Date('2026-09-25T15:00:00Z'),
-    registrar: async () => { throw new Error('ERROR: el adelanto es más de lo que queda a rendir en ER-0021') },
+  const { r } = await confirmar(await atender('adelanto 900 mil a Pastrán', { port, actor: actor('p-err'), commEventId: 'ev-x' }), {
+    port, actor: actor('p-err'), adelantar: async () => { throw new Error('ERROR: el adelanto es más de lo que queda a rendir en ER-0021') },
   })
   assert.equal(r.estado, 'error')
   assert.match(r.texto, /más de lo que te queda a rendir/)
-  assert.match(r.texto, /No se rindió nada de tu entrega ni se tocó Liquidación/)
+  assert.match(r.texto, /No se rindió nada de \*\*ER-0021\*\* ni se tocó Liquidación/)
 })
 
 test('la cuenta de la celda SE SUMA a la que había, con el mismo lector de la app', () => {

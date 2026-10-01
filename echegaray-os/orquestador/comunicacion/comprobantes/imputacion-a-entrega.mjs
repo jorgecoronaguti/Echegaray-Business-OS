@@ -24,10 +24,13 @@
 //
 // ═══ QUIÉN PUEDE ═══
 //
-// Dirección y Administración (`ve_economia()`: rol direccion|administracion) a la entrega de cualquiera;
-// cualquier otro, sólo a las suyas. Un número que no existe, anulado, cerrado o de prueba se dice y NO se
+// Dirección y Administración (`ve_economia()`: rol direccion|administracion) a la entrega de cualquiera; el
+// jefe de obra, sólo a las suyas. Un `campo` NO rinde (dueño, 01/10/2026: «solo los usuarios con nivel jefe de
+// obra y admin, rinden gastos»): su comprobante sigue como compra común y se le dice que lo rinde Administración. Un número que no existe, anulado, cerrado o de prueba se dice y NO se
 // carga nada: cargar «a ciegas» como compra común un ticket que la persona quiso rendir es exactamente el
 // doble descuento que esto existe para evitar.
+
+import { rinde, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
 
 /** «ER-0020», «er 20», «ER20», «ER-20». El número del medio es el `numero` de la entrega. */
 const RE_CODIGO = /\bER[-\s]?(\d{1,6})\b/gi
@@ -66,9 +69,12 @@ const noCargue = 'No cargué nada:'
  * @param {{numeros:number[], remitente:{perfilId?:string|null, rol?:string|null, personaId?:string|null}|null,
  *   entrega:{codigo:string, persona_id:string, anulada:boolean, cerrada:boolean, es_prueba:boolean,
  *   persona_prueba?:boolean}|null}} p
- * @returns {{ok:true}|{ok:false, motivo:string, texto:string}}
+ * @returns {{ok:true}|{ok:false, motivo:string, texto:string, comun?:true}} `comun` = no se imputa, pero el
+ *   comprobante se carga como compra común (con `texto` como aviso en el hilo).
  */
 export function decidirImputacion({ numeros = [], remitente = null, entrega = null } = {}) {
+  // Quien no rinde no imputa a ninguna entrega, ni a la suya: compra común, con el aviso (no se rechaza el papel).
+  if (remitente?.perfilId && !rinde(remitente.rol)) return { ok: false, motivo: 'no_rinde', comun: true, texto: TEXTO_NO_RINDE.COMUN }
   if (numeros.length > 1) {
     return rechazo('varios_codigos', `Nombraste más de una entrega (${numeros.map(codigoDe).join(', ')}). ${noCargue} mandá cada comprobante con un solo número.`)
   }

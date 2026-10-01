@@ -30,17 +30,26 @@
 // ═══ LAS DOS PUERTAS, FALLA CERRADO ═══
 //
 //   1. CANAL: el oficial del área `rendicion` (el canal Efectivo).
-//   2. QUIÉN: la persona del padrón detrás del usuario de Mattermost tiene una entrega ABIERTA. El adelanto sale
-//      de SU saldo, así que tiene que tener uno.
+//   2. QUIÉN: la persona del padrón detrás del usuario de Mattermost.
+//
+// Desde el 01/10/2026 (auditoría) lo que descuenta de una entrega NO se escribe acá: pasa por la única puerta de
+// `efectivo-pagos` (`rendirDeEntrega`), que exige nivel (jefe de obra lo suyo; Dirección/Administración lo de
+// cualquiera; un `campo` no rinde), elige la entrega con la misma regla para todos y pide el «sí» antes de escribir.
+// Sin entrega, o «de la caja», es un pago con la caja (`pagarSueldo`), como desde el 30/09.
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import {
   armarPadron, interpretarAdelanto, leerRespuesta, numeroParaCuenta, pesos, senalDeAdelanto, elegirEmpleado,
   textoDePregunta,
 } from '../../lib/adelanto-sueldo-texto.mjs'
 import { leerCeldaNumerica } from '../../../src/shared/lib/formulaEsAR.ts'
-import { elegirEntrega, entregasAbiertasDe, textoAmbigua } from './rendiciones.mjs'
+import { elegirEntrega, entregasAbiertasDe } from './rendiciones.mjs'
+import { dijoDeDondeSalio, tenedorDicho, sinOrigenDeEntrega } from '../../lib/efectivo-pago-texto.mjs'
 
 export const AREA = 'rendicion'
+
+// «de lo que le di a Nievas», «de la ER-0021» dicen de dónde salió la plata, no a quién se le pagó: se sacan antes de
+// buscar al empleado (si no, «Nievas» compite con el beneficiario). El texto entero se guarda para elegir la entrega.
+const sinOrigen = (t) => (dijoDeDondeSalio(t) === 'entrega' || tenedorDicho(t) ? sinOrigenDeEntrega(t) : t)
 export const URL_APP = process.env.ORQ_APP_URL || 'https://app.ecsas.com.ar'
 
 export const TEXTO = Object.freeze({
@@ -186,7 +195,7 @@ export async function registrarAdelanto({ port, entrega, persona, fecha, importe
 }
 
 /** El error de la base, dicho para quien escribió. */
-function motivoDe(m) {
+export function motivoDe(m) {
   if (/más de lo que queda a rendir/.test(m)) return 'el adelanto es más de lo que te queda a rendir en esa entrega (lo ves en Mi efectivo).'
   if (/no está en el plantel/.test(m)) return 'esa persona no figura en el plantel activo.'
   if (/no está abierta/.test(m)) return 'tu entrega ya no está abierta.'
@@ -265,7 +274,7 @@ export const especialista = {
           if (senalDeAdelanto(texto) === 'fuerte') {
             recordarPendiente(actor, null)
             clave = `adelanto:${commEventId ?? postId ?? ''}`
-            leido = interpretarAdelanto(texto, { ...datos, hoy })
+            leido = interpretarAdelanto(sinOrigen(texto), { ...datos, hoy })
             textoEntrega = texto
           } else {
             return { texto: `${TEXTO.NO_ENTENDI}\n\n${textoDePregunta(previo)}`, estado: 'pregunta_repetida', privado: false }
@@ -280,7 +289,7 @@ export const especialista = {
         }
       }
     } else {
-      leido = interpretarAdelanto(texto, { ...datos, hoy })
+      leido = interpretarAdelanto(sinOrigen(texto), { ...datos, hoy })
     }
     if (!leido || leido.estado === 'nada') return { texto: TEXTO.CANAL, estado: 'ayuda', privado: false }
     if (leido.estado === 'pregunta') {
@@ -288,60 +297,37 @@ export const especialista = {
       return { texto: textoDePregunta(leido), estado: `pregunta_${leido.falta}`, privado: false }
     }
 
-    // 4. DE QUÉ ENTREGA: la única abierta, o la que el mensaje nombra (ER-nnnn / obra). Si no, se pregunta.
+    // 4. ¿DE UNA ENTREGA O DE LA CAJA? (auditoría 01/10/2026) Lo que descuenta de una entrega pasa por UNA puerta,
+    // la de `efectivo-pagos` (`rendirDeEntrega`): quién rinde (jefe de obra, Dirección, Administración; un `campo`
+    // no), contra qué entrega (la del tenedor nombrado para Dirección/Administración, la propia para el jefe, y la
+    // de otro nombrada por un jefe se rechaza) y el «sí» antes de escribir. El «sí» lo reclama `efectivo-pagos`.
+    const origen = dijoDeDondeSalio(textoEntrega)
+    const nombraTenedor = (tenedorDicho(textoEntrega)?.palabras?.length ?? 0) > 0
     const { entrega, motivo } = elegirEntrega(yo.abiertas, textoEntrega)
-    if (motivo === 'ninguna') {
-      // SIN ENTREGA NO ES UN RECHAZO (dueño, 30/09/2026: «hoy le pagué 150000 de adelanto a emiliano maldonado»
-      // contestaba «No tenés efectivo a rendir abierto»). Es un pago con la caja: va a la MISMA celda de
-      // Liquidación, sin rendir nada. Lo hace `efectivo-pagos`; la pregunta ya está resuelta (persona, fecha, importe).
+    if (origen !== 'caja' && (origen === 'entrega' || nombraTenedor || motivo !== 'ninguna')) {
+      // Una entrega propia declarada prueba se dice como siempre, sin pasar a la pregunta.
+      if (entrega?.es_prueba && !nombraTenedor) {
+        recordarPendiente(actor, null)
+        return { texto: `**${entrega.codigo}** está declarada prueba: no cargo adelantos de sueldo contra ella.`, estado: 'rechazado_entrega_prueba', privado: false }
+      }
       recordarPendiente(actor, null)
       const { especialista: pagos } = await import('./efectivo-pagos.mjs')
-      return pagos.pagarSueldo({
-        leido, port, idMensaje: commEventId ?? postId ?? actor?.root_post_id ?? null, actor, postId, perfilId: yo.perfilId, log,
-        registrar: registrarDirecto,
+      return pagos.rendirDeEntrega({
+        leido: { ...leido, tipo: 'sueldo', estado: 'listo', origen: 'entrega', idOrigen: clave.replace(/^adelanto:/, '') || null },
+        textoBase: textoEntrega, port, actor, perfilId: yo.perfilId, perfil: { perfil_id: yo.perfilId, rol: yo.rol ?? null }, yo,
+        idMensaje: commEventId ?? postId ?? null, postId, log,
+        adelantar: registrar,
       })
     }
-    if (!entrega) {
-      recordarPendiente(actor, { falta: 'entrega', leido, texto: textoEntrega, clave })
-      return { texto: `${textoAmbigua(yo.abiertas).replace('este ticket', 'este adelanto').replace('Mandalo de nuevo con el número', 'Contestá en este hilo con el número')}`, estado: 'pregunta_entrega', privado: false }
-    }
-    if (entrega.es_prueba) {
-      recordarPendiente(actor, null)
-      return { texto: `**${entrega.codigo}** está declarada prueba: no cargo adelantos de sueldo contra ella.`, estado: 'rechazado_entrega_prueba', privado: false }
-    }
+    // SIN ENTREGA (o «de la caja») NO ES UN RECHAZO (dueño, 30/09/2026: «hoy le pagué 150000 de adelanto a emiliano
+    // maldonado» contestaba «No tenés efectivo a rendir abierto»). Es un pago con la caja: va a la MISMA celda de
+    // Liquidación, sin rendir nada. Lo hace `efectivo-pagos`; la pregunta ya está resuelta (persona, fecha, importe).
     recordarPendiente(actor, null)
-
-    // 5. LA ESCRITURA, O NADA
-    try {
-      const r = await registrar({
-        port, entrega, persona: leido.persona, fecha: leido.fecha, importe: leido.importe, expresion: leido.expresion,
-        clave, post: actor?.root_post_id ?? postId ?? null, perfilId: yo.perfilId,
-      })
-      if (r.estado === 'cerrada') {
-        return {
-          texto: [`No cargué el adelanto de ${pesos(leido.importe)} a **${leido.persona.nombre}**: la quincena ${ddmm(r.desde)}–${ddmm(r.hasta)} de Liquidación está **cerrada**, y una quincena cerrada no recibe pagos.`,
-            `Tampoco lo rendí de **${entrega.codigo}**: tu saldo a rendir quedó igual. Avisale a Administración para que la reabra o lo cargue a mano.`].join('\n'),
-          estado: 'rechazado_quincena_cerrada',
-          privado: false,
-        }
-      }
-      return {
-        texto: textoCargado({
-          importe: leido.importe, persona: leido.persona.nombre, desde: r.desde, hasta: r.hasta ?? finDeQuincena(r.desde),
-          codigo: r.codigo ?? entrega.codigo, pagada: r.pagada === true, yaEstaba: r.estado === 'ya_estaba',
-        }),
-        estado: r.estado === 'ya_estaba' ? 'ya_estaba' : 'adelanto_cargado',
-        privado: false,
-      }
-    } catch (e) {
-      const m = String(e?.message ?? e)
-      log?.error?.('adelantos: no se pudo cargar', { error: m.slice(0, 300) })
-      return {
-        texto: `No cargué el adelanto de ${pesos(leido.importe)} a **${leido.persona.nombre}**: ${motivoDe(m)}\nNo se rindió nada de tu entrega ni se tocó Liquidación.`,
-        estado: 'error',
-        privado: false,
-      }
-    }
+    const { especialista: pagos } = await import('./efectivo-pagos.mjs')
+    return pagos.pagarSueldo({
+      leido, port, idMensaje: commEventId ?? postId ?? actor?.root_post_id ?? null, actor, postId, perfilId: yo.perfilId, log,
+      registrar: registrarDirecto,
+    })
   },
 
   skillDe(intencion) {

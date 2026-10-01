@@ -110,23 +110,25 @@ test('la obra del texto desempata entre las entregas del tenedor', async () => {
   assert.equal(rendidas[0]?.entrega.id, 'e31')
 })
 
-test('UN NO-ADMINISTRADOR NUNCA USA LA ENTREGA DE OTRO: ni por código ni por nombre', async () => {
-  const port = portFalso({ rol: 'jefe' })
+test('UN NO-ADMINISTRADOR NUNCA USA LA ENTREGA DE OTRO: ni por código ni por nombre, y tampoco cae en la suya', async () => {
+  const port = portFalso({ rol: 'jefe_obra' })
   let x = await atender('pagué 50.000 de flete con la ER-0040', { port, actor: actor('n1') })
-  assert.equal(x.rendidas.length, 0); assert.match(x.r.texto, /No encuentro la entrega ER-0040/); assert.match(x.r.texto, /No cargué nada/)
+  assert.equal(x.rendidas.length, 0); assert.match(x.r.texto, /ER-0040\*\* es de \*\*NIEVAS DIEGO/); assert.match(x.r.texto, /No cargué nada/)
+  assert.equal(x.r.estado, 'rechazado_entrega_ajena')
+  x = await atender('pagué 50.000 de flete con la ER-0099', { port, actor: actor('n1b') })
+  assert.equal(x.rendidas.length, 0); assert.match(x.r.texto, /No encuentro la entrega ER-0099/)
   x = await atender('Nievas le pagó 200.000 a Nasser con la ER-0040', { port, actor: actor('n2') })
   assert.equal(x.rendidas.length, 0)
-  // Por nombre: lo único que puede usar es la propia.
-  x = await atenderConfirmado('pagué 50.000 de flete con la plata de Maldonado', { port, actor: actor('n3') })
-  assert.equal(x.rendidas.length, 1); assert.equal(x.rendidas[0].entrega.id, 'e21')
-  assert.ok(x.rendidas.every((p) => p.entrega.persona_id === 'p-yo'))
+  // Por nombre (auditoría 01/10/2026): antes caía en la propia; ahora se rechaza diciendo de quién es.
+  x = await atender('pagué 50.000 de flete con la plata de Maldonado', { port, actor: actor('n3') })
+  assert.equal(x.rendidas.length, 0); assert.equal(x.r.estado, 'rechazado_entrega_ajena'); assert.match(x.r.texto, /MALDONADO/)
   // Con sus propias, sí.
   x = await atenderConfirmado('pagué 50.000 de flete con la ER-0021', { port, actor: actor('n4') })
   assert.equal(x.rendidas[0].entrega.id, 'e21')
 })
 
 test('el no-administrador sin entrega propia no rinde nada y se le dice cómo cargarlo de la caja', async () => {
-  const port = portFalso({ rol: 'jefe', vista: VISTA.filter((e) => e.persona_id !== 'p-yo') })
+  const port = portFalso({ rol: 'jefe_obra', vista: VISTA.filter((e) => e.persona_id !== 'p-yo') })
   const x = await atender('pagué 50.000 de flete con la plata a rendir', { port, actor: actor('n5') })
   assert.equal(x.rendidas.length, 0); assert.equal(x.fajos.length, 0)
   assert.match(x.r.texto, /No cargué nada/); assert.match(x.r.texto, /caja/)
@@ -134,7 +136,7 @@ test('el no-administrador sin entrega propia no rinde nada y se le dice cómo ca
 
 test('subcontratista con entrega propia y sin decir de dónde: pregunta, y «entrega» rinde con proveedor y obra', async () => {
   const a = actor('p-sub')
-  const port = portFalso({ rol: 'jefe' })
+  const port = portFalso({ rol: 'jefe_obra' })
   const q = await atender('le pagué 500000 a Nasser por Quattropani', { port, actor: a })
   assert.equal(q.r.estado, 'pregunta_origen'); assert.match(q.r.texto, /ER-0021.*caja/); assert.equal(q.rendidas.length + q.fajos.length, 0)
   const c = await atenderConfirmado('entrega', { port, actor: a })
@@ -189,7 +191,7 @@ test('el Director manda estas frases al especialista de efectivo-pagos', async (
 // ───── BENEFICIARIO ≠ TENEDOR, y nada se rinde sin confirmar (auditor, 01/10/2026) ─────
 
 test('«Pagué con efectivo a Tello 50.000»: Tello es a quien se le pagó; sin origen dicho, pregunta caja o entrega', async () => {
-  for (const [rol, a] of [['jefe', actor('b1')], ['direccion', actor('b2')]]) {
+  for (const [rol, a] of [['jefe_obra', actor('b1')], ['direccion', actor('b2')]]) {
     const port = portFalso({ rol })
     const q = await atender('Pagué con efectivo a Tello 50.000', { port, actor: a })
     assert.equal(q.r.estado, 'pregunta_origen', rol); assert.equal(q.rendidas.length + q.fajos.length, 0, rol)
@@ -213,7 +215,7 @@ test('«pague 50000 con efectivo a Hormiserv por hormigon»: el proveedor no se 
 })
 
 test('«pagué en efectivo a Juan Pérez 30000 por flete»: pregunta el origen, no adivina una entrega', async () => {
-  const q = await atender('pagué en efectivo a Juan Pérez 30000 por flete', { actor: actor('b4'), port: portFalso({ rol: 'jefe' }) })
+  const q = await atender('pagué en efectivo a Juan Pérez 30000 por flete', { actor: actor('b4'), port: portFalso({ rol: 'jefe_obra' }) })
   assert.equal(q.r.estado, 'pregunta_origen'); assert.equal(q.rendidas.length + q.fajos.length, 0)
 })
 
@@ -228,14 +230,14 @@ test('«pagué 50000 a Tello con el efectivo de Maldonado»: la entrega es de Ma
 })
 
 test('«gasté 12000 de mi entrega en nafta»: rinde contra la propia, después de confirmar', async () => {
-  const c = await atenderConfirmado('gasté 12000 de mi entrega en nafta', { actor: actor('b6'), port: portFalso({ rol: 'jefe' }) })
+  const c = await atenderConfirmado('gasté 12000 de mi entrega en nafta', { actor: actor('b6'), port: portFalso({ rol: 'jefe_obra' }) })
   assert.equal(c.pregunta?.estado, 'pregunta_confirmar'); assert.match(c.pregunta.texto, /12\.000/); assert.match(c.pregunta.texto, /nafta/); assert.match(c.pregunta.texto, /ER-0021/)
   assert.equal(c.rendidas.length, 1); assert.equal(c.rendidas[0].entrega.id, 'e21'); assert.match(c.rendidas[0].concepto, /^gasté 12000 en nafta$/)
 })
 
 test('«pagué 20.000 de la ER-0021 a Corralón»: confirma nombrando a Corralón y la ER-0021; «no» no escribe nada', async () => {
   const a = actor('b7')
-  const port = portFalso({ rol: 'jefe' })
+  const port = portFalso({ rol: 'jefe_obra' })
   const q = await atender('pagué 20.000 de la ER-0021 a Corralón', { port, actor: a })
   assert.equal(q.r.estado, 'pregunta_confirmar'); assert.equal(q.rendidas.length, 0)
   assert.match(q.r.texto, /20\.000/); assert.match(q.r.texto, /Corralón/); assert.match(q.r.texto, /ER-0021/)

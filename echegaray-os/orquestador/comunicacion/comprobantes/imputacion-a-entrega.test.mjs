@@ -20,6 +20,8 @@ const ENTREGA = { id: 'e20', codigo: 'ER-0020', persona_id: 'pEmi', estructura: 
 const DUENO = { perfil_id: 'uJorge', rol: 'direccion', persona_id: 'pJorge' }
 const EMI = { perfil_id: 'uEmi', rol: 'jefe_obra', persona_id: 'pEmi' }
 const OTRO = { perfil_id: 'uOtro', rol: 'jefe_obra', persona_id: 'pOtro' }
+// Un `campo` CON la entrega a su nombre: la ve y la firma, pero no rinde (dueño, 01/10/2026).
+const EMI_CAMPO = { perfil_id: 'uEmi', rol: 'campo', persona_id: 'pEmi' }
 
 function portFalso({ remitente = DUENO, entrega = ENTREGA, vinculadas = 1, personas = [] } = {}) {
   const q = []
@@ -215,4 +217,32 @@ test('el cierre dice lo que pasó: vinculado, en espera, ya estaba o nada', () =
   assert.match(ya.linea, /Imputar un comprobante ya cargado/)
   assert.equal(cierreDeImputacion({ entrega: e, vinculadas: 0, parte: {} }).descartar, true)
   assert.match(cierreDeImputacion({ entrega: { ...e, mm_usuario: null } }).linea, /Emiliano Maldonado/)
+})
+
+// ═══ QUIÉN RINDE (dueño, 01/10/2026: «solo los usuarios con nivel jefe de obra y admin, rinden gastos») ═══
+
+test('un CAMPO con «ER-nnnn» de SU entrega: no se imputa; la decisión es compra común con aviso', () => {
+  const rem = (x) => ({ perfilId: x.perfil_id, rol: x.rol, personaId: x.persona_id })
+  const d = decidirImputacion({ numeros: [20], remitente: rem(EMI_CAMPO), entrega: { ...ENTREGA } })
+  assert.equal(d.ok, false); assert.equal(d.motivo, 'no_rinde'); assert.equal(d.comun, true)
+  assert.match(d.texto, /los rinde Administración/); assert.match(d.texto, /compra común/)
+  // Sin rol legible tampoco imputa (fail-closed); el jefe de obra con la suya, sí.
+  assert.equal(decidirImputacion({ numeros: [20], remitente: { ...rem(EMI_CAMPO), rol: null }, entrega: ENTREGA }).motivo, 'no_rinde')
+  assert.equal(decidirImputacion({ numeros: [20], remitente: rem(EMI), entrega: ENTREGA }).ok, true)
+})
+
+test('un CAMPO con «ER-0020» en Comprobantes-gastos: se carga como compra común, sin tocar la entrega, y el hilo lo dice', async () => {
+  const port = portFalso({ remitente: EMI_CAMPO })
+  const procesar = procesarEspia()
+  const r = await especialista.atender({ ...REAL_1704, texto: 'er 20', port, procesar, tanda: tandaEspia(), intencion: { destino: 'cargar' } })
+  assert.equal(procesar.llamadas.length, 1, 'el comprobante no se pierde')
+  const { mensaje } = procesar.llamadas[0]
+  assert.equal(mensaje.forzar, undefined, 'ni «A rendir» ni pagado forzado')
+  assert.equal(mensaje.porIniciales, undefined, 'tampoco se imputa por iniciales')
+  assert.equal(mensaje.texto, 'er 20')
+  assert.ok(!port.q.some((x) => /insert into public\.efectivo_comprobante/.test(x.sql)), 'no registra el ticket contra la entrega')
+  assert.ok(!port.q.some((x) => /vincular_rendiciones_pendientes/.test(x.sql)), 'no vincula')
+  assert.match(r.texto.split('\n')[0], /los rinde Administración/)
+  assert.ok(r.parte.imputaciones.some((l) => /los rinde Administración/.test(l)))
+  assert.equal(r.estado, 'cargado')
 })

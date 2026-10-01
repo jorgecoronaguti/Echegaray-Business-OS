@@ -36,9 +36,12 @@
 //   1. CANAL: un canal OFICIAL de `rendicion` o de `compras` (el binding, no una lista en el código).
 //   2. QUIÉN: la persona del padrón detrás del usuario de Mattermost tiene una entrega ABIERTA. No
 //      alcanza con estar en el canal: rendir descuenta de SU saldo, así que tiene que tener uno.
+//   3. NIVEL (01/10/2026): sólo rinden el jefe de obra y Dirección/Administración. El ticket de un `campo` va
+//      como compra común, sin tocar su entrega (`lib/efectivo-quien-rinde.mjs`).
 import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import { atenderVale } from './entregas-efectivo.mjs'
+import { rinde, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
 
 export const AREA_RENDICION = 'rendicion'
 /** Las áreas cuyo canal oficial acepta una rendición: sólo la del canal Efectivo. */
@@ -103,7 +106,7 @@ export function textoAmbigua(abiertas = []) {
 /** La persona del padrón detrás del usuario de Mattermost, y sus entregas abiertas. */
 export async function entregasAbiertasDe(port, mmUserId) {
   const r = await port.query(
-    `select p.id as perfil_id, p.persona_id, coalesce(per.es_prueba, false) as es_prueba
+    `select p.id as perfil_id, p.persona_id, p.rol, coalesce(per.es_prueba, false) as es_prueba
        from comunicacion.identidades i
        join auth.users u on lower(u.email) = lower(i.email)
        join public.perfiles p on p.id = u.id
@@ -111,13 +114,13 @@ export async function entregasAbiertasDe(port, mmUserId) {
       where i.plataforma = 'mattermost' and i.plataforma_user_id = $1 and i.activo
       limit 1`, [String(mmUserId)])
   const yo = r?.rows?.[0]
-  if (!yo?.persona_id) return { perfilId: yo?.perfil_id ?? null, personaId: null, esPrueba: false, abiertas: [] }
+  if (!yo?.persona_id) return { perfilId: yo?.perfil_id ?? null, personaId: null, rol: yo?.rol ?? null, esPrueba: false, abiertas: [] }
   const e = await port.query(
     `select e.id, e.codigo, e.estructura, e.es_prueba, o.nombre as obra, o.codigo as obra_codigo
        from public.efectivo_entrega e left join public.obra_canonica o on o.id = e.obra_id
       where e.persona_id = $1 and e.anulada_en is null and e.cerrada_en is null
       order by e.fecha, e.numero`, [yo.persona_id])
-  return { perfilId: yo.perfil_id, personaId: yo.persona_id, esPrueba: yo.es_prueba === true, abiertas: e?.rows ?? [] }
+  return { perfilId: yo.perfil_id, personaId: yo.persona_id, rol: yo.rol ?? null, esPrueba: yo.es_prueba === true, abiertas: e?.rows ?? [] }
 }
 
 export const especialista = {
@@ -166,6 +169,19 @@ export const especialista = {
     // PERSONA DE PRUEBA, NADA EN COMPRAS (auditoría 22/09/2026): la caja ya excluye sus entregas (migración
     // 1900), pero su ticket sí entraría a Compras y al libro, con espejo y sin la entrega que lo respalda.
     if (yo.esPrueba) return { texto: TEXTO.ES_PRUEBA, estado: 'rechazado_persona_prueba', privado: false }
+    // QUIÉN RINDE (dueño, 01/10/2026): «solo los usuarios con nivel jefe de obra y admin, rinden gastos». Un `campo`
+    // —con o sin entrega— no rinde: el ticket NO toca su entrega, sigue como compra común (la forma de pago la dice
+    // el papel, sin «A rendir») y se le dice en una línea que sus gastos los rinde Administración.
+    if (!rinde(yo.rol)) {
+      const post = postId ?? actor?.root_post_id ?? null
+      const r = await procesar({
+        port, google, log, mattermost,
+        guarda: async () => ({ ok: true, canal: { id: actor?.channel_id, nombre: canal.nombre, area: AREA_RENDICION }, via: 'comun' }),
+      }, {
+        fileIds, texto, actor, channelId: actor?.channel_id, rootPostId: actor?.root_post_id ?? post, postId: post, ahora: new Date(),
+      })
+      return { texto: [TEXTO_NO_RINDE.COMUN, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
+    }
     const { entrega, motivo } = elegirEntrega(yo.abiertas, texto)
     if (motivo === 'ninguna') return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }

@@ -226,12 +226,16 @@ export const especialista = {
     // La única excepción a lo de arriba, y no adivina: sólo un mensaje que ESCRIBE el número de una
     // entrega («ER-0020») va a esa entrega, como «A rendir». Sin número, `imputacionPedida` devuelve null
     // sin tocar la base y todo sigue exactamente como antes. Ver `comprobantes/imputacion-a-entrega.mjs`.
-    const imputacion = await imputacionPedida({ port, texto, actor })
+    let imputacion = await imputacionPedida({ port, texto, actor })
+    // QUIEN NO RINDE (un `campo`, 01/10/2026): el número no lo imputa a ninguna entrega. El papel sigue como compra
+    // común —ni «A rendir» ni iniciales— y el hilo dice en una línea que sus gastos los rinde Administración.
+    const noRinde = imputacion?.comun ? imputacion.texto : null
+    if (noRinde) imputacion = null
     if (imputacion && !imputacion.ok) return { texto: imputacion.texto, estado: `rechazado_${imputacion.motivo}`, privado: false }
 
     // ═══ LAS INICIALES DE QUIEN PAGÓ (dueño, 24/09/2026) ═══ Se leen las personas con iniciales una vez
     // por post; si el papel no trae iniciales, el ítem no se toca. Ver `comprobantes/iniciales.mjs`.
-    const iniciales = imputacion ? null : await inicialesParaLaCarga(port, log)
+    const iniciales = imputacion || noRinde ? null : await inicialesParaLaCarga(port, log)
 
     // ═══ UN SOLO MENSAJE PARA TODA LA TANDA (13/08) ═══
     //
@@ -251,7 +255,8 @@ export const especialista = {
       recibidos: fileIds.length,
     }, () => (imputacion
       ? cargarImputado({ port, actor, google, fileIds, postId, mattermost, log, url, procesar, imputacion })
-      : cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar, porIniciales: iniciales })))
+      : cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar, porIniciales: iniciales })
+        .then((r) => (noRinde ? conAviso(r, noRinde) : r))))
   },
 
   skillDe(intencion) {
@@ -320,6 +325,13 @@ async function cargarImputado({ port, actor, google, fileIds, postId, mattermost
   const { linea } = await cerrarTicket(port, { entrega, post, r, log })
   const parte = { ...parteVacia(), ...(r.parte ?? {}), imputaciones: [linea] }
   return { texto: [linea, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte, privado: false }
+}
+
+/** El resultado de la carga con un renglón informativo arriba y en el parte de la tanda. */
+function conAviso(r, linea) {
+  const parte = { ...parteVacia(), ...(r?.parte ?? {}) }
+  parte.imputaciones = [...(parte.imputaciones ?? []), linea]
+  return { ...r, texto: [linea, '', r?.texto].filter((x) => x != null).join('\n'), parte }
 }
 
 function ayuda() {

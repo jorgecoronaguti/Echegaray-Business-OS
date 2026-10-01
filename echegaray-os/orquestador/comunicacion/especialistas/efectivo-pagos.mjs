@@ -28,12 +28,14 @@ import {
   textoDePregunta, pesos, ddmm, elegirEmpleadoEnPadron, codigoDeEntrega, tenedorDicho, sinOrigenDeEntrega, plano,
   beneficiarioDicho,
 } from '../../lib/efectivo-pago-texto.mjs'
+import { rinde, rindePorOtro, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 import { perfilDeMattermost } from './entregas-efectivo.mjs'
-import { elegirEntrega, entregasAbiertasDe, textoAmbigua } from './rendiciones.mjs'
+import { elegirEntrega, entregasAbiertasDe } from './rendiciones.mjs'
 import {
   padronDeAdelantos, hoySanJuan, cuentaNueva, enlaces, registrarAdelanto, textoCargado, finDeQuincena, URL_APP,
+  motivoDe as motivoAdelanto,
 } from './adelantos-sueldo.mjs'
 
 export const AREA = 'rendicion'
@@ -48,7 +50,8 @@ export const TEXTO = Object.freeze({
   TRANSFERENCIA_A_PERSONA: 'Entendí una transferencia a una persona del plantel: esa no es un pago en efectivo y no va al «Pagado efectivo» de Liquidación. No cargué nada. Si fue un adelanto en efectivo, escribilo sin «transferí».',
   SIN_MIGRACION: 'Entendí el pago, pero el registro de pagos directos todavía no está habilitado en la base, así que no cargué nada. Avisale a Administración.',
   SIN_MIGRACION_ENTREGA: 'Entendí el gasto pagado con una entrega, pero rendirlo sin foto todavía no está habilitado en la base. No cargué nada. Avisale a Administración, o cargalo de la caja si salió de la caja.',
-  SIN_PERMISO_ENTREGA: 'La base no te deja rendir contra esa entrega: sólo la rinde quien la tiene, o Dirección/Administración. No cargué nada.',
+  SIN_PERMISO_ENTREGA: 'La base no te deja rendir contra esa entrega: sólo la rinde el jefe de obra que la tiene, o Dirección/Administración. No cargué nada.',
+  NO_RINDE: TEXTO_NO_RINDE.CHAT,
 })
 
 // ═══ LA PREGUNTA QUE QUEDÓ ABIERTA, POR HILO ═══ (misma mecánica que adelantos-sueldo: 10 minutos, en memoria)
@@ -128,9 +131,8 @@ export async function registrarPagoDirecto({ port, persona, fecha, importe, expr
   throw new Error('la celda cambió dos veces mientras se cargaba')
 }
 
-const ROLES_QUE_RINDEN_POR_OTRO = Object.freeze(['direccion', 'administracion'])
 /** ¿Quien escribe puede rendir contra la entrega de OTRO? Dirección y Administración, nadie más. */
-export const puedeRendirPorOtro = (perfil) => ROLES_QUE_RINDEN_POR_OTRO.includes(String(perfil?.rol ?? '').toLowerCase())
+export const puedeRendirPorOtro = (perfil) => rindePorOtro(perfil)
 
 /**
  * LAS ENTREGAS ABIERTAS, CON LO QUE LES QUEDA, leídas de la vista (no calculadas). Con `personaId` sólo las de esa
@@ -145,34 +147,51 @@ export async function entregasConSaldo(port, { personaId = null } = {}) {
   return r?.rows ?? []
 }
 
+const nombra = (palabras, s) => {
+  const toks = new Set(plano(s).split(/\s+/))
+  return palabras.some((w) => toks.has(w))
+}
+
 /**
- * NÚCLEO PURO: ¿contra qué entrega se rinde? `entregas` ya es el conjunto PERMITIDO (las propias; para Dirección y
- * Administración, todas). Un código que no está ahí no existe para quien escribe: no se adivina ni se usa la ajena.
- * @returns {{entrega:object}|{candidatas:object[]}|{motivo:'codigo'|'ninguna', codigo?:number}}
+ * NÚCLEO PURO: ¿contra qué entrega se rinde? UNA regla para todo lo que descuenta de una entrega (gasto,
+ * subcontrato, pago a cuenta de sueldo / adelanto), venga de `efectivo-pagos` o de `adelantos-sueldo`.
+ *
+ * `entregas` son TODAS las abiertas (para poder decir de quién es la que se nombró). Lo permitido:
+ *   · Dirección / Administración (`porOtro`): cualquiera. Si el texto nombra al tenedor, la de ESE tenedor; si no
+ *     tiene ninguna abierta, se rechaza — nunca se cae en la propia.
+ *   · el resto: sólo las propias. Si el texto nombra a OTRO tenedor (por código, por «la plata de X», o de sujeto
+ *     «X le pagó»), se rechaza diciendo de quién es: nunca se cae en la propia.
+ * Un nombre que sólo coincide con la obra de una entrega no es un tenedor (desempata por obra, como siempre).
+ *
+ * @returns {{entrega:object}|{candidatas:object[]}
+ *   |{motivo:'codigo', codigo:number}|{motivo:'ajena', entrega?:object|null, nombre?:string, persona?:string|null}
+ *   |{motivo:'tenedor_sin_entrega', nombre:string}|{motivo:'ninguna'}}
  */
-export function entregaParaRendir({ texto, entregas = [], miPersonaId = null, porOtro = false, codigo = null, entregaId = null }) {
+export function entregaParaRendir({ texto, entregas = [], miPersonaId = null, porOtro = false, codigo = null, entregaId = null, misNombres = [] }) {
+  const mia = (e) => miPersonaId != null && e.persona_id === miPersonaId
+  const decidir = (e) => (porOtro || mia(e) ? { entrega: e } : { motivo: 'ajena', entrega: e })
   if (entregaId) {
     const e = entregas.find((x) => x.id === entregaId)
-    return e ? { entrega: e } : { motivo: 'ninguna' }
+    return e ? decidir(e) : { motivo: 'ninguna' }
   }
   const n = codigo ?? codigoDeEntrega(texto)
   if (n != null) {
     const e = entregas.find((x) => Number(String(x.codigo).replace(/\D/g, '')) === n)
-    return e ? { entrega: e } : { motivo: 'codigo', codigo: n }
+    return e ? decidir(e) : { motivo: 'codigo', codigo: n }
   }
-  const propias = entregas.filter((e) => e.persona_id === miPersonaId)
-  if (porOtro) {
-    const d = tenedorDicho(texto)
-    if (d?.palabras?.length) {
-      const suyas = entregas.filter((e) => {
-        const toks = new Set(plano(e.persona).split(/\s+/))
-        return d.palabras.some((w) => toks.has(w))
-      })
-      if (suyas.length === 1) return { entrega: suyas[0] }
-      if (suyas.length > 1) {
-        const r = elegirEntrega(suyas.map((e) => ({ ...e })), texto)
-        return r.entrega ? { entrega: r.entrega } : { candidatas: suyas }
-      }
+  const propias = entregas.filter(mia)
+  const palabras = tenedorDicho(texto)?.palabras ?? []
+  if (palabras.length) {
+    const deNombre = entregas.filter((e) => nombra(palabras, e.persona))
+    const esObra = !deNombre.length && entregas.some((e) => e.obra && nombra(palabras, e.obra))
+    const soyYo = misNombres.some((s) => s && nombra(palabras, s)) || (deNombre.length > 0 && deNombre.every(mia))
+    if (!esObra && !soyYo) {
+      const nombre = palabras.join(' ')
+      if (!porOtro) return { motivo: 'ajena', entrega: null, nombre, persona: deNombre.find((e) => !mia(e))?.persona ?? null }
+      if (!deNombre.length) return { motivo: 'tenedor_sin_entrega', nombre }
+      if (deNombre.length === 1) return { entrega: deNombre[0] }
+      const r = elegirEntrega(deNombre, texto)
+      return r.entrega ? { entrega: r.entrega } : { candidatas: deNombre }
     }
   }
   const r = elegirEntrega(propias, texto)
@@ -180,6 +199,23 @@ export function entregaParaRendir({ texto, entregas = [], miPersonaId = null, po
   if (propias.length > 1) return { candidatas: propias }
   if (porOtro && entregas.length) return { candidatas: entregas }
   return { motivo: 'ninguna' }
+}
+
+/** Por qué no se rinde contra la entrega elegida (o nombrada). Siempre dice que no se cargó nada. */
+export function textoRechazoEntrega(sel, { esAdmin = false } = {}) {
+  const deMi = 'Si salió de tu entrega, escribilo con «de mi entrega».'
+  if (sel.motivo === 'ajena') {
+    return sel.entrega
+      ? `La entrega **${sel.entrega.codigo}** es de **${sel.entrega.persona}**: contra la entrega de otra persona sólo rinden Dirección y Administración. No cargué nada. ${deMi}`
+      : `Nombraste a ${sel.persona ? `**${sel.persona}**` : `«${sel.nombre}»`} como quien tenía la plata, y esa no es tu entrega: contra la entrega de otra persona sólo rinden Dirección y Administración. No cargué nada. ${deMi}`
+  }
+  if (sel.motivo === 'tenedor_sin_entrega') {
+    return `No encuentro una entrega abierta de «${sel.nombre}», así que no lo rindo contra ninguna otra. No cargué nada. Revisá el nombre o escribí el código **ER-nnnn**.`
+  }
+  if (sel.codigo != null) {
+    return `No encuentro la entrega ER-${String(sel.codigo).padStart(4, '0')} entre ${esAdmin ? 'las entregas abiertas' : 'tus entregas abiertas'}. No cargué nada. Revisá el código, o decí «de la caja» si salió de la caja.`
+  }
+  return 'No tenés una entrega abierta contra la que rendir esto. No cargué nada. Si salió de la caja, escribilo con «de la caja».'
 }
 
 /** Las entregas candidatas, numeradas, con quién las tiene y lo que le queda. */
@@ -226,15 +262,22 @@ export async function registrarRendicionSinFoto({ port, entrega, perfilId, fecha
  * El beneficiario sale del padrón; si no está, se muestra tal como se escribió, y si no se dijo, se dice que falta.
  */
 export function textoConfirmarRendicion({ leido, entrega }) {
+  const sueldo = leido.tipo === 'sueldo'
   const a = leido.proveedor?.nombre ?? leido.persona?.nombre ?? beneficiarioDicho(leido.concepto)
+  const queda = entrega.en_su_poder != null ? ` (le quedan ${pesos(entrega.en_su_poder)})` : ''
+  const concepto = sueldo
+    ? 'pago a cuenta de sueldo — se suma a su «Pagado efectivo» en Liquidación, en la quincena de la fecha'
+    : (String(leido.concepto ?? '').trim() || '**sin concepto**')
   return [
-    `Voy a rendir **sin comprobante** contra la entrega **${entrega.codigo}** de **${entrega.persona}**${entrega.en_su_poder != null ? ` (le quedan ${pesos(entrega.en_su_poder)})` : ''}:`,
+    sueldo
+      ? `Voy a cargar un pago a cuenta de sueldo y rendirlo **sin comprobante** contra la entrega **${entrega.codigo}** de **${entrega.persona}**${queda}:`
+      : `Voy a rendir **sin comprobante** contra la entrega **${entrega.codigo}** de **${entrega.persona}**${queda}:`,
     `- Importe: **${pesos(leido.importe)}** · ${ddmm(leido.fecha)}`,
-    `- Concepto: ${String(leido.concepto ?? '').trim() || '**sin concepto**'}`,
+    `- Concepto: ${concepto}`,
     `- Pagado a: ${a ? `**${a}**${leido.proveedor?.nombre || leido.persona?.nombre ? '' : ' (no figura entre los proveedores)'}` : '**sin identificar**'}`,
     leido.obra?.nombre ? `- Obra: ${leido.obra.nombre}` : null,
     '',
-    'Todavía no cargué nada. ¿Lo rindo? Contestá en este hilo **sí** o **no**.',
+    `Todavía no cargué nada. ¿Lo ${sueldo ? 'cargo' : 'rindo'}? Contestá en este hilo **sí** o **no**.`,
   ].filter((x) => x != null).join('\n')
 }
 
@@ -313,6 +356,7 @@ export const especialista = {
   async atender({
     texto, intencion, port, actor, commEventId = null, postId = null, log, ahora = new Date(),
     registrar = registrarPagoDirecto, abrir = repo.abrirFajo, escribir = escribirFajo, rendir = registrarRendicionSinFoto,
+    adelantar = registrarAdelanto,
   }) {
     const ruta = intencion ?? await this.reconoce(texto, { area: AREA, actor, port })
     if (!ruta) return { texto: TEXTO.CANAL, estado: 'ayuda', privado: false }
@@ -338,7 +382,6 @@ export const especialista = {
     const ctx = { hoy, padron: datos.padron, ...maestros }
     const idMensaje = commEventId ?? postId ?? actor?.root_post_id ?? null
     const previo = ruta.destino === 'respuesta' ? pendienteDePago(actor) : null
-    const esAdmin = puedeRendirPorOtro(perfil)
     // Lo que sólo dice de dónde sale la plata («con la ER-0021», «con la plata de Maldonado», «Nievas le pagó…») no es
     // el destinatario: se saca antes de leer el pago, pero el texto original se guarda para elegir la entrega.
     const limpio = (t) => (dijoDeDondeSalio(t) === 'entrega' || tenedorDicho(t) ? sinOrigenDeEntrega(t) : t)
@@ -367,16 +410,20 @@ export const especialista = {
     if (leido.importe == null) return { texto: textoDePregunta({ ...leido, falta: 'monto' }), estado: 'pregunta_monto', privado: false }
 
     // 2. ¿CON QUÉ PLATA? Sólo se pregunta si hay una entrega abierta y el texto no lo dice.
-    const conEntrega = leido.tipo === 'gasto' || leido.tipo === 'subcontrato'
+    // TODO lo que puede descontar de una entrega —gasto, subcontrato y pago a cuenta de sueldo— va por la MISMA
+    // puerta (`rendirDeEntrega`): misma regla para elegir la entrega y el mismo «sí» antes de escribir.
+    const conEntrega = leido.tipo === 'gasto' || leido.tipo === 'subcontrato' || leido.tipo === 'sueldo'
     let entregas = []
-    if (conEntrega && (esAdmin || yo.personaId)) {
-      try { entregas = await entregasConSaldo(port, esAdmin ? {} : { personaId: yo.personaId }) } catch (e) {
+    if (conEntrega && rinde(perfil)) {
+      // Todas las abiertas: lo permitido lo decide `entregaParaRendir`, y así puede decir de quién es la nombrada.
+      try { entregas = await entregasConSaldo(port) } catch (e) {
         log?.warn?.('efectivo-pagos: no pude leer las entregas', { error: String(e?.message ?? e) })
         return { texto: TEXTO.NO_VERIFICABLE, estado: 'rechazado_no_verificable', privado: false }
       }
     }
-    // Dirección/Administración que nombra al que tiene la plata («Nievas le pagó…») ya dijo de dónde salió.
-    if (esAdmin && conEntrega && !origenDicho && leido.forma !== 'Transferencia') {
+    // Quien nombra al que tiene la plata («Nievas le pagó…») ya dijo de dónde salió. Si no es suya y quien escribe
+    // no es Dirección/Administración, `rendirDeEntrega` lo rechaza diciendo de quién es.
+    if (conEntrega && !origenDicho && leido.forma !== 'Transferencia') {
       const d = tenedorDicho(textoBase)
       if (d?.palabras?.length && entregas.some((e) => plano(e.persona).split(/\s+/).some((w) => d.palabras.includes(w)))) origenDicho = 'entrega'
     }
@@ -390,31 +437,10 @@ export const especialista = {
     recordarPendientePago(actor, null)
 
     // 3. CADA CASO
-    if (leido.tipo === 'sueldo') {
-      if (origenDicho === 'entrega') {
-        const { entrega } = elegirEntrega(yo.abiertas, textoBase)
-        if (!entrega) return { texto: textoAmbigua(yo.abiertas).replace('este ticket', 'este pago'), estado: 'pregunta_entrega', privado: false }
-        try {
-          const r = await registrarAdelanto({
-            port, entrega, persona: leido.persona, fecha: leido.fecha, importe: leido.importe, expresion: leido.expresion,
-            clave: `adelanto:${idMensaje ?? `${leido.persona.id}|${leido.fecha}|${leido.importe}`}`, post: actor?.root_post_id ?? postId ?? null, perfilId,
-          })
-          if (r.estado === 'cerrada') return { texto: `No cargué el pago de ${pesos(leido.importe)} a **${leido.persona.nombre}**: la quincena ${ddmm(r.desde)}–${ddmm(r.hasta)} está **cerrada**.`, estado: 'rechazado_quincena_cerrada', privado: false }
-          return {
-            texto: textoCargado({ importe: leido.importe, persona: leido.persona.nombre, desde: r.desde, hasta: r.hasta ?? finDeQuincena(r.desde), codigo: r.codigo ?? entrega.codigo, pagada: r.pagada === true, yaEstaba: r.estado === 'ya_estaba' }),
-            estado: r.estado === 'ya_estaba' ? 'ya_estaba' : 'adelanto_cargado', privado: false,
-          }
-        } catch (e) {
-          log?.error?.('efectivo-pagos: no se pudo cargar', { error: String(e?.message ?? e).slice(0, 300) })
-          return { texto: `No cargué el pago de ${pesos(leido.importe)} a **${leido.persona.nombre}**: ${motivoDe(e?.message ?? e)}\nNo se tocó tu entrega ni Liquidación.`, estado: 'error', privado: false }
-        }
-      }
-      return this.pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, log, registrar })
-    }
-
     if (origenDicho === 'entrega' && conEntrega) {
-      return this.rendirDeEntrega({ leido, textoBase, port, actor, perfilId, yo, esAdmin, entregas, idMensaje, postId, log, rendir })
+      return this.rendirDeEntrega({ leido, textoBase, port, actor, perfilId, perfil, yo, entregas, idMensaje, postId, log, rendir, adelantar })
     }
+    if (leido.tipo === 'sueldo') return this.pagarSueldo({ leido, port, idMensaje, actor, postId, perfilId, log, registrar })
     if (origenDicho === 'entrega') {
       return {
         texto: `Entendí un gasto de ${pesos(leido.importe)} pagado con tu entrega. Para rendirlo mandá el ticket (foto) en este canal, que es lo que baja lo que te queda por rendir. No cargué nada.`,
@@ -495,13 +521,39 @@ export const especialista = {
     }
   },
 
-  /** Gasto o pago a subcontratista con efectivo YA ENTREGADO: se rinde sin foto contra esa entrega. No toca Compras. */
-  async rendirDeEntrega({ leido, textoBase, port, actor, perfilId, yo, esAdmin, entregas, idMensaje, postId, log, rendir }) {
+  /**
+   * LA ÚNICA PUERTA DE LO QUE DESCUENTA DE UNA ENTREGA (auditoría 01/10/2026): gasto y subcontrato (rendición sin
+   * foto) y pago a cuenta de sueldo / adelanto (Liquidación + rendición). La usan este especialista y
+   * `adelantos-sueldo`. En orden, y fallando cerrado:
+   *   1. quien escribe RINDE (jefe de obra, Dirección, Administración); un `campo` no;
+   *   2. la entrega sale de `entregaParaRendir` (la del tenedor nombrado para Dirección/Administración; la propia
+   *      para el jefe; la de otro nombrada por un jefe → rechazo, nunca la propia);
+   *   3. nada se escribe sin el «sí» a una pregunta que muestra importe, concepto, beneficiario, código y tenedor.
+   * Lo que falte (perfil, entregas) se lee acá: `adelantos-sueldo` llega sin eso.
+   */
+  async rendirDeEntrega({
+    leido, textoBase, port, actor, perfilId, perfil, yo, entregas = null, idMensaje, postId, log,
+    rendir = registrarRendicionSinFoto, adelantar = registrarAdelanto,
+  }) {
     if (leido.forma === 'Transferencia') {
       return { texto: 'Una transferencia no sale de una entrega de efectivo, así que no la rindo contra ninguna. No cargué nada.', estado: 'rechazado_transferencia_con_entrega', privado: false }
     }
+    try {
+      if (perfil === undefined) perfil = await perfilDeMattermost(port, actor?.plataforma_user_id)
+      if (!rinde(perfil)) {
+        recordarPendientePago(actor, null)
+        return { texto: TEXTO.NO_RINDE, estado: 'rechazado_no_rinde', privado: false }
+      }
+      if (entregas == null) entregas = await entregasConSaldo(port)
+    } catch (e) {
+      log?.warn?.('efectivo-pagos: no pude leer quién escribe o las entregas', { error: String(e?.message ?? e) })
+      return { texto: TEXTO.NO_VERIFICABLE, estado: 'rechazado_no_verificable', privado: false }
+    }
+    const esAdmin = rindePorOtro(perfil)
+    const misNombres = [perfil?.nombre, ...entregas.filter((e) => yo?.personaId && e.persona_id === yo.personaId).map((e) => e.persona)]
     const sel = entregaParaRendir({
-      texto: textoBase, entregas, miPersonaId: yo.personaId, porOtro: esAdmin, codigo: leido.entregaCodigo ?? null, entregaId: leido.entregaId ?? null,
+      texto: textoBase, entregas, miPersonaId: yo?.personaId ?? null, porOtro: esAdmin, misNombres,
+      codigo: leido.entregaCodigo ?? null, entregaId: leido.entregaId ?? null,
     })
     if (sel.candidatas) {
       recordarPendientePago(actor, {
@@ -510,31 +562,31 @@ export const especialista = {
       })
       return { texto: textoElegirEntrega(sel.candidatas, { importe: leido.importe }), estado: 'pregunta_entrega', privado: false }
     }
-    if (!sel.entrega) {
-      const cod = sel.codigo != null ? `ER-${String(sel.codigo).padStart(4, '0')}` : null
-      return {
-        texto: cod
-          ? `No encuentro la entrega ${cod} entre ${esAdmin ? 'las entregas abiertas' : 'tus entregas abiertas'}. No cargué nada. Revisá el código, o decí «de la caja» si el gasto salió de la caja.`
-          : 'No tenés una entrega abierta contra la que rendir este gasto. No cargué nada. Si salió de la caja, escribilo con «de la caja».',
-        estado: 'rechazado_sin_entrega', privado: false,
-      }
+    if (!sel.entrega || sel.motivo) {
+      recordarPendientePago(actor, null)
+      const estado = sel.motivo === 'ajena' ? 'rechazado_entrega_ajena'
+        : sel.motivo === 'tenedor_sin_entrega' ? 'rechazado_tenedor_sin_entrega' : 'rechazado_sin_entrega'
+      return { texto: textoRechazoEntrega(sel, { esAdmin }), estado, privado: false }
     }
     // NADA SE RINDE SIN EL «SÍ» DE QUIEN ESCRIBE: baja la plata de una persona. Se repone el pendiente (el anterior
-    // ya se consumió) con la entrega elegida, para que el «sí» rinda exactamente lo que se mostró.
+    // ya se consumió) con la entrega elegida, para que el «sí» rinda exactamente lo que se mostró. La clave de la
+    // escritura es la del mensaje que se confirma, no la del «sí».
     if (leido.confirmado !== true) {
       const pregunta = textoConfirmarRendicion({ leido, entrega: sel.entrega })
       recordarPendientePago(actor, {
         falta: 'confirmar', texto: textoBase, origen: 'entrega', pregunta,
-        leido: { ...leido, falta: 'confirmar', entregaId: sel.entrega.id },
+        leido: { ...leido, falta: 'confirmar', entregaId: sel.entrega.id, idOrigen: leido.idOrigen ?? idMensaje ?? null },
       })
       return { texto: pregunta, estado: 'pregunta_confirmar', privado: false }
     }
+    const idEscritura = leido.idOrigen ?? idMensaje
+    if (leido.tipo === 'sueldo') return this.adelantoDeEntrega({ leido, entrega: sel.entrega, port, actor, postId, perfilId, idEscritura, log, adelantar })
     const item = itemDePago(leido)
     const comp = {}
     for (const k of ['proveedor', 'obra', 'concepto']) if (item.comprobante[k]) comp[k] = item.comprobante[k]
     if (leido.proveedor?.cuit) comp.cuit = leido.proveedor.cuit
     const concepto = String(leido.concepto ?? '').trim() || (leido.tipo === 'subcontrato' ? `pago a subcontratista ${leido.proveedor?.nombre ?? ''}`.trim() : 'gasto en efectivo')
-    const clave = `chat:${idMensaje ?? `${sel.entrega.id}|${leido.fecha}|${leido.importe}|${concepto}`}`
+    const clave = `chat:${idEscritura ?? `${sel.entrega.id}|${leido.fecha}|${leido.importe}|${concepto}`}`
     try {
       const r = await rendir({
         port, entrega: sel.entrega, perfilId, fecha: leido.fecha, total: leido.importe, concepto,
@@ -550,6 +602,31 @@ export const especialista = {
     } catch (e) {
       log?.error?.('efectivo-pagos: no se pudo rendir sin foto', { error: String(e?.message ?? e).slice(0, 300) })
       return { texto: `No cargué el gasto de ${pesos(leido.importe)} contra ${sel.entrega.codigo}: ${motivoDe(e?.message ?? e)}\nNo se tocó la entrega.`, estado: 'error', privado: false }
+    }
+  },
+
+  /** El pago a cuenta de sueldo ya confirmado: Liquidación + rendición, en una transacción de la base. */
+  async adelantoDeEntrega({ leido, entrega, port, actor, postId, perfilId, idEscritura, log, adelantar = registrarAdelanto }) {
+    const quien = `**${leido.persona.nombre}**`
+    try {
+      const r = await adelantar({
+        port, entrega, persona: leido.persona, fecha: leido.fecha, importe: leido.importe, expresion: leido.expresion ?? String(leido.importe),
+        clave: `adelanto:${idEscritura ?? `${leido.persona.id}|${leido.fecha}|${leido.importe}`}`, post: actor?.root_post_id ?? postId ?? null, perfilId,
+      })
+      if (r.estado === 'cerrada') {
+        return {
+          texto: `No cargué el pago de ${pesos(leido.importe)} a ${quien}: la quincena ${ddmm(r.desde)}–${ddmm(r.hasta)} de Liquidación está **cerrada**. Tampoco lo rendí de **${entrega.codigo}**: la entrega quedó igual.`,
+          estado: 'rechazado_quincena_cerrada', privado: false,
+        }
+      }
+      return {
+        texto: textoCargado({ importe: leido.importe, persona: leido.persona.nombre, desde: r.desde, hasta: r.hasta ?? finDeQuincena(r.desde), codigo: r.codigo ?? entrega.codigo, pagada: r.pagada === true, yaEstaba: r.estado === 'ya_estaba' }),
+        estado: r.estado === 'ya_estaba' ? 'ya_estaba' : 'adelanto_cargado', privado: false,
+      }
+    } catch (e) {
+      if (e?.code === '42501') return { texto: TEXTO.SIN_PERMISO_ENTREGA, estado: 'rechazado_sin_permiso', privado: false }
+      log?.error?.('efectivo-pagos: no se pudo cargar el pago a cuenta', { error: String(e?.message ?? e).slice(0, 300) })
+      return { texto: `No cargué el pago de ${pesos(leido.importe)} a ${quien}: ${motivoAdelanto(String(e?.message ?? e))}\nNo se rindió nada de **${entrega.codigo}** ni se tocó Liquidación.`, estado: 'error', privado: false }
     }
   },
 
