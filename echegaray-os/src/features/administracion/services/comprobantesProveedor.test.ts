@@ -44,7 +44,7 @@ function adjunto(a: Partial<Adjunto> = {}): Adjunto {
   return {
     id: 'a-1', compra_clave: 'c:30716236338|0003-00012345', fila_compras: 900,
     storage_path: 'x/a-1.jpg', nombre: 'factura.jpg', media_type: 'image/jpeg', bytes: 10,
-    origen: 'mattermost', vinculado_por: 'registro', confianza: null, subido_at: null, ...a,
+    origen: 'mattermost', vinculado_por: 'registro', confianza: null, subido_at: null, tipo: 'factura', ...a,
   }
 }
 
