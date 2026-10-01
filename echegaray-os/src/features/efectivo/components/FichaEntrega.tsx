@@ -16,6 +16,7 @@ import { fraseDelCambio, type Nombres } from '../logica/edicion'
 import { QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
 import { AvisosDeLaEntrega } from './Edicion'
 import { Firma } from './Firma'
+import { ReciboParaFirmar } from './ReciboParaFirmar'
 import { ALTO_HEADER_APP, ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, TOQUE_TELEFONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
@@ -232,6 +233,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                       >
                         Editar
                       </Link>
+                    )}
+                    {f.rendicion?.origen === 'manual' && (
+                      <div style={{ gridColumn: '1 / -1', paddingBottom: 8 }}><ReciboParaFirmar rendicion={f.rendicion.id} /></div>
                     )}
                   </div>
                 )
