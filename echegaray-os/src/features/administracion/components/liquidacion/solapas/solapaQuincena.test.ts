@@ -219,14 +219,16 @@ test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/202
   assert.match(RECORTE, /clave: 'obreros', texto: 'Por quincena'/)
   assert.match(RECORTE, /clave: 'oficina', texto: 'Mensuales'/)
   assert.match(RECORTE, /clave: 'final', texto: 'Liq\. finales'/)
-  assert.match(VISTA, /import \{ RECORTES, normalizar \} from '\.\.\/\.\.\/\.\.\/services\/recorteDeLiquidacion'/)
+  assert.match(VISTA, /import \{\s*RECORTES,[^}]*\bnormalizar\b[^}]*\} from '\.\.\/\.\.\/\.\.\/services\/recorteDeLiquidacion'/)
   assert.match(FILTROS, /rotulo="Cobra"/)
 })
 
 test('EL BUSCADOR RECORTA LAS FILAS Y EL TOTAL, y conserva quincena y recorte', () => {
   assert.match(VISTA, /normalizar\(f\.nombre\)\.includes\(buscar\)/)
   assert.match(VISTA, /totalesDelEspejo\(visibles\)/)
-  assert.match(VISTA, /ocultos: \{ vista: 'liquidacion', quincena: quincena\.desde/)
+  assert.match(VISTA, /ocultos: \{\s*vista: 'liquidacion', quincena: quincena\.desde/)
+  // El recorte por presentismo (01/10/2026) también sobrevive a buscar.
+  assert.match(VISTA, /presentismo === 'todos' \? \{\} : \{ presentismo \}/)
 })
 
 test('LA BARRA MUESTRA UNA SOLA PANTALLA Y MANDA EL RESTO A «MÁS» (dueño, 14/09/2026)', () => {

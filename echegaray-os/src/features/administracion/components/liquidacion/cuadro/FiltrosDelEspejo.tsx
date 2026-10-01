@@ -23,9 +23,11 @@ const ESTILO_BUSCADOR = {
   border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
 } as const
 
-export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
+export function FiltrosDelEspejo({ periodos, grupos, presentismo, busqueda, cerrar }: {
   periodos: { texto: string; activo: boolean; href: string }[]
   grupos: { texto: string; activo: boolean; href: string }[]
+  /** Quién gana el presentismo y quién no (dueño, 01/10/2026). Sólo el cuadro de la quincena lo pasa. */
+  presentismo?: { texto: string; activo: boolean; href: string }[]
   /** Buscar por nombre. Formulario GET: sin JavaScript, y la URL queda compartible. */
   busqueda?: { valor: string; ocultos: Record<string, string>; limpiar: string | null }
   /** A dónde lleva «Cerrar quincena». El cierre vive en su pantalla: sella y no se deshace sin firma. */
@@ -38,6 +40,7 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
     }}>
       <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
       <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
+      {presentismo && <Grupo rotulo="Presentismo" opciones={presentismo} testid="espejo-presentismo" />}
       {busqueda && (
         <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {Object.entries(busqueda.ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}

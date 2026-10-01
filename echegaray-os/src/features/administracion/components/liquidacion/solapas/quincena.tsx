@@ -10,7 +10,9 @@ import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
-import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
+import {
+  RECORTES, RECORTES_PRESENTISMO, normalizar, pasaPresentismo, presentismoPedido,
+} from '../../../services/recorteDeLiquidacion'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -91,9 +93,11 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // EL RECORTE RECORTA LAS FILAS QUE SE VEN Y EL TOTAL QUE LAS ACOMPAÑA. Un pie que sumara el plantel
   // entero debajo de tres filas filtradas sería un total que no cierra con lo que está arriba.
   const grupo = RECORTES.find((r) => r.clave === parametros.grupo)?.clave ?? 'todos'
+  const presentismo = presentismoPedido(parametros.presentismo)
   const buscar = normalizar(parametros.buscar ?? '')
   const visibles = filas
     .filter((f) => grupo === 'todos' || f.grupo === grupo)
+    .filter((f) => pasaPresentismo(f.linea.presentismo, presentismo))
     .filter((f) => !buscar || normalizar(f.nombre).includes(buscar))
   const secciones = seccionesDelEspejo(visibles, tituloDe)
   const totales = totalesDelEspejo(visibles)
@@ -113,6 +117,11 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       activo: grupo === r.clave,
       href: hrefDe({ grupo: r.clave === 'todos' ? undefined : r.clave }),
     }))
+  const opcionesDePresentismo = RECORTES_PRESENTISMO.map((r) => ({
+    texto: r.texto,
+    activo: presentismo === r.clave,
+    href: hrefDe({ presentismo: r.clave === 'todos' ? undefined : r.clave }),
+  }))
 
   return (
     <ProveedorDeHistorial lectura={historialDeManuales}>
@@ -127,9 +136,13 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       <FiltrosDelEspejo
         periodos={periodos}
         grupos={grupos}
+        presentismo={opcionesDePresentismo}
         busqueda={{
           valor: parametros.buscar ?? '',
-          ocultos: { vista: 'liquidacion', quincena: quincena.desde, ...(grupo === 'todos' ? {} : { grupo }) },
+          ocultos: {
+            vista: 'liquidacion', quincena: quincena.desde, ...(grupo === 'todos' ? {} : { grupo }),
+            ...(presentismo === 'todos' ? {} : { presentismo }),
+          },
           limpiar: parametros.buscar ? hrefDe({ buscar: undefined }) : null,
         }}
         cerrar={hrefDe({ solapa: 'cierre', buscar: undefined })}
