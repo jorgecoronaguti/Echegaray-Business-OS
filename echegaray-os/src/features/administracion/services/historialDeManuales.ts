@@ -137,3 +137,11 @@ export function historialDeCeldas(
   }
   return salida
 }
+
+/**
+ * EL SELLO QUE VIAJA EN LA MISMA ESCRITURA (`escribio_id`, `escribio_en`). `escribio_en` es un instante nuevo en cada
+ * guardado: el trigger sólo toma el autor cuando CAMBIÓ, así una escritura posterior de otro camino (chat,
+ * sincronización) no hereda el nombre del último que tipeó acá.
+ */
+export const selloDeAutor = (autorId: string | null, ahora: Date = new Date()): { escribio_id: string | null; escribio_en: string } =>
+  ({ escribio_id: autorId, escribio_en: ahora.toISOString() })

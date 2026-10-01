@@ -138,6 +138,10 @@ begin
   if v_autor is null and (tg_op = 'INSERT' or new.escribio_en is distinct from old.escribio_en) then
     v_autor := new.escribio_id;
   end if;
+  -- «Marcar pagada» ya sella quién y cuándo en la propia línea (`pagada_por`): es el autor de los dos importes que completa.
+  if v_autor is null and tg_op = 'UPDATE' and (v_nuevo ->> 'pagada_en') is distinct from (v_viejo ->> 'pagada_en') then
+    v_autor := nullif(v_nuevo ->> 'pagada_por', '')::uuid;
+  end if;
 
   for v_col, v_campo in select key, value from jsonb_each_text(public.liquidacion_columnas_manuales()) loop
     v_antes   := nullif(v_viejo ->> v_col, '')::numeric;
