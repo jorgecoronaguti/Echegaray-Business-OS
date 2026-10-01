@@ -11,6 +11,7 @@
 // recarga y vuelve con el botón de atrás. Y el conteo `n/total` que los cierra es lo que quedó del
 // pie de totales del porte anterior: dice cuánto de la cartera se está viendo, sin un bloque gris.
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { V } from './patron'
 
@@ -32,7 +33,7 @@ export interface OpcionFiltro {
   cuenta?: number | null
 }
 
-export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros', desplazable, verTodoHref }: {
+export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros', desplazable, verTodoHref, despues }: {
   opciones: OpcionFiltro[]
   /**
    * `{ n, total }`. La fila que recorta la población lo escribe SIEMPRE, aunque no filtre nada
@@ -68,6 +69,8 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros', de
   desplazable?: boolean
   /** Si hay algo activo, «Ver todo» lo limpia de un clic. `undefined` = no hay nada que limpiar. */
   verTodoHref?: string
+  /** Otro control en la MISMA línea, a continuación de las opciones (p. ej. un rango de fechas). */
+  despues?: ReactNode
 }) {
   return (
     <div data-testid={testid} className={`max-md:!gap-1.5 ${desplazable ? 'max-md:!flex-nowrap max-md:overflow-x-auto' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -121,6 +124,7 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros', de
           Ver todo
         </Link>
       )}
+      {despues}
       {conteo && (
         <span
           className="font-mono tabular-nums"

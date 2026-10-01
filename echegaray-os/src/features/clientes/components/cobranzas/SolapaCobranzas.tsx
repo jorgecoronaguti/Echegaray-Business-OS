@@ -60,9 +60,11 @@ import {
   totalDeFilas, totalesDeCobranzas, totalPorCircuito, vencidoDeFilas,
   type EnSuMoneda, type FilaCobranza, type RecorteCobranza,
 } from '../../services/cobranzasCliente'
+import { filtrarPorFechas, hayFechasActivas, type FiltroDeFechas as FechasDelFiltro } from '../../services/filtroDeFechasCobranza'
 import type { Orden } from '../../services/papelesCliente'
 import { OrdenesDeLaObra } from '../OrdenesDeLaObra'
 import { dia, EncabezadoDeColumnas, FilaDeCobranza } from './FilaDeCobranza'
+import { FiltroDeFechas } from './FiltroDeFechas'
 
 const AYUDA_CONTRATADO = 'El precio de venta de las obras del cliente, de OBRAS. Es la única cifra '
   + 'de esta tira que NO sale de la pestaña Cobranzas, y por eso va aparte.'
@@ -106,7 +108,7 @@ function cifra(
 }
 
 export function SolapaCobranzas({
-  filas, obras, obrasConOC, contratado, contratadoUsd, recorte, hrefRecorte,
+  filas, obras, obrasConOC, contratado, contratadoUsd, recorte, hrefRecorte, fechas, hrefSinFechas,
 }: {
   /** `null` = no se pudieron leer. «No pude leerlas» no se dibuja como «no tiene ninguna». */
   filas: FilaCobranza[] | null
@@ -123,6 +125,10 @@ export function SolapaCobranzas({
   contratadoUsd: number | null
   recorte: RecorteCobranza
   hrefRecorte: (r: RecorteCobranza) => string
+  /** Los rangos de fecha de la URL (`fdesde` `fhasta` `cdesde` `chasta`), ya validados. */
+  fechas: FechasDelFiltro
+  /** La dirección actual sin los parámetros de fecha: conserva solapa y recorte. */
+  hrefSinFechas: string
 }) {
   if (filas === null) {
     return (
@@ -133,7 +139,10 @@ export function SolapaCobranzas({
     )
   }
 
-  const visibles = recortar(filas, recorte)
+  // El filtro de fechas entra ANTES del recorte y por el mismo camino: opciones, cifras y filas salen
+  // de la misma población, así que no pueden contradecirse (dueño, 01/10/2026).
+  const enFechas = filtrarPorFechas(filas, fechas)
+  const visibles = recortar(enFechas, recorte)
   // ═══ LA CABECERA MIDE LO QUE SE ESTÁ VIENDO, NO OTRA COSA (auditoría, 11/09/2026) ═══
   //
   // Medía sobre `filas` mientras las bandas medían sobre el recorte: con `?cob=n` la cabecera decía
@@ -178,11 +187,22 @@ export function SolapaCobranzas({
           conteo={{ n: visibles.length, total: filas.length, sustantivo: 'filas' }}
           opciones={[
             { clave: 'todo', etiqueta: 'Todo', href: hrefRecorte('todo'), activo: recorte === 'todo' },
-            { clave: 'pendiente', etiqueta: 'Por cobrar', href: hrefRecorte('pendiente'), activo: recorte === 'pendiente', cuenta: recortar(filas, 'pendiente').length },
-            { clave: 'cobrado', etiqueta: 'Cobrado', href: hrefRecorte('cobrado'), activo: recorte === 'cobrado', cuenta: recortar(filas, 'cobrado').length },
-            { clave: 'b', etiqueta: 'B', href: hrefRecorte('b'), activo: recorte === 'b', cuenta: recortar(filas, 'b').length },
-            { clave: 'n', etiqueta: 'N', href: hrefRecorte('n'), activo: recorte === 'n', cuenta: recortar(filas, 'n').length },
+            { clave: 'pendiente', etiqueta: 'Por cobrar', href: hrefRecorte('pendiente'), activo: recorte === 'pendiente', cuenta: recortar(enFechas, 'pendiente').length },
+            { clave: 'cobrado', etiqueta: 'Cobrado', href: hrefRecorte('cobrado'), activo: recorte === 'cobrado', cuenta: recortar(enFechas, 'cobrado').length },
+            { clave: 'b', etiqueta: 'B', href: hrefRecorte('b'), activo: recorte === 'b', cuenta: recortar(enFechas, 'b').length },
+            { clave: 'n', etiqueta: 'N', href: hrefRecorte('n'), activo: recorte === 'n', cuenta: recortar(enFechas, 'n').length },
           ]}
+          despues={(
+            <FiltroDeFechas
+              hrefSinFechas={hrefSinFechas}
+              hayActivas={hayFechasActivas(fechas)}
+              conFactura={filas.some((f) => f.fecha_venta !== undefined)}
+              valores={{
+                fdesde: fechas.factura.desde ?? '', fhasta: fechas.factura.hasta ?? '',
+                cdesde: fechas.cobro.desde ?? '', chasta: fechas.cobro.hasta ?? '',
+              }}
+            />
+          )}
         />
 
         {visibles.length === 0 && (

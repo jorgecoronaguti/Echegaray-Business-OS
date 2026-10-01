@@ -30,6 +30,12 @@ export interface FilaCobranza {
   /** `B` = facturado (con comprobante) · `N` = sin comprobante. */
   categoria: string | null
   fecha_emision: string | null
+  /**
+   * «Fecha de Factura» del Sheet (col. Q). El nombre es el de la base —el sync la guarda en
+   * `cobranzas.fecha_venta`— y `fecha_emision` es OTRA columna (C, «Fecha de Venta»). Opcional: la
+   * vista la publica sólo desde la migración `20261001T1200`; `undefined` = la vista aún no la trae.
+   */
+  fecha_venta?: string | null
   factura: string | null
   numero_comprobante: string | null
   concepto: string | null
@@ -62,7 +68,10 @@ export interface FilaCobranza {
 const COLUMNAS_BASE = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_emision, factura, numero_comprobante, concepto, orden_compra, monto_neto, iva, retenciones, total_bruto, estado, esta_cobrada, esta_cancelada, esta_vencida, fecha_cobro, forma_cobro, moneda, total_bruto_origen'
 /** El papel que respalda una fila sin factura. Lo agrega la migración `20260911T0920`. */
 const COLUMNAS_RESPALDO = 'respaldo_drive_id, respaldo_titulo, respaldo_nota'
-const COLUMNAS = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}`
+/** La fecha de factura (col. Q). La agrega la migración `20261001T1200`. */
+const COLUMNAS_FECHA_FACTURA = 'fecha_venta'
+const COLUMNAS = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}, ${COLUMNAS_FECHA_FACTURA}`
+const COLUMNAS_SIN_FECHA_FACTURA = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}`
 
 /** `42703` = «undefined_column» de Postgres: la vista todavía no tiene la columna que se pidió. */
 export const COLUMNA_INEXISTENTE = '42703'
@@ -94,6 +103,8 @@ export async function getCobranzasDelCliente(
   //
   // NO es un silencio: `null` sigue siendo `null` si la lectura base también falla, y la pantalla
   // sigue diciendo con palabras que la consulta falló.
+  // Se degrada de a un enriquecimiento: primero sin `fecha_venta`, después sin el respaldo.
+  if (error?.code === COLUMNA_INEXISTENTE) ({ data, error } = await leer(COLUMNAS_SIN_FECHA_FACTURA))
   if (error?.code === COLUMNA_INEXISTENTE) ({ data, error } = await leer(COLUMNAS_BASE))
   if (error) return null
   return (data ?? []) as unknown as FilaCobranza[]

@@ -310,8 +310,25 @@ test('si la vista no tiene las columnas del respaldo, se reintenta sin ellas', a
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filas = await getCobranzasDelCliente(cliente as any, 'messina')
   assert.equal(filas?.length, 1)
-  assert.equal(pedidos.length, 2, 'tiene que haber reintentado exactamente una vez')
-  assert.ok(!pedidos[1].includes('respaldo_drive_id'))
+  // Se degrada de a un enriquecimiento: sin `fecha_venta` (todavía trae el respaldo), y recién después sin respaldo.
+  assert.equal(pedidos.length, 3)
+  assert.ok(!pedidos[2].includes('respaldo_drive_id'))
+})
+
+test('si la vista no tiene `fecha_venta`, se reintenta SIN ella y se conserva el respaldo', async () => {
+  // La migración 20261001T1200 (fecha de factura, col. Q) puede no estar aplicada cuando sale el código:
+  // perderla no puede costar los papeles de respaldo que sí están.
+  const fila = { ...COBRANZAS_MESSINA[0] }
+  const { cliente, pedidos } = supabaseFalso([
+    { columnas: 'fecha_venta', resultado: { data: null, error: { code: COLUMNA_INEXISTENTE } } },
+    { columnas: 'forma_cobro', resultado: { data: [fila], error: null } },
+  ])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const filas = await getCobranzasDelCliente(cliente as any, 'messina')
+  assert.equal(filas?.length, 1)
+  assert.equal(pedidos.length, 2)
+  assert.ok(!pedidos[1].includes('fecha_venta'))
+  assert.ok(pedidos[1].includes('respaldo_drive_id'))
 })
 
 test('un fallo que NO es una columna faltante sigue devolviendo null, no una lista vacía', () => {

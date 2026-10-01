@@ -41,6 +41,7 @@ import {
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
 import { jerarquiaDeObras, recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
+import { leerFiltroDeFechas } from '@/features/clientes/services/filtroDeFechasCobranza'
 import { CaraDeDocumentos } from '@/features/clientes/components/CaraDeDocumentos'
 import { armarCaraDocumentos } from '@/features/clientes/services/caraDocumentos'
 import { cotizacionesDeDrive } from '@/features/clientes/services/cotizacionesDeDrive'
@@ -138,6 +139,11 @@ type Query = {
   /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
    *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
   cob?: string
+  /** Los rangos de fecha de Cobranzas: Factura (col. Q del Sheet) `fdesde`/`fhasta`, Cobro (col. R) `cdesde`/`chasta`. `AAAA-MM-DD`; lo inválido se ignora. */
+  fdesde?: string
+  fhasta?: string
+  cdesde?: string
+  chasta?: string
   /** Los filtros del registro de órdenes —trabajo, estado de la OC, año—. Entrada de usuario: los
    *  valida `leerFiltro` con Zod y lo que no valida se ignora. */
   oobra?: string
@@ -429,6 +435,9 @@ export default async function ClientePage({ params, searchParams }: {
   /** El recorte de Cobranzas en la URL. Función declarada y no arrow en el JSX: una arrow creada en
    *  un Server Component y pasada como prop revienta en producción con React #419. */
   const hrefRecorteCobranza = (r: string) => url({ cob: r === 'todo' ? null : r })
+  /** Los rangos de fecha de Cobranzas, validados. Los enlaces del recorte los conservan porque `url()`
+   *  preserva todo lo que hay en la dirección. */
+  const fechasCobranza = leerFiltroDeFechas(q)
 
   /** Las OC de cada obra, para el encabezado de cada grupo de Cobranzas. Sale de los MISMOS papeles
    *  que ya trajo la ficha: ninguna consulta nueva. */
@@ -450,6 +459,7 @@ export default async function ClientePage({ params, searchParams }: {
   // pantalla de accesos) son del clic que los abrió y cualquier otro enlace de la ficha los cierra.
   // Con `portal` pegado, la solapa «Documentos» seguía dibujando el portal (dueño, 21/09/2026).
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => direccionDeFicha(slug, q, cambio)
+  const hrefSinFechas = url({ fdesde: null, fhasta: null, cdesde: null, chasta: null })
 
   // ═══ LAS DOS CIFRAS (DISENO-FICHA-CLIENTE-v3 · §2.3, recortado el 11/09/2026) ═══
   //
@@ -737,6 +747,8 @@ export default async function ClientePage({ params, searchParams }: {
             contratadoUsd={contratoUsd}
             recorte={recorteCobranza}
             hrefRecorte={hrefRecorteCobranza}
+            fechas={fechasCobranza}
+            hrefSinFechas={hrefSinFechas}
           />
 
           {/* ═══ LAS CUATRO CIFRAS DE `obra_cuenta` NO VIAJAN ACÁ (12/09/2026) ═══

@@ -110,7 +110,8 @@ export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
   // contra el archivo que el dueño abre es a ojo.
   const titulo = [
     f.fila ? `Cobranzas fila ${f.fila}` : 'Fila sin número en la réplica',
-    `emitida ${dia(f.fecha_emision) ?? 'sin fecha'}`,
+    `fecha de venta ${dia(f.fecha_emision) ?? 'sin fecha'}`,
+    f.fecha_venta !== undefined ? `fecha de factura ${dia(f.fecha_venta) ?? 'sin fecha'}` : null,
     concepto,
     f.orden_compra ? `col. ORDEN DE COMPRA: ${f.orden_compra}` : null,
     f.monto_neto != null ? `neto ${pesos(f.monto_neto)}` : null,
