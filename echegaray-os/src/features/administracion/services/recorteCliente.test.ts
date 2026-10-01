@@ -66,5 +66,7 @@ test('el parámetro viaja: página → solapa → filas y totales, y el buscador
   assert.match(solapa, /\.filter\(\(f\) => pasaCliente\(f\.personaId, cliente, clientes\.mapa\)\)/)
   assert.match(solapa, /opcionesDeCliente\(filas\.map/, 'las opciones salen de la quincena entera')
   assert.match(solapa, /cliente === 'todos' \? \{\} : \{ cliente \}/)
-  assert.match(leer('../components/liquidacion/cuadro/FiltrosDelEspejo.tsx'), /testid="espejo-cliente"/)
+  const filtros = leer('../components/liquidacion/cuadro/FiltrosDelEspejo.tsx')
+  assert.match(filtros, /testid="espejo-cliente" rotuloEnTelefono envuelve/, 'los nombres largos de cliente bajan de renglón en el teléfono')
+  assert.match(filtros, /envuelve \? 'max-md:w-full max-md:flex-wrap'/)
 })

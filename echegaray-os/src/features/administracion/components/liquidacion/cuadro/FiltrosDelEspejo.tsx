@@ -42,7 +42,7 @@ export function FiltrosDelEspejo({ periodos, grupos, cliente, presentismo, busqu
     }}>
       <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
       <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
-      {cliente && <Grupo rotulo="Cliente" opciones={cliente} testid="espejo-cliente" rotuloEnTelefono />}
+      {cliente && <Grupo rotulo="Cliente" opciones={cliente} testid="espejo-cliente" rotuloEnTelefono envuelve />}
       {presentismo && <Grupo rotulo="Presentismo" opciones={presentismo} testid="espejo-presentismo" rotuloEnTelefono />}
       {busqueda && (
         <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -74,18 +74,24 @@ export function FiltrosDelEspejo({ periodos, grupos, cliente, presentismo, busqu
   )
 }
 
-function Grupo({ rotulo, opciones, testid, rotuloEnTelefono }: {
+function Grupo({ rotulo, opciones, testid, rotuloEnTelefono, envuelve }: {
   rotulo: string
   opciones: { texto: string; activo: boolean; href: string }[]
   testid: string
   /** «Lo gana / No lo gana» no dicen de qué hablan sin su rótulo: en el teléfono éste no se calla. */
   rotuloEnTelefono?: boolean
+  /**
+   * EN EL TELÉFONO LAS OPCIONES BAJAN DE RENGLÓN. Los nombres de cliente son largos («Javier Sánchez - San
+   * Francisco - IMOTOR») y tres en fila medían 563 px en una pantalla de 390: la página entera se corría de
+   * costado (QA en producción, 01/10/2026).
+   */
+  envuelve?: boolean
 }) {
   if (opciones.length === 0) return null
   return (
     // EN EL TELÉFONO (24/09/2026) el grupo toma el renglón entero, el rótulo se calla —las opciones ya
     // dicen qué son— y el período elegido ocupa el centro: «← anterior» se partía en dos renglones.
-    <div data-testid={testid} className="max-md:w-full" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div data-testid={testid} className={envuelve ? 'max-md:w-full max-md:flex-wrap' : 'max-md:w-full'} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span className={rotuloEnTelefono ? undefined : 'max-md:hidden'} style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
         {rotulo}
       </span>
