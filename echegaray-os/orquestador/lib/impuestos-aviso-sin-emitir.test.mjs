@@ -60,11 +60,32 @@ test('la emitida no avisa aunque su fecha esté en el mes: se le pone número y 
 
 test('el aviso es una fórmula de texto: vacío sin casos, ▲ con el mes y el IVA, sin escribir nada en Cobranzas', () => {
   const f = avisoVentasSinEmitirDelMes({ hoy: HOY, cob: COB_CON_OBRA })
-  assert.match(f, /^=LET\(n;SUMPRODUCT\(/)
-  assert.match(f, /IF\(n=0;"";"▲ "/)
+  assert.match(f, /^=LET\(cuantas;SUMPRODUCT\(/)
+  assert.match(f, /IF\(cuantas=0;"";"▲ "/)
   assert.match(f, /" IVA sep-26"/)
   assert.ok(!f.replace(/"[^"]*"/g, '').includes(','), 'es-AR: fuera de las comillas el separador es «;»')
   assert.throws(() => avisoVentasSinEmitirDelMes({ cob: COB_CON_OBRA }), /falta `hoy`/)
+})
+
+// 01/10/2026 — `C7` de «Impuestos y Financieros» daba `#N/A` («Invalid call to non-function: N»): el LET
+// nombraba `n` a la cuenta y adentro llamaba a `N(...)`. Sheets no distingue mayúsculas: el nombre tapa la
+// función. El test de arriba afirmaba la forma rota (`=LET(n;`); éste afirma lo que la rompe.
+test('ningún nombre del LET tapa una función que la misma fórmula llama', () => {
+  const f = avisoVentasSinEmitirDelMes({ hoy: HOY, cob: COB_CON_OBRA }).replace(/"[^"]*"/g, '""')
+  const cuerpo = f.slice(f.indexOf('LET(') + 4, f.lastIndexOf(')'))
+  const args = []
+  let nivel = 0
+  let desde = 0
+  for (let i = 0; i < cuerpo.length; i++) {
+    if (cuerpo[i] === '(') nivel++
+    else if (cuerpo[i] === ')') nivel--
+    else if (cuerpo[i] === ';' && nivel === 0) { args.push(cuerpo.slice(desde, i)); desde = i + 1 }
+  }
+  args.push(cuerpo.slice(desde))
+  const nombres = args.slice(0, -1).filter((_, i) => i % 2 === 0).map((x) => x.trim().toLowerCase())
+  const funciones = new Set([...f.matchAll(/([A-Za-z][A-Za-z0-9.]*)\(/g)].map((m) => m[1].toLowerCase()))
+  assert.equal(nombres.length, 2)
+  for (const n of nombres) assert.ok(!funciones.has(n), `el nombre «${n}» del LET tapa a la función ${n.toUpperCase()}()`)
 })
 
 test('la grilla lleva el aviso en la columna C de «⇒ Impuestos de septiembre», sin correr ninguna fila', () => {

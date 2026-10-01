@@ -188,8 +188,10 @@ export function avisoVentasSinEmitirDelMes({ hoy, cob } = {}) {
   const mascara = mascaraVentasSinEmitir({ hoy, cob })
   const iva = ventaDe(cob).iva
   const rotuloMes = `${MESES_AVISO[mes - 1]}-${String(anio).slice(2)}`
-  return `=LET(n;SUMPRODUCT(${mascara});v;SUMPRODUCT((${mascara})*N(${iva}));`
-    + `IF(n=0;"";"▲ "&n&" sin factura · $"&TEXT(v;"#,##0")&" IVA ${rotuloMes}"))`
+  // LOS NOMBRES DEL LET NO PUEDEN LLAMARSE COMO UNA FUNCIÓN QUE LA FÓRMULA USA (01/10/2026): con `n`, Sheets
+  // leía `N(...)` como una llamada a la variable y la celda daba #N/A («Invalid call to non-function: N»).
+  return `=LET(cuantas;SUMPRODUCT(${mascara});monto;SUMPRODUCT((${mascara})*N(${iva}));`
+    + `IF(cuantas=0;"";"▲ "&cuantas&" sin factura · $"&TEXT(monto;"#,##0")&" IVA ${rotuloMes}"))`
 }
 
 /**
