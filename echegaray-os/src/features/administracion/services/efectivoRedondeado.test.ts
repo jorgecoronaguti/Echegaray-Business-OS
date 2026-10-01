@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   PASO_DEL_REDONDEO, accionDelRedondeo, efectivoMostrado, efectivoSugerido, saldoRedondeado, sumaDelRedondeo,
-  sumaDelSaldoRedondeado, saldoConEfectivoRedondeado, sumaDelSaldoConEfectivoRedondeado,
+  sumaDelSaldoRedondeado,
 } from './efectivoRedondeado.ts'
 
 test('el sugerido es el efectivo al $1.000 más cercano, sin centavos', () => {
@@ -113,34 +113,4 @@ test('el saldo redondeado no se guarda: no hay columna en la base ni escritura',
   const fuente = readFileSync(new URL('./efectivoRedondeado.ts', import.meta.url), 'utf8')
   const bloque = fuente.slice(fuente.indexOf('export function saldoRedondeado('))
   assert.equal(/upsert|insert|update|supabase/i.test(bloque), false)
-})
-
-// ═══ EL SALDO REDONDEADO SALE DEL EFECTIVO REDONDEADO (dueño, 01/10/2026) ═══
-// «está mal el redondeo de liq de hs porque dice en efectivo redondeado una cosa y después muestra otra».
-
-test('el saldo redondeado es banco exacto + efectivo redondeado, no el redondeo del saldo total', () => {
-  // Castillo, 2ª de septiembre: saldo 534.343,38 = banco 236.619,38 + efectivo 297.724. «Efect. red.» 298.000.
-  // La pantalla decía 534.000 (redondeo del total); lo que se le paga es 236.619,38 + 298.000.
-  assert.deepEqual(saldoConEfectivoRedondeado({ saldo: 534343.38, efectivo: 297724, efectivoRedondeado: null }),
-    { valor: 534619.38, diferencia: 276 })
-  // Manda lo que el dueño guardó en «Efect. red.», no el sugerido.
-  assert.equal(saldoConEfectivoRedondeado({ saldo: 534343.38, efectivo: 297724, efectivoRedondeado: 300000 }).valor, 536619.38)
-  // Todo por banco: no hay billetes que redondear, el saldo queda exacto.
-  assert.deepEqual(saldoConEfectivoRedondeado({ saldo: 236619.38, efectivo: 0, efectivoRedondeado: null }), { valor: 236619.38, diferencia: 0 })
-})
-
-test('sin reparto por canal (mensual sin recibo) redondea el saldo entero, como el 16/09', () => {
-  assert.equal(saldoConEfectivoRedondeado({ saldo: 2500000, efectivo: null, efectivoRedondeado: null }).valor, 2500000)
-  assert.equal(saldoConEfectivoRedondeado({ saldo: 325808, efectivo: null, efectivoRedondeado: null }).valor, 326000)
-  assert.equal(saldoConEfectivoRedondeado({ saldo: null, efectivo: 1000, efectivoRedondeado: null }).valor, null)
-  assert.equal(saldoConEfectivoRedondeado({ saldo: -8000, efectivo: 0, efectivoRedondeado: null }).valor, null)
-})
-
-test('el pie cierra: suma de saldos redondeados = saldo de banco + suma del efectivo redondeado', () => {
-  const filas = [
-    { saldo: 534343.38, efectivo: 297724, efectivoRedondeado: null },   // banco 236.619,38 · billetes 298.000
-    { saldo: 432801.32, efectivo: 143257.52, efectivoRedondeado: null }, // banco 289.543,80 · billetes 143.000
-  ]
-  const banco = 236619.38 + 289543.8
-  assert.equal(sumaDelSaldoConEfectivoRedondeado(filas), Math.round((banco + sumaDelRedondeo(filas.map((f) => ({ efectivoRedondeado: f.efectivoRedondeado, enEfectivo: f.efectivo })))) * 100) / 100)
 })

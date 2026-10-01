@@ -102,12 +102,10 @@ test('SALDO RED. VA AL LADO DE SALDO, SE DERIVA DE ÉL, NO SE EDITA NI SE GUARDA
     assert.match(plata, /clave: 'saldoRedondeado', rotulo: 'Saldo red\.'/)
     assert.ok(!/clave: 'saldoRedondeado', rotulo: '[^']*✎/.test(plata), 'MUTACIÓN: no es editable')
   }
-  // SALE DEL SALDO Y DEL «EFECT. RED.» DE LA MISMA FILA (dueño, 01/10/2026: «dice en efectivo redondeado una cosa y
-  // después muestra otra»): banco exacto + billetes redondeados. Antes redondeaba el saldo total por su cuenta.
+  // SALE DEL SALDO TOTAL (de la línea o del pago del mensual), no de `enEfectivo` ni del redondeo del dueño.
   const celda = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldoRedondeado('), CELDAS.indexOf('export function CeldaPagadoTotal('))
-  assert.match(celda, /const p = pago \?\? fila\.linea\.pago/)
-  assert.match(celda, /saldoConEfectivoRedondeado\(\{ saldo, efectivo: p\.aPagarEfectivo, efectivoRedondeado: fila\.linea\.efectivoRedondeado \}\)/,
-    'MUTACIÓN: el saldo redondeado dejó de salir del efectivo redondeado de la fila')
+  assert.match(celda, /\(pago \?\? fila\.linea\.pago\)\.saldoTotal/)
+  assert.ok(!/efectivoRedondeado|enEfectivo/.test(celda), 'MUTACIÓN: se mezcló con la columna que edita el dueño')
   assert.ok(!/Escribible|onBlur|upsert/.test(celda), 'MUTACIÓN: se volvió escribible')
   assert.match(celda, /Saldo exacto \$\{pesos\(saldo\)\}/)
   // EL TOTAL: suma de redondeados uno por uno, no el redondeo de la suma (`liquidacionPorTipo.ts`).
