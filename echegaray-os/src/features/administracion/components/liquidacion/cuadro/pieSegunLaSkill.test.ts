@@ -47,9 +47,25 @@ test('las filas de cifras no llevan notas pegadas: los ajustes del saldo van apa
     assert.doesNotMatch(detalle, new RegExp(nota), `${nota} volvió a colgar dentro de las filas Banco/Efectivo/Total`)
   }
   const ajustes = cuerpo(PIE, 'function AjustesDelSaldo')
-  for (const nota of ['pie-descuento-', 'pie-sobrepasado-', 'pie-saldo-redondeado']) assert.match(ajustes, new RegExp(nota))
+  for (const nota of ['pie-descuento-', 'pie-sobrepasado-']) assert.match(ajustes, new RegExp(nota))
   // El importe del ajuste cae en la cuarta columna (Saldo): el texto ocupa las tres primeras de la misma grilla.
   assert.match(cuerpo(PIE, 'const Ajuste '), /col-span-3/)
+})
+
+// Dueño, 01/10/2026, con la captura de «Ajustes del saldo / Saldo redondeado $7.877.000»: «esas palabras y números
+// tirados en el medio de la pantalla de liq de hs no recibió skill de ux ui, arreglar». El saldo redondeado no es
+// un ajuste: es el saldo con el efectivo en billetes. Colgado bajo un título propio, en otro cuerpo de letra y
+// tenue, quedaba suelto debajo del cuadro. Es un renglón más del cuadro, con la letra y la raya de los demás.
+test('«Saldo redondeado» es un renglón del cuadro, no un ajuste suelto bajo un título propio', () => {
+  assert.doesNotMatch(cuerpo(PIE, 'function AjustesDelSaldo'), /pie-saldo-redondeado|Saldo redondeado/)
+  const renglon = cuerpo(PIE, 'function SaldoRedondeado')
+  assert.match(renglon, /<Celda valor=\{t\.saldoRedondeado\} testid="pie-saldo-redondeado"/, 'la cifra es una celda como las de Banco, Efectivo y Total')
+  assert.match(renglon, /\$\{GRILLA\} border-t border-line py-2/, 'la misma grilla, raya y alto que los renglones del cuadro')
+  assert.match(renglon, /col-span-3/, 'el rótulo ocupa hasta la columna Saldo: la cifra cae debajo de los saldos')
+  assert.doesNotMatch(renglon, /text-\[11/, 'ni letra más chica que la del cuadro')
+  // Sin ajustes de verdad no hay título «Ajustes del saldo»: un título sin líneas era la mitad de lo «tirado».
+  assert.match(cuerpo(PIE, 'function AjustesDelSaldo'), /if \(lineas\.length === 0\) return null/)
+  assert.match(cuerpo(PIE, 'function DetalleDePlata'), /<AjustesDelSaldo c=\{c\} \/>\s*<SaldoRedondeado t=\{t\} \/>/)
 })
 
 test('el resumen va debajo del título y la cantidad de personas es metadato, no parte del título', () => {
