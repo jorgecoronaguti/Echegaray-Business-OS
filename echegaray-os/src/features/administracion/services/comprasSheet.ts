@@ -432,22 +432,63 @@ export function recorteDeLista<T extends { fila: number }>(
  * acá: se hace una sola vez, en el sync, contra el espejo recién escrito
  * (`orquestador/lib/comprobantes/reconciliar-adjuntos.mjs`). Dos definiciones de «este papel es de
  * esta compra» serían dos verdades, y la pantalla no es el lugar donde se decide una identidad.
+ *
+ * ═══ LA FILA SIN NÚMERO DE COMPROBANTE (dueño, 01/10/2026) ═══
+ *
+ * *«tenés que cargar la foto del comprobante que se subió junto con la compra»*. Los recibos de los
+ * subcontratistas son un talonario manuscrito SIN número: la fila no tiene clave (155 de 973 al
+ * 01/10) y por lo tanto nunca podía mostrar su papel, aunque estuviera guardado.
+ *
+ * Para ESAS filas —y sólo para ésas— el papel se reconoce por la fila que alguien DECLARÓ, la misma
+ * regla que ya usa el comprobante de pago (`20260916T1800`, «cuando no lo tiene, lo único que hay es
+ * `fila_compras`»). No es el atajo del 10/09: aquél colgaba por renglón un papel que tenía OTRA
+ * clave, o uno que nadie había asignado. Acá entra sólo el papel SIN clave cuyo vínculo es un hecho
+ * (`papelDeclaradoEnSuFila`). Una fila CON clave sigue cruzando sólo por clave.
+ *
+ * El límite es el declarado en aquella migración: `fila_compras` es una posición. Vale mientras en
+ * Compras no se inserten ni se borren filas (regla vigente: la fila se vacía, no se elimina).
  */
 export function papelesDeCadaFila<
   F extends { fila: number; clave: string | null },
-  A extends { compra_clave: string | null },
+  A extends PapelParaColgar,
 >(filas: F[], adjuntos: A[]): (F & { adjuntos: A[]; tiene_adjunto: boolean })[] {
   const porClave = new Map<string, A[]>()
+  const porFila = new Map<number, A[]>()
   for (const a of adjuntos) {
-    if (!a.compra_clave) continue
-    const l = porClave.get(a.compra_clave) ?? []
-    l.push(a)
-    porClave.set(a.compra_clave, l)
+    if (a.compra_clave) {
+      const l = porClave.get(a.compra_clave) ?? []
+      l.push(a)
+      porClave.set(a.compra_clave, l)
+    } else if (papelDeclaradoEnSuFila(a)) {
+      const l = porFila.get(a.fila_compras as number) ?? []
+      l.push(a)
+      porFila.set(a.fila_compras as number, l)
+    }
   }
   return filas.map((c) => {
-    const suyos = (c.clave ? porClave.get(c.clave) : null) ?? []
+    const suyos = (c.clave ? porClave.get(c.clave) : porFila.get(c.fila)) ?? []
     return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
   })
+}
+
+/** Lo que `papelesDeCadaFila` necesita de un adjunto. Los tres últimos son opcionales: sin ellos, sólo cruza por clave. */
+export interface PapelParaColgar {
+  compra_clave: string | null
+  fila_compras?: number | null
+  vinculado_por?: string | null
+  tipo?: string | null
+}
+
+/**
+ * ¿Este papel SIN clave está declarado en una fila? Puro.
+ *
+ * Declarado = lo cargó el cargador en esa fila (`registro`), lo asignó una persona (`match_manual`) o es
+ * un comprobante de pago (nace con su fila por la RPC). `sin_vincular` y `match_numero` no: su
+ * `fila_compras`, si la tienen, es una pista, no un hecho.
+ */
+export function papelDeclaradoEnSuFila(a: PapelParaColgar): boolean {
+  if (a.compra_clave || !Number.isInteger(a.fila_compras)) return false
+  return a.tipo === 'pago' || a.vinculado_por === 'registro' || a.vinculado_por === 'match_manual'
 }
 
 /**
@@ -467,11 +508,15 @@ export function papelesDeCadaFila<
  * El orden —lo último subido arriba— lo fijaba el `order('subido_at', desc)` de esa consulta y ahora
  * lo fija esta función: es la MISMA regla, escrita donde se puede probar sin base.
  */
-export function papelesSinFila<A extends { compra_clave: string | null; subido_at?: string | null }>(
-  adjuntos: A[],
+export function papelesSinFila<A extends PapelParaColgar & { subido_at?: string | null }>(
+  adjuntos: A[], colgados?: ReadonlySet<A>,
 ): A[] {
   return adjuntos
-    .filter((a) => !a.compra_clave)
+    // EL COMPROBANTE DE PAGO NUNCA ESTÁ SUELTO: nace con su fila y el panel de la compra lo muestra por
+    // ella. El papel declarado en una fila sin número tampoco, SALVO que esa fila ya no lo reciba (le
+    // escribieron el número, o no está): ahí vuelve a esta lista para que alguien lo cuelgue de nuevo,
+    // en vez de quedar guardado sin que ninguna pantalla lo muestre.
+    .filter((a) => !a.compra_clave && a.tipo !== 'pago' && !(papelDeclaradoEnSuFila(a) && (!colgados || colgados.has(a))))
     // `subido_at` nulo va al final: un papel sin fecha de subida no puede encabezar «lo último que
     // entró». `localeCompare` sobre el ISO de Postgres ordena bien porque es lexicográfico.
     .sort((x, y) => (y.subido_at ?? '').localeCompare(x.subido_at ?? ''))

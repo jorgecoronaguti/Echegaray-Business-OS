@@ -182,6 +182,10 @@ export async function buscarAdjuntosSueltos(texto: string): Promise<Resultado<Ad
     .from('compra_adjunto')
     .select('id, nombre, media_type, bytes, subido_at')
     .is('compra_clave', null)
+    // SUELTO = SIN VINCULAR. Un comprobante de pago, o el papel que el cargador dejó en una fila sin
+    // número, tampoco tienen clave y ya son de una compra (`papelDeclaradoEnSuFila`): ofrecerlos acá
+    // sería invitar a sacárselos.
+    .eq('vinculado_por', 'sin_vincular')
     .order('subido_at', { ascending: false, nullsFirst: false })
     .limit(12)
   // Sin texto se devuelven los últimos: son 53 en total y los recién llegados son los que están

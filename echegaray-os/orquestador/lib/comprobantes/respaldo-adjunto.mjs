@@ -22,6 +22,7 @@
 // `origen_file_id` es único: correr dos veces sobre el mismo archivo no duplica nada.
 
 import { subirAStorage } from '../storage-supabase.mjs'
+import { claveComprobante } from './lectura.mjs'
 
 export const BUCKET = 'comprobantes'
 /** El techo del bucket (`20260825T1000`). Un archivo más grande no entra: se declara, no se trunca. */
@@ -63,18 +64,29 @@ export function tipoDe(mediaType, nombre) {
  * entrado con varias fotos (`copias`: el dueño mandó la misma factura dos veces): todas cuelgan de la
  * misma fila. Puro, para poder probarlo sin Mattermost.
  *
- * @returns {Array<{file_id:string, nombre:string|null, post_id:string|null, clave:string|null, fila:number|null}>}
+ * ═══ LA CLAVE DEL PAPEL ES LA DEL COMPROBANTE, NO LA DEL ÍTEM (01/10/2026) ═══
+ *
+ * Un gasto cargado a mano desde Efectivo viaja con la clave `m:<rendición>` (y la libreta, con `l:…`):
+ * sirve para no cargarlo dos veces, pero Compras no la conoce. El papel se anotaba con ESA clave y no
+ * aparecía en ninguna pantalla: ni en su fila, ni entre los sueltos (medido: fila 1052, Aislantes
+ * Vicente 0001-00000906, con la foto guardada y «sin comprobante» en la app). Cuando la clave del ítem
+ * no es de comprobante se calcula la que va a tener la fila —`claveComprobante`, la misma que usa el
+ * sync— y, si el papel no trae número, queda sin clave y `en_su_fila` dice que el cargador lo escribió
+ * en ese renglón (la app lo muestra por ahí: `papelDeclaradoEnSuFila`).
+ *
+ * @returns {Array<{file_id:string, nombre:string|null, post_id:string|null, clave:string|null, fila:number|null, en_su_fila:boolean}>}
  */
 export function archivosDelFajo({ fajo = {}, items = [], filas = [] } = {}) {
   const postId = (fajo.post_ids ?? [])[0] ?? null
   const salida = []
   items.forEach((it, k) => {
     const f = filas[k] ?? {}
-    const clave = f.clave ?? it?.clave ?? null
+    const dada = f.clave ?? it?.clave ?? null
+    const clave = !dada || /^[cp]:/.test(dada) ? dada : (claveComprobante(it?.comprobante ?? {})?.clave ?? null)
     const fila = Number.isInteger(f.fila) ? f.fila : null
     const fuentes = [it?.origen, ...(it?.copias ?? [])].filter((o) => o?.fileId)
     for (const o of fuentes) {
-      salida.push({ file_id: String(o.fileId), nombre: o.nombre ?? null, post_id: o.postId ?? postId, clave, fila })
+      salida.push({ file_id: String(o.fileId), nombre: o.nombre ?? null, post_id: o.postId ?? postId, clave, fila, en_su_fila: fila != null })
     }
   })
   return salida
@@ -139,7 +151,9 @@ async function anotarEntradaWeb(query, a, vinculo = {}) {
 
 /** La fila de `compra_adjunto`. Un solo INSERT para los dos orígenes: el vínculo se repone, nunca se pisa. */
 async function anotar(query, x, vinculo = {}) {
-  const conClave = Boolean(x.clave)
+  // CARGADO = tiene la clave de su comprobante, o el cargador lo escribió en una fila (un recibo sin
+  // número no tiene clave y su vínculo es igual de cierto: es un hecho del fajo, no un cálculo).
+  const conClave = Boolean(x.clave) || (x.en_su_fila === true && Number.isInteger(x.fila))
   await query(
     `insert into public.compra_adjunto
        (compra_clave, fila_compras, storage_path, nombre, media_type, bytes, origen,
@@ -155,11 +169,14 @@ async function anotar(query, x, vinculo = {}) {
        -- vínculo que alguien (o la conciliación) ya resolvió.
        compra_clave   = coalesce(public.compra_adjunto.compra_clave, excluded.compra_clave),
        fila_compras   = coalesce(public.compra_adjunto.fila_compras, excluded.fila_compras),
-       vinculado_por  = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+       vinculado_por  = case when public.compra_adjunto.compra_clave is null and (excluded.compra_clave is not null
+                                  or (public.compra_adjunto.vinculado_por = 'sin_vincular' and excluded.vinculado_por = 'registro'))
                              then excluded.vinculado_por else public.compra_adjunto.vinculado_por end,
-       confianza      = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+       confianza      = case when public.compra_adjunto.compra_clave is null and (excluded.compra_clave is not null
+                                  or (public.compra_adjunto.vinculado_por = 'sin_vincular' and excluded.vinculado_por = 'registro'))
                              then excluded.confianza else public.compra_adjunto.confianza end,
-       vinculado_at   = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+       vinculado_at   = case when public.compra_adjunto.compra_clave is null and (excluded.compra_clave is not null
+                                  or (public.compra_adjunto.vinculado_por = 'sin_vincular' and excluded.vinculado_por = 'registro'))
                              then excluded.vinculado_at else public.compra_adjunto.vinculado_at end`,
     [x.clave ?? null, x.fila ?? null, x.path, x.nombre, x.mediaType, x.bytes,
       x.post_id ?? null, x.file_id,

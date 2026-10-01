@@ -216,3 +216,41 @@ test('la repesca rescata los de la app sin Mattermost y nunca anota «repesca» 
   const permitidos = ['registro', 'match_numero', 'match_manual', 'sin_vincular']
   for (const i of inserts) assert.ok(permitidos.includes(i.params[8]), `vinculado_por=${i.params[8]}`)
 })
+
+// ═══ EL PAPEL DE UN GASTO CARGADO A MANO (01/10/2026) ═══
+//
+// La clave `m:<rendición>` es del ítem, no del comprobante: Compras no la conoce. Con ella el papel de
+// la fila 1052 (Aislantes Vicente 0001-00000906) quedó guardado y sin aparecer en ninguna pantalla.
+test('archivosDelFajo: la clave `m:` del gasto manual se cambia por la del comprobante que se escribió', () => {
+  const a = archivosDelFajo({
+    fajo,
+    items: [{ clave: 'm:b414918b', comprobante: { proveedor: 'Aislantes Vicente', numero: '0001-00000906' }, origen: { fileId: 'W' } }],
+    filas: [{ fila: 1052 }],
+  })
+  assert.equal(a[0].clave, 'p:aislantes vicente|0001-00000906')
+  assert.equal(a[0].fila, 1052)
+})
+
+test('archivosDelFajo: un recibo SIN número queda sin clave y declarado en la fila donde se cargó', () => {
+  const a = archivosDelFajo({
+    fajo,
+    items: [{ clave: 'm:0c1d', comprobante: { proveedor: 'Pedro Tello', total: 540000 }, origen: { fileId: 'T' } }],
+    filas: [{ fila: 1048 }],
+  })
+  assert.deepEqual([a[0].clave, a[0].fila, a[0].en_su_fila], [null, 1048, true])
+})
+
+test('respaldarArchivo: el recibo sin número cargado en una fila se anota como «registro», no como suelto', async () => {
+  const { dep, inserts } = dobles()
+  await respaldarArchivo(dep, { file_id: 'T', nombre: 't.jpg', post_id: 'p', clave: null, fila: 1048, en_su_fila: true })
+  assert.equal(inserts[0].params[0], null)
+  assert.equal(inserts[0].params[1], 1048)
+  assert.equal(inserts[0].params[8], 'registro')
+  assert.notEqual(inserts[0].params[10], null)
+})
+
+test('respaldarArchivo: una fila que sólo es PISTA (sin `en_su_fila`) sigue quedando «sin_vincular»', async () => {
+  const { dep, inserts } = dobles()
+  await respaldarArchivo(dep, { file_id: 'H', nombre: 'h.jpg', post_id: 'p', clave: null, fila: 700 })
+  assert.equal(inserts[0].params[8], 'sin_vincular')
+})

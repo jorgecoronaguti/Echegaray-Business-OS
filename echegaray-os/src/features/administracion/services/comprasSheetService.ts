@@ -104,6 +104,8 @@ export interface Adjunto {
   vinculado_por: string
   confianza: number | null
   subido_at: string | null
+  /** `factura` = lo que emitió el proveedor · `pago` = el recibo o la transferencia que prueba el pago. */
+  tipo: string
 }
 
 /** Una fila de la pestaña con su papel al lado. `adjuntos` vacío = no hay comprobante guardado. */
@@ -125,7 +127,7 @@ const COLUMNAS = [
 /** Exportada: la ficha del proveedor lee los papeles con ESTAS columnas, no con una lista propia. */
 export const COLUMNAS_ADJUNTO = [
   'id', 'compra_clave', 'fila_compras', 'storage_path', 'nombre', 'media_type', 'bytes',
-  'origen', 'vinculado_por', 'confianza', 'subido_at',
+  'origen', 'vinculado_por', 'confianza', 'subido_at', 'tipo',
 ].join(', ')
 
 /**
@@ -191,7 +193,7 @@ export async function getComprasSheet(supabase: SupabaseClient): Promise<Service
       // adjuntos falló, `papeles` es `[]` y acá no hay ninguno: lo MISMO que decía el viaje aparte
       // cuando fallaba. Una lista vacía porque no se pudo leer se ve igual que «no hay sueltos», y
       // esa ambigüedad ya existía — lo que no se puede es inventar filas.
-      sueltos: papelesSinFila(papeles),
+      sueltos: papelesSinFila(papeles, new Set(leidas.flatMap((f) => f.adjuntos))),
     },
     error: null,
   }

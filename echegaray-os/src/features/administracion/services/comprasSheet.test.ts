@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, clavesRecienCargadas, DIAS_DE_CARGA_RECIENTE, fechaDeCarga, papelesDeCadaFila,
+  claseDeAdjunto, clavesRecienCargadas, DIAS_DE_CARGA_RECIENTE, fechaDeCarga, papelDeclaradoEnSuFila, papelesDeCadaFila, papelesSinFila,
   conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
   pasa, pastillaDe, porOrdenDeCarga, RECIEN_CARGADAS, recorteDeLista,
   TOPE_EN_PANTALLA, totalesDe,
@@ -448,4 +448,62 @@ test('papelesDeCadaFila: una fila sin clave no se lleva el papel de nadie', () =
     [{ ...papel('c:30708390557|0003-00000967', 'x.jpg'), fila_compras: 700 }],
   )
   assert.equal(r[0].tiene_adjunto, false)
+})
+
+// ═══ LA FILA SIN NÚMERO DE COMPROBANTE (dueño, 01/10/2026) ═══
+//
+// Los recibos manuscritos de los subcontratistas no traen número: la fila no tiene clave. El papel se
+// reconoce por la fila DECLARADA (comprobante de pago, lo que escribió el cargador, lo que asignó una
+// persona) y nunca por una pista.
+const sinNumero = (fila: number) => ({ fila, clave: null })
+const declarado = (fila: number, extra: { tipo?: string; vinculado_por?: string }, nombre = 'recibo.jpg') =>
+  ({ compra_clave: null, fila_compras: fila, tipo: 'factura', vinculado_por: 'sin_vincular', nombre, ...extra })
+
+test('fila sin número: muestra el comprobante de pago subido a ESA fila', () => {
+  const r = papelesDeCadaFila([sinNumero(882), sinNumero(883)], [declarado(882, { tipo: 'pago', vinculado_por: 'match_manual' })])
+  assert.equal(r[0].tiene_adjunto, true)
+  assert.equal(r[0].adjuntos[0].nombre, 'recibo.jpg')
+  assert.equal(r[1].tiene_adjunto, false, 'la fila de al lado no se lo lleva')
+})
+
+test('fila sin número: muestra lo que el cargador escribió en ella y lo que asignó una persona', () => {
+  const r = papelesDeCadaFila([sinNumero(1048)], [
+    declarado(1048, { vinculado_por: 'registro' }, 'a.jpg'), declarado(1048, { vinculado_por: 'match_manual' }, 'b.jpg'),
+  ])
+  assert.deepEqual(r[0].adjuntos.map((a) => a.nombre), ['a.jpg', 'b.jpg'])
+})
+
+test('fila sin número: una PISTA de renglón (sin vincular, o vinculado por cálculo) no cuelga nada', () => {
+  const r = papelesDeCadaFila([sinNumero(700)], [
+    declarado(700, { vinculado_por: 'sin_vincular' }), declarado(700, { vinculado_por: 'match_numero' }),
+  ])
+  assert.equal(r[0].tiene_adjunto, false)
+})
+
+test('fila CON número: sigue cruzando sólo por clave, aunque haya un papel declarado en su renglón', () => {
+  const r = papelesDeCadaFila([{ fila: 932, clave: 'c:30708390557|0003-00000967' }], [declarado(932, { vinculado_por: 'registro' })])
+  assert.equal(r[0].tiene_adjunto, false)
+})
+
+test('papelDeclaradoEnSuFila: sin fila no hay declaración, y con clave tampoco', () => {
+  assert.equal(papelDeclaradoEnSuFila({ compra_clave: null, fila_compras: null, tipo: 'pago' }), false)
+  assert.equal(papelDeclaradoEnSuFila({ compra_clave: 'p:x|1', fila_compras: 9, vinculado_por: 'registro' }), false)
+  assert.equal(papelDeclaradoEnSuFila({ compra_clave: null, fila_compras: 9, vinculado_por: 'registro' }), true)
+})
+
+test('sueltos: el comprobante de pago y el papel colgado de su fila sin número NO son sueltos', () => {
+  const pago = declarado(882, { tipo: 'pago', vinculado_por: 'match_manual' }, 'pago.jpg')
+  const delCargador = declarado(1048, { vinculado_por: 'registro' }, 'cargador.jpg')
+  const suelto = { compra_clave: null, fila_compras: null, tipo: 'factura', vinculado_por: 'sin_vincular', nombre: 'suelto.jpg' }
+  const filas = papelesDeCadaFila([sinNumero(882), sinNumero(1048)], [pago, delCargador, suelto])
+  const sueltos = papelesSinFila([pago, delCargador, suelto], new Set(filas.flatMap((f) => f.adjuntos)))
+  assert.deepEqual(sueltos.map((a) => a.nombre), ['suelto.jpg'])
+})
+
+test('sueltos: el papel declarado en una fila que ya no lo recibe VUELVE a la lista (no queda invisible)', () => {
+  // A la fila 1048 le escribieron el número: ahora cruza por clave y el papel sin clave quedó afuera.
+  const delCargador = declarado(1048, { vinculado_por: 'registro' }, 'cargador.jpg')
+  const filas = papelesDeCadaFila([{ fila: 1048, clave: 'p:pedro tello|0001-00000012' }], [delCargador])
+  assert.equal(filas[0].tiene_adjunto, false)
+  assert.deepEqual(papelesSinFila([delCargador], new Set(filas.flatMap((f) => f.adjuntos))).map((a) => a.nombre), ['cargador.jpg'])
 })
