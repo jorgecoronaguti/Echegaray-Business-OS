@@ -6,7 +6,8 @@
 // mismo concepto en dos caras del mismo sistema, sin un solo error a la vista.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ubicarBloque, filasBloque, verificarBloque, ANCLA, FILA_DATOS, ENCABEZADOS, LECTORES_CON_FILA_FIJA } from './parametros-inflacion.mjs'
+import { MARCA_ALERTA } from '../lib/glifos.mjs'
+import { ubicarBloque, filasBloque, verificarBloque, publicarBloque, fechaISO, ANCLA, FILA_DATOS, ENCABEZADOS, LECTORES_CON_FILA_FIJA } from './parametros-inflacion.mjs'
 
 /** Parámetros tal como está hoy: el título en la 72, los encabezados en la 73, los datos en la 74. */
 const parametros = () => {
@@ -129,6 +130,15 @@ test('si una de las 5 filas escritas vuelve distinta, FALLA', async () => {
   assert.match(r.diferencias[0], /fila 76/)
 })
 
+test('la fecha se compara, no el texto: «1/10/2026», «01/10/2026» y el serial 46296 son la misma', async () => {
+  for (const f0 of ['1/10/2026', '01/10/2026', 46296, '46296']) {
+    const r = await verificar(grilla([f0, ...FECHAS.slice(1)]))
+    assert.equal(r.ok, true, `con ${f0}`)
+  }
+  assert.equal(fechaISO(46296), '2026-10-01')
+  assert.equal(fechaISO('basura'), null)
+})
+
 test('sin cola no avisa nada', async () => {
   assert.deepEqual((await verificar(grilla(FECHAS))).cola, [])
 })
@@ -137,4 +147,36 @@ test('un bloque recién creado no tiene cola: largoPrevio 0 y nada que limpiar',
   const f = parametros()
   f[73] = []
   assert.equal(ubicarBloque(f).largoPrevio, 0)
+})
+
+// ═══ EL AVISO TIENE QUE SALIR POR DONDE LEE EL PIPELINE (02/10/2026) ═══
+// flujo-caja-rehacer-todo arma las alertas del journal con stdout.filter(MARCA_ALERTA); stderr se
+// descarta cuando el paso sale con 0. Un console.warn dejaba la cola A79 invisible.
+async function correrPublicar(t, g) {
+  const out = []; const err = []
+  t.mock.method(console, 'log', (...a) => out.push(a.join(' ')))
+  t.mock.method(console, 'warn', (...a) => err.push(a.join(' ')))
+  const antes = process.exitCode
+  await publicarBloque(hojaCon(g), {
+    id: 'x', tab: 'P', ubic: { filaDatos: 74 }, rows: CINCO, bloque: [], sobran: 1, escribir: async () => ({}),
+  })
+  const codigo = process.exitCode
+  process.exitCode = antes
+  return { out, err, codigo }
+}
+
+test('la cola sale por STDOUT con una marca que el pipeline reconoce, y el paso no falla', async (t) => {
+  const { out, err, codigo } = await correrPublicar(t, grilla(FECHAS, '1/2/2027'))
+  const avisos = out.filter((l) => MARCA_ALERTA.test(l))
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /A79.*1\/2\/2027/)
+  assert.deepEqual(err, [], 'nada del aviso puede quedar sólo en stderr')
+  assert.notEqual(codigo, 1)
+})
+
+test('una fila escrita distinta hace fallar el paso y también sale por STDOUT', async (t) => {
+  const malas = [...FECHAS]; malas[0] = '1/9/2026'
+  const { out, codigo } = await correrPublicar(t, grilla(malas))
+  assert.ok(out.some((l) => MARCA_ALERTA.test(l) && /fila 74/.test(l)))
+  assert.equal(codigo, 1)
 })

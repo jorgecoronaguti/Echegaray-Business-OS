@@ -134,19 +134,36 @@ export function filasBloque(indices = [], fila0 = FILA_DATOS) {
 }
 
 /**
+ * LA FECHA SE COMPARA, NO SU TEXTO. Con el valor formateado la celda puede venir «1/10/2026»,
+ * «01/10/2026» o el serial 46296 según el formato de presentación; en el archivo real (02/10) el
+ * formateado sale sin ceros y el sin formato como serial. Todo se lleva a AAAA-MM-DD.
+ */
+export function fechaISO(v) {
+  if (typeof v === 'number' || (typeof v === 'string' && /^\d{5}(\.\d+)?$/.test(v.trim()))) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(v)) * 86400000).toISOString().slice(0, 10)
+  }
+  const m = String(v ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null
+}
+
+/**
  * VERIFICAR MIRANDO LA PESTAÑA, no el request que se mandó. Compara EXACTAMENTE las N filas que esta
  * corrida escribió (mes por mes), no un rango más largo: `no-borrar` conserva la fila vieja cuando el
  * bloque se achica (01/10: A79 de septiembre), y releer ese rango contaba 6 contra 5 y fallaba todas
  * las corridas con los datos bien escritos. La cola es un hallazgo a avisar con su celda y contenido,
  * no un fallo del paso: no es de esta corrida y no se vacía.
+ *
+ * SIN COLA CUANDO `sobran = 0`: el bloque previo termina en su primera fila en blanco (`largoPrevio`) y
+ * lo que hay más abajo son parámetros de otras personas (ver el test de `ubicarBloque`). Sin ese largo
+ * no hay forma de distinguir una cola de un parámetro ajeno, y avisarlo sería gritar sobre lo que no es nuestro.
  */
 export async function verificarBloque(google, { id, tab, filaDatos, indices, sobran = 0 }) {
   const n = indices.length
-  const v = (await google.readSheetValues(id, `'${tab}'!A${filaDatos}:D${filaDatos + n - 1}`)) ?? []
+  const v = (await google.readSheetValues(id, `'${tab}'!A${filaDatos}:D${filaDatos + n - 1}`, { render: 'UNFORMATTED_VALUE' })) ?? []
   const diferencias = []
   indices.forEach((x, i) => {
-    const hay = String(v[i]?.[0] ?? '').trim()
-    if (hay !== ar(x.periodo)) diferencias.push(`fila ${filaDatos + i}: esperaba ${ar(x.periodo)} y hay «${hay}»`)
+    const hay = v[i]?.[0]
+    if (fechaISO(hay) !== `${x.periodo}-01`) diferencias.push(`fila ${filaDatos + i}: esperaba ${x.periodo}-01 y hay «${String(hay ?? '').trim()}»`)
   })
   const cola = []
   if (sobran > 0) {
@@ -157,6 +174,32 @@ export async function verificarBloque(google, { id, tab, filaDatos, indices, sob
     }))
   }
   return { ok: diferencias.length === 0, escritas: n - diferencias.length, diferencias, cola }
+}
+
+/**
+ * Escribe, verifica y AVISA. El aviso de la cola sale por STDOUT con la marca de alerta: el pipeline sólo
+ * lee stdout (flujo-caja-rehacer-todo.mjs) y descarta stderr cuando el paso sale con 0, así que un
+ * `console.warn` dejaba la cola invisible para quien mira el pipeline.
+ */
+export async function publicarBloque(google, { id, tab, ubic, rows, bloque, sobran, escribir = null }) {
+  // `escribir` sólo lo inyectan los tests; la llamada literal queda a la vista del test de cola de los generadores.
+  const grid = [ENCABEZADOS, ...bloque]
+  const opc = { fila0: ubic.filaDatos - 1, anchoHoja: 4, pestana: tab }
+  const r = escribir
+    ? await escribir(google, id, `'${tab}'`, grid, opc)
+    : await escribirPreservando(google, id, `'${tab}'`, grid, opc)
+  if (r?.bloqueada || r?.editadaPorHumano) {
+    console.log(`  🔒 "${tab}" está bajo tu control: no escribí. El bloque queda como lo dejaste.`)
+    return
+  }
+  const ver = await verificarBloque(google, { id, tab, filaDatos: ubic.filaDatos, indices: rows, sobran })
+  for (const c of ver.cola) {
+    console.log(`  ${ALERTA} quedó cola de una corrida anterior en ${tab}!${c.celda}: «${c.contenido}». No la vacío (el OS no vacía celdas); la saca una persona.`)
+  }
+  console.log(ver.ok
+    ? `✓ ${ver.escritas} fila(s) de índice en la pestaña, con su fecha de lectura a la vista`
+    : `${ALERTA} escribí ${rows.length} fila(s) de índice y la pestaña devuelve distinto: ${ver.diferencias.join('; ')}`)
+  if (!ver.ok) process.exitCode = 1
 }
 
 async function main() {
@@ -200,24 +243,7 @@ async function main() {
   for (let k = 0; k < sobran; k++) bloque.push(Array(4).fill(VACIO))
   if (DRY) return
 
-  // El encabezado también, para que el bloque se pueda reconocer aunque alguien lo haya editado.
-  const grid = [ENCABEZADOS, ...bloque]
-  const r = await escribirPreservando(google, ID, `'${TAB}'`, grid, {
-    fila0: ubic.filaDatos - 1, anchoHoja: 4, pestana: TAB,
-  })
-  if (r?.bloqueada || r?.editadaPorHumano) {
-    console.log(`  🔒 "${TAB}" está bajo tu control: no escribí. El bloque queda como lo dejaste.`)
-    return
-  }
-
-  const ver = await verificarBloque(google, { id: ID, tab: TAB, filaDatos: ubic.filaDatos, indices: rows, sobran })
-  for (const c of ver.cola) {
-    console.warn(`  ${ALERTA} quedó cola de una corrida anterior en ${TAB}!${c.celda}: «${c.contenido}». No la vacío (el OS no vacía celdas); la saca una persona.`)
-  }
-  console.log(ver.ok
-    ? `✓ ${ver.escritas} fila(s) de índice en la pestaña, con su fecha de lectura a la vista`
-    : `${ALERTA} escribí ${rows.length} fila(s) de índice y la pestaña devuelve distinto: ${ver.diferencias.join('; ')}`)
-  if (!ver.ok) process.exitCode = 1
+  await publicarBloque(google, { id: ID, tab: TAB, ubic, rows, bloque, sobran })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
