@@ -62,7 +62,9 @@ test('PAGADO EL 100 % POR UN SOLO LADO: los dos saldos en 0, nada en ámbar (due
 test('COBRÓ DE MÁS EN TOTAL: el excedente se publica en ámbar sobre el lado que más se pasó', () => {
   const p = pagoDeLaLinea({ ...AGUERO, pagadoEfectivo: 600000 })
   assert.equal(p.saldoTotal, -8171.72)
-  assert.equal(p.saldoEfectivo, 0); assert.equal(p.saldoBanco, 0)
+  // 02/10/2026: el banco absorbe 249.857,28 del exceso; lo que sobra queda a la vista en el lado que lo cobró.
+  assert.equal(p.saldoEfectivo, -8171.72); assert.equal(p.saldoBanco, 0)
+  assert.equal(p.aPagarEfectivo, 0); assert.equal(p.aPagarBanco, 0)
   assert.deepEqual(p.excedente, { lado: 'efectivo', importe: 8171.72 })
   assert.equal(p.absorbido, null)
 })

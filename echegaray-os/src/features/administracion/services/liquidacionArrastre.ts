@@ -166,6 +166,38 @@ export function sumaDelBanco(l: Pick<LineaConOverrides, 'arrastre' | 'porBanco'>
   return { neto, resta, resultado, operandos: `${sinSigno(neto)} + ${sinSigno(resta)}`, resultado_texto: `= ${pesos(resultado)}` }
 }
 
+/**
+ * EL IMPORTE DEL EFECTIVO QUE SE VE ES EL QUE SE PAGA (dueño, 02/10/2026, Agüero: «Importe $333.270 · Pagado $75.000 ·
+ * Saldo $203.689,52 … calcula mal y me hiciste equivocar»). La celda mostraba el negro del MODELO mientras el saldo, el
+ * total, el pie y el recibo usaban `pago.negro`, que ya trae el traslado: la resta del recibo Q1 que pasó al banco
+ * (333.270 − 54.580,48 = 278.689,52) o el neto entero con banco 0 escrito a mano (384.054 + 234.963,32 = 619.017,32).
+ * Importe − Pagado no daba el Saldo. Como la celda Banco, ésta suma adentro y da el resultado: los operandos se ven y el
+ * número principal es `pago.negro`. `null` cuando no hay traslado: la celda es el negro solo.
+ *
+ * Que la resta salga del efectivo NO es un error a corregir sumándola al total: en la Q1-09 esa plata se entregó en
+ * mano (Agüero: banco 200.000 contra recibo 254.580,48, efectivo 360.909,28 contra negro 311.052). Sumarla al total la
+ * pagaría dos veces.
+ */
+export function restaDelEfectivo(l: Pick<LineaConOverrides, 'pago' | 'sueldo'>, pesos: Pesos): {
+  modelo: number; ajuste: number; resultado: number
+  /** «333.270 − 54.580,48». */
+  operandos: string
+  /** «= $278.689,52». */
+  resultado_texto: string
+} | null {
+  const resultado = l.pago.negro
+  const modelo = l.sueldo?.negro
+  if (resultado == null || modelo == null) return null
+  const ajuste = r2(resultado - modelo)
+  if (Math.abs(ajuste) < 0.005) return null
+  const sinSigno = (n: number) => pesos(n).replace(/^\$\s?/, '')
+  return {
+    modelo, ajuste, resultado,
+    operandos: `${sinSigno(modelo)} ${ajuste < 0 ? '−' : '+'} ${sinSigno(Math.abs(ajuste))}`,
+    resultado_texto: `= ${pesos(resultado)}`,
+  }
+}
+
 /** La explicación en una línea, para el `title` de la marca. `null` sin nada que decir. */
 export function textoDelArrastre(l: Pick<LineaConOverrides, 'arrastre' | 'arrastradoA' | 'porBanco'>, pesos: Pesos): string | null {
   const a = l.arrastre

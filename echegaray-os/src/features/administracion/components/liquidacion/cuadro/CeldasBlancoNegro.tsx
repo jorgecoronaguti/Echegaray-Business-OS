@@ -25,7 +25,7 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
 import { saldoRedondeado } from '../../../services/efectivoRedondeado'
-import { arrastreAplicado, conNetoDelRecibo, sumaDelBanco, textoDelArrastre } from '../../../services/liquidacionArrastre'
+import { conNetoDelRecibo, restaDelEfectivo, sumaDelBanco, textoDelArrastre } from '../../../services/liquidacionArrastre'
 import { MarcaDeArrastre } from './MarcaDeArrastre'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
@@ -255,11 +255,35 @@ export function CeldaHorasNegro({ fila, edicion }: { fila: FilaDelEspejo; edicio
 export function CeldaImporteNegro({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
-  // EL IMPORTE NEGRO SE ESCRIBE (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»).
+  // CON TRASLADO (resta Q1 al banco, banco 0 a mano) EL IMPORTE QUE SE VE ES `pago.negro`: el mismo del saldo.
+  const resta = restaDelEfectivo(l, pesos)
+  const cuenta = resta && (
+    <div data-testid={`negro-resta-${fila.personaId}`} data-resultado={resta.resultado}
+      style={{ fontSize: '10.5px', lineHeight: '14px', color: V.apagado, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+      {resta.operandos}
+    </div>
+  )
+  // EL IMPORTE NEGRO SE ESCRIBE (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»). Lo que se escribe es
+  // el negro del modelo; con traslado, debajo va la cuenta y el resultado, que es el importe que se paga.
   if (seEscribe(fila, 'negro', edicion)) {
     return (
-      <div data-testid={`negro-${fila.personaId}`}>
+      <div data-testid={`negro-${fila.personaId}`} data-importe={l.pago.negro ?? undefined}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', overflow: 'hidden' }}>
         <Escribible campo="negro" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={104} claseCampo="w-24" />
+        {resta && (
+          <div style={{ fontSize: '10.5px', lineHeight: '14px', color: V.apagado, fontVariantNumeric: 'tabular-nums' }}>
+            {resta.ajuste < 0 ? '−' : '+'} {pesos(Math.abs(resta.ajuste)).replace(/^\$\s?/, '')} <strong style={{ color: V.tinta }}>{resta.resultado_texto}</strong>
+          </div>
+        )}
+      </div>
+    )
+  }
+  if (s && resta) {
+    return (
+      <div data-testid={`negro-${fila.personaId}`} data-importe={resta.resultado} title={textoDelArrastre(l, pesos) ?? undefined}
+        style={{ ...DERECHA, color: V.tinta }}>
+        {cuenta}
+        <div style={{ fontWeight: 600, lineHeight: '16px', fontVariantNumeric: 'tabular-nums' }}>{resta.resultado_texto}</div>
       </div>
     )
   }
@@ -307,7 +331,10 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
     )
   }
   const estimado = s?.estado === 'estimado' && l.origen.cobra === 'calculado'
-  const cuenta = s ? `neto ${pesos(l.porBanco - arrastreAplicado(l))} + negro ${pesos(s.negro)}` : null
+  // LA CUENTA CON LAS DOS CELDAS QUE SE VEN (banco con la resta, efectivo sin ella): con el neto solo y el negro del
+  // modelo, Agüero leía «234.963,32 + 333.270» al lado de un Banco de 289.543,80 (02/10/2026).
+  const cuenta = s && l.pago.banco != null && l.pago.negro != null
+    ? `banco ${pesos(l.pago.banco)} + efectivo ${pesos(l.pago.negro)}` : null
   return (
     <div data-testid={`total-${fila.personaId}`} title={[cuenta, jornales].filter(Boolean).join(' · ') || undefined}
       style={{ ...DERECHA, fontSize: '14px', fontWeight: 600, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>

@@ -253,7 +253,9 @@ test('UN PAGO ESCRITO A MANO LE GANA AL ADELANTO CALCULADO, Y SE MARCA', () => {
   assert.equal(r.manual.pagadoEfectivo, true)
   assert.equal(r.origen.pagadoEfectivo, 'manual')
   assert.equal(r.pago.saldoEfectivoBruto, -70_000)
-  assert.equal(r.pago.saldoEfectivo, 0, 'compensado (dueño 16/09)')
+  // Compensado (dueño 16/09) y lo que sobra en el lado que lo cobró (02/10): saldo banco + saldo efectivo = saldo total.
+  assert.equal(r.pago.saldoBanco, 0)
+  assert.equal(r.pago.saldoEfectivo, -60_000, 'compensado: el banco absorbió 10.000, quedan −60.000 en efectivo')
   assert.equal(r.pago.aPagarEfectivo, 0)
   assert.equal(r.pago.aPagarBanco, 0, 'el exceso del efectivo se come los 10.000 que faltaban por banco')
   assert.equal(r.pago.saldoTotal, -60_000, 'y el resto queda como cobrado de más, a la vista')

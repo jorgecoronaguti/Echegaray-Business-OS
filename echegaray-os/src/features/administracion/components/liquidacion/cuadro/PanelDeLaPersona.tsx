@@ -43,7 +43,7 @@ import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../..
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
 import { ReciboEnBlanco } from './ReciboEnBlanco'
-import { conNetoDelRecibo } from '../../../services/liquidacionArrastre'
+import { conNetoDelRecibo, restaDelEfectivo } from '../../../services/liquidacionArrastre'
 import { MarcaDeArrastre } from './MarcaDeArrastre'
 
 const MONO = "'IBM Plex Mono', monospace"
@@ -179,7 +179,7 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={s.horasNegro} unidad="horas" />
       </Renglon>
       <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
-      <Renglon rotulo="Importe">
+      <Renglon rotulo="Importe" nota={restaNota(fila)}>
         <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
 
@@ -216,6 +216,12 @@ function RenglonDelPresentismo({ fila, mensual = false }: { fila: FilaDelEspejo;
       <span data-testid={`panel-presentismo-${fila.personaId}`} data-estado={r.estado}><Leida valor={r.valor} /></span>
     </Renglon>
   )
+}
+
+/** Con traslado, el importe del efectivo que cuenta para el saldo, en la nota: el teléfono no tiene `title`. */
+function restaNota(fila: FilaDelEspejo): string | undefined {
+  const r = restaDelEfectivo(fila.linea, pesos)
+  return r ? `${r.operandos} ${r.resultado_texto} en efectivo` : undefined
 }
 
 /**

@@ -105,12 +105,14 @@ export function pagoDeLaLinea(e: EntradaDePago): PagoDeLaLinea {
   const completo = saldoBancoBruto != null && saldoEfectivoBruto != null
   // LA COMPENSACIÓN: el exceso de un lado baja el saldo del otro. Con los dos lados, lo que se muestra por lado
   // es lo que falta pagar por ahí HOY; sin uno de los dos (sin modelo), el bruto es lo único que se puede decir.
-  const saldoBanco = completo ? Math.max(0, r2(saldoBancoBruto + Math.min(0, saldoEfectivoBruto))) : saldoBancoBruto
-  const saldoEfectivo = completo ? Math.max(0, r2(saldoEfectivoBruto + Math.min(0, saldoBancoBruto))) : saldoEfectivoBruto
+  const lados = completo ? compensar(saldoBancoBruto, saldoEfectivoBruto) : null
+  const saldoBanco = lados ? lados.banco : saldoBancoBruto
+  const saldoEfectivo = lados ? lados.efectivo : saldoEfectivoBruto
   return {
     banco, negro, total, pagadoBanco, pagadoEfectivo, pagado, saldoBanco, saldoEfectivo, saldoBancoBruto, saldoEfectivoBruto, saldoTotal,
-    aPagarEfectivo: completo ? saldoEfectivo : null,
-    aPagarBanco: completo ? saldoBanco : null,
+    // LO QUE SE PIDE PAGAR HOY NUNCA ES NEGATIVO: un «cobró de más» no se entrega, se dice.
+    aPagarEfectivo: lados ? Math.max(0, lados.efectivo) : null,
+    aPagarBanco: lados ? Math.max(0, lados.banco) : null,
     excedente: excedenteDe(saldoTotal, saldoBancoBruto, saldoEfectivoBruto),
     absorbido: absorbidoDe(saldoTotal, saldoBancoBruto, saldoEfectivoBruto),
   }
@@ -136,6 +138,21 @@ export function pagoDelMes(e: { liquidado: number | null; pagadoBanco: number; p
       ? { lado: pagadoBanco >= pagadoEfectivo ? 'banco' : 'efectivo', importe: r2(-saldoTotal) } : null,
     absorbido: null,
   }
+}
+
+/**
+ * EL EXCESO DE UN LADO PASA AL OTRO, Y LO QUE NO ENTRA QUEDA A LA VISTA (dueño, 02/10/2026: «toda la columna de saldo …
+ * calcula mal y me hiciste equivocar»). Antes los dos lados se recortaban en 0: con $446,92 cobrados de más en efectivo
+ * el cuadro decía «Saldo 0 · Saldo 0 · Saldo −446,92», y la fila no cerraba (0 + 0 ≠ −446,92). Ahora el lado que se pasó
+ * se come el saldo del otro; si sobra, ese sobrante queda en negativo en el lado que lo cobró. Siempre banco + efectivo =
+ * saldo total.
+ */
+function compensar(banco: number, efectivo: number): { banco: number; efectivo: number } {
+  if ((banco >= 0 && efectivo >= 0) || (banco <= 0 && efectivo <= 0)) return { banco, efectivo }
+  const neto = r2(banco + efectivo)
+  const bancoSePaso = banco < 0
+  if (neto >= 0) return bancoSePaso ? { banco: 0, efectivo: neto } : { banco: neto, efectivo: 0 }
+  return bancoSePaso ? { banco: neto, efectivo: 0 } : { banco: 0, efectivo: neto }
 }
 
 /** Cobró de más EN TOTAL: el importe es lo que sobra sobre banco + negro, del lado que más se pasó. */
