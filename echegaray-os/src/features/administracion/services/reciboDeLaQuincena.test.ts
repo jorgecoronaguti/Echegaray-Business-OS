@@ -342,6 +342,35 @@ test('lo ya pagado supera lo que correspondía: se muestra lo pagado y resta 0, 
   assert.equal(r.medios[i + 2].importe, 0)
 })
 
+test('banco pagado de más: el cuadro lo descuenta del efectivo y el papel lo dice; Efectivo y resta salen redondos y suman', () => {
+  // aPagarEfectivo del cuadro = 400.257,52 − 30.000 = 370.257,52 (el exceso de banco se descuenta del efectivo).
+  const l = {
+    personaId: 'p5', porBanco: 300000, enEfectivo: 400257.52,
+    sueldo: { horasBlanco: 45, horasNegro: 51, origenNeto: 'recibo', estado: 'recibo', neto: 300000 },
+    pago: pagoDeLaLinea({ banco: 300000, negro: 400257.52, pagadoBanco: 330000 }),
+  } as unknown as LineaConOverrides
+  const delCuadro = efectivoMostrado({ efectivoRedondeado: null, enEfectivo: l.pago.aPagarEfectivo }).valor!
+  const r = armarRecibo(l, conPagado, pesosAR)
+  const i = r.medios.findIndex((m) => m.rotulo === ROTULO.efectivo)
+  const [ef, pagado, absorbido, resta] = r.medios.slice(i, i + 4)
+  assert.equal(resta.rotulo, 'resta')
+  assert.equal(resta.importe, delCuadro)
+  assert.equal(ef.importe! % 1000, 0)
+  assert.equal(resta.importe! % 1000, 0)
+  assert.equal(ef.importe, r2t(pagado.importe! + -absorbido.importe! + resta.importe!), 'lo que se ve suma')
+  assert.equal(r.total, r2t(r.medios[0].importe! + ef.importe!))
+})
+
+test('si ni así cierra la cadena del cuadro, igual se aplica su función al saldo del papel: nunca centavos', () => {
+  const base = lineaDelDueno(286000)
+  const l = { ...base, pago: { ...base.pago, aPagarEfectivo: 123456.78 } } as unknown as LineaConOverrides
+  const r = armarRecibo(l, conPagado, pesosAR)
+  const i = r.medios.findIndex((m) => m.rotulo === ROTULO.efectivo)
+  assert.equal(r.medios[i].importe! % 1000, 0)
+  assert.equal(r.medios[i + 2].importe! % 1000, 0)
+  assert.equal(r.total, r2t(r.medios[0].importe! + r.medios[i].importe!))
+})
+
 test('reimprimir un papel sellado con los rótulos largos los limpia, sin tocar importes', () => {
   const viejo = [
     { rotulo: ROTULO.banco, importe: 289543.8 },

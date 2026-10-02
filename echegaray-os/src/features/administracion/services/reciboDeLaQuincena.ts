@@ -246,15 +246,21 @@ function netoDelEstudio(l: LineaConOverrides): number | null {
  * bajo un efectivo redondo. Si lo ya pagado supera lo que correspondía, no se inventa nada: se muestra lo pagado y
  * resta 0. `null` = no se puede afirmar (la cadena del panel no cierra con la del cuadro): se muestra el exacto.
  */
-function efectivoDelPapel(l: LineaConOverrides, mensual: boolean, exacto: number | null, pagado: number | null): { total: number; resta: number } | null {
+function efectivoDelPapel(
+  l: LineaConOverrides, mensual: boolean, exacto: number | null, pagado: number | null, absorbido = 0,
+): { total: number; resta: number } | null {
   const pag = pagado ?? 0
   if (exacto == null || !(exacto > 0 || pag > 0)) return null
   const aRedondear = efectivoParaRedondear(l, mensual)
-  if (aRedondear == null) return null
   const saldo = r2(exacto - pag)
-  if (!(r2(saldo) === r2(aRedondear) || (saldo <= 0 && aRedondear <= 0))) return null
-  const resta = efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado ?? null, enEfectivo: aRedondear }).valor ?? 0
-  return { total: r2(pag + resta), resta }
+  // CUÁNDO NO CIERRA: lo pagado de más por banco el cuadro lo descuenta del efectivo (`aPagarEfectivo` = saldo − exceso).
+  // Ese exceso se imprime como «menos lo pagado de más en banco» y entra en el efectivo: Efectivo = pagado + exceso + resta.
+  const cierra = aRedondear != null && (r2(saldo - absorbido) === r2(aRedondear) || (saldo - absorbido <= 0 && aRedondear <= 0))
+  // Si ni así cierra (el cuadro sin cadena completa), lo guardado es de OTRA cifra: no se usa y se aplica la MISMA función
+  // del cuadro al saldo que este papel muestra. Nunca centavos bajo un efectivo redondeado, ni una cuenta nueva.
+  const base = cierra ? aRedondear : Math.max(saldo, 0)
+  const resta = efectivoMostrado({ efectivoRedondeado: cierra ? l.efectivoRedondeado ?? null : null, enEfectivo: base }).valor ?? 0
+  return { total: r2(pag + (cierra ? absorbido : 0) + resta), resta }
 }
 
 /**
@@ -342,7 +348,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
     const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)
     if (estimadoAca) estimado = true
-    const papel = clave === 'efectivo' ? efectivoDelPapel(l, mensual, x.total, x.pagado) : null
+    const papel = clave === 'efectivo' ? efectivoDelPapel(l, mensual, x.total, x.pagado, m.absorbido?.lado === 'banco' ? m.absorbido.importe : 0) : null
     const importe = papel?.total ?? x.total
     renglones.push({
       rotulo, importe,
