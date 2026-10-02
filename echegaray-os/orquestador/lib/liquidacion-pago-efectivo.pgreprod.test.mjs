@@ -267,6 +267,20 @@ test('(d) un pago desde una entrega a rendir no baja la caja dos veces (la entre
   })
 })
 
+test('(f) corregir a la baja un pago anterior al sello NO mueve el saldo posterior: el delta negativo hereda la fecha del pago', opc, async () => {
+  await como(DIRECCION, async () => {
+    const antes = await saldo()
+    const l = await lineaDe('2026-09-16')
+    await c.query('update public.liquidacion_linea set pagado_efectivo = pagado_efectivo - 10000 where id = $1', [l.id])
+    const ult = (await deltas(l.id)).at(-1)
+    assert.deepEqual(ult, { fecha: '2026-09-16', importe: -10000, origen: 'caja' })
+    assert.equal(await saldo(), antes)
+    // Con fecha explícita manda la explícita.
+    await c.query('update public.liquidacion_linea set pagado_efectivo = pagado_efectivo - 1000, fecha_pago_efectivo = $2 where id = $1', [l.id, '2026-10-01'])
+    assert.equal((await deltas(l.id)).at(-1).fecha, '2026-10-01')
+  })
+})
+
 test('el RPC del chat, EJECUTADO: el pago lleva la fecha de p_fecha y resta su importe (no el acumulado)', opc, async () => {
   await como(DIRECCION, async () => {
     const antes = await saldo()
@@ -283,6 +297,11 @@ test('permisos: sólo quien liquida sueldos lee los pagos y el saldo; nadie escr
   assert.equal((await como(OBRERO, () => q('select 1 from public.efectivo_caja_saldo'), { rol: 'authenticated' })).length, 0, 'sin los pagos a la vista no se publica un saldo falso')
   assert.equal((await como(DIRECCION, () => q('select 1 from public.efectivo_caja_saldo'), { rol: 'authenticated' })).length, 1)
   assert.ok((await como(DIRECCION, () => q('select 1 from public.liquidacion_pago_efectivo'), { rol: 'authenticated' })).length > 0)
+  // EL CONTEO DE LA CAJA no sale por /rpc ni por la vista a quien no liquida sueldos; anon ni entra.
+  assert.equal((await como(OBRERO, () => q('select * from public.efectivo_ultimo_conteo()'), { rol: 'authenticated' })).length, 0)
+  assert.equal((await como(DIRECCION, () => q('select * from public.efectivo_ultimo_conteo()'), { rol: 'authenticated' })).length, 1)
+  await assert.rejects(como(OBRERO, () => c.query('select * from public.efectivo_ultimo_conteo()'), { rol: 'anon' }), /permission denied/)
+  await assert.rejects(como(OBRERO, () => c.query('select * from public.efectivo_caja_saldo'), { rol: 'anon' }), /permission denied/)
   await assert.rejects(como(DIRECCION, () => c.query(
     `insert into public.liquidacion_pago_efectivo (liquidacion_id, persona_id, quincena_desde, grupo, fecha, importe, clave)
      select liquidacion_id, persona_id, '2026-10-01', 'obreros', '2026-10-01', 1, 'x' from public.liquidacion_pago_efectivo limit 1`), { rol: 'authenticated' }), /permission denied/)

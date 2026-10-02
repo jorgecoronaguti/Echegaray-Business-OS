@@ -45,7 +45,7 @@ async function main() {
   await db.connect()
   try {
     const cab = await db.query(
-      `select id, estado, observacion from public.liquidacion_quincena where desde = $1 and grupo = $2`, [DESDE, GRUPO])
+      `select id, estado, observacion, hasta::text from public.liquidacion_quincena where desde = $1 and grupo = $2`, [DESDE, GRUPO])
     if (cab.rows.length !== 1) throw new Error(`cabecera ${DESDE}/${GRUPO}: ${cab.rows.length} filas`)
     const q = cab.rows[0]
     if (q.estado !== 'cerrada') throw new Error(`la quincena está «${q.estado}»: esto es sólo para cerradas (la abierta se corrige en la app)`)
@@ -78,9 +78,10 @@ async function main() {
     try {
       for (const c of plan.cambios) {
         const r = await db.query(
-          `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = $5
+          // `fecha_pago_efectivo` = fin de la quincena cerrada: sin fecha explícita el trigger de la caja fecharía el delta HOY.
+          `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = $5, fecha_pago_efectivo = $6::date
             where liquidacion_id = $1 and persona_id = $2 and pagada_en is null`,
-          [q.id, c.persona_id, c.despues.pagado_banco, c.despues.pagado_efectivo, hoy])
+          [q.id, c.persona_id, c.despues.pagado_banco, c.despues.pagado_efectivo, hoy, q.hasta])
         if (r.rowCount !== 1) throw new Error(`${c.nombre}: la base actualizó ${r.rowCount} filas`)
       }
       const obs = observacionDeMedio(q.observacion, plan, { fecha: hoy, motivo: MOTIVO, evidencia: EVIDENCIA })

@@ -203,8 +203,10 @@ async function escribir(h, aCargar) {
       )
       if (previa && pagadoEsLaCadena(previa) && previa.pagada_en == null) {
         await query(
-          'update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4 where liquidacion_id = $1 and persona_id = $2',
-          [id, l.persona_id, pagado.pagado_banco, pagado.pagado_efectivo],
+          // LA FECHA DEL EFECTIVO VA EXPLÍCITA (02/10/2026): el trigger de `liquidacion_pago_efectivo` fecharía este delta HOY
+          // y movería la caja de hoy por una carga histórica. Mismo criterio de la siembra: el fin de la quincena (cerrada).
+          'update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, fecha_pago_efectivo = $5::date where liquidacion_id = $1 and persona_id = $2',
+          [id, l.persona_id, pagado.pagado_banco, pagado.pagado_efectivo, q.hasta],
         )
       }
     }
@@ -283,12 +285,13 @@ async function completarPagado(planes, estados) {
     // SÓLO SI SIGUE COMO SE LEYÓ: vacía, o con la cadena cruda que se rehace. Entre el ensayo y esta escritura alguien
     // pudo registrar el pago en la app.
     const { rowCount } = await query(
-      `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = now()
+      // `fecha_pago_efectivo` = fin de la quincena cerrada: sin fecha explícita el trigger fecharía el delta HOY (02/10/2026).
+      `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = now(), fecha_pago_efectivo = $8::date
         where liquidacion_id = $1 and persona_id = $2 and pagada_en is null
           and ((pagado_banco is null and pagado_efectivo is null)
             or ($5::boolean and pagado_banco = $6::numeric and pagado_efectivo = $7::numeric))`,
       [x.b.liquidacion_id, x.b.persona_id, x.pagado_banco, x.pagado_efectivo,
-        x.estado === 'cadena', x.b.pagado_banco ?? 0, x.b.pagado_efectivo ?? 0],
+        x.estado === 'cadena', x.b.pagado_banco ?? 0, x.b.pagado_efectivo ?? 0, x.b.hasta],
     )
     if (rowCount === 1) porQuincena.set(x.b.liquidacion_id, [x.b, (porQuincena.get(x.b.liquidacion_id)?.[1] ?? 0) + 1, (porQuincena.get(x.b.liquidacion_id)?.[2] ?? false) || x.mensual === true])
     else console.log(`   ⚠ ${x.b.desde} ${x.b.nombre_completo}: no se escribió (alguien la registró en el medio)`)

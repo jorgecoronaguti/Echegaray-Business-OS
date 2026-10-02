@@ -48,6 +48,9 @@
 -- NO SE APLICA DESDE UN AGENTE (`.claude/rules/migraciones.md`). Idempotente: aplicarla dos veces no duplica la
 -- siembra ni rompe nada.
 
+-- Sin `begin/commit` propios: `aplicar-migracion.mjs` abre la transacción ANTES de ejecutar este archivo (y rechaza un
+-- archivo con su propio begin/commit), así que el `set local` rige para todo lo que sigue: si no consigue el candado
+-- sobre `liquidacion_linea` en 5 s, la migración se cae entera en vez de trabar la app.
 set local lock_timeout = '5s';
 
 -- ───────────────────────────────────────────────────────────
@@ -120,6 +123,7 @@ declare
   v_delta   numeric;
   v_autor   uuid;
   v_n       int;
+  v_fecha   date;
 begin
   if new.fecha_pago_efectivo is not null and new.fecha_pago_efectivo > v_hoy then
     raise exception 'el pago en efectivo no puede tener fecha futura (%)', new.fecha_pago_efectivo using errcode = 'P0001';
@@ -142,11 +146,18 @@ begin
       v_autor := coalesce(auth.uid(),
                           case when tg_op = 'UPDATE' and new.escribio_en is distinct from old.escribio_en then new.escribio_id end,
                           new.pagada_por);
+      -- UN DELTA NEGATIVO ES UNA CORRECCIÓN, NO UN PAGO: sin fecha explícita hereda la del último movimiento de la línea. Con
+      -- la de hoy, corregir un pago anterior al sello movería el saldo posterior por un efectivo que ya estaba en el conteo.
+      v_fecha := new.fecha_pago_efectivo;
+      if v_fecha is null and v_delta < 0 then
+        select x.fecha into v_fecha from public.liquidacion_pago_efectivo x where x.linea_id = new.id order by x.id desc limit 1;
+      end if;
+      v_fecha := coalesce(v_fecha, v_hoy);
       select count(*) + 1 into v_n from public.liquidacion_pago_efectivo where linea_id = new.id and txid = txid_current();
       insert into public.liquidacion_pago_efectivo
         (liquidacion_id, linea_id, persona_id, quincena_desde, grupo, fecha, importe, origen, registrado_por, clave)
       values (new.liquidacion_id, new.id, new.persona_id, v_cab.desde, v_cab.grupo,
-              coalesce(new.fecha_pago_efectivo, v_hoy), v_delta, 'caja', v_autor,
+              v_fecha, v_delta, 'caja', v_autor,
               'linea:' || new.id || ':' || txid_current() || ':' || v_n);
     end if;
   end if;
@@ -298,16 +309,19 @@ revoke all on public.efectivo_movimiento_caja from anon, public;
 grant select on public.efectivo_movimiento_caja to authenticated;
 
 -- EL SELLO, VISIBLE PARA LA VISTA. `caja_conteo_observado` sólo tiene policy de servicio: una vista invoker no la leería.
--- Esta función devuelve el último conteo (valor e instante) y nada más.
+-- Esta función devuelve el último conteo (valor e instante) y nada más, y SÓLO a quien liquida sueldos: es security definer y
+-- PostgREST la expone en /rpc, así que sin la guarda cualquier sesión (un jefe de obra, un `campo`) leería el conteo de la
+-- caja, que hoy sólo lee el rol de servicio. Para el resto devuelve cero filas, no un error.
 create or replace function public.efectivo_ultimo_conteo()
 returns table (valor numeric, sellado_en timestamptz)
 language sql stable security definer set search_path to 'public', 'pg_temp'
 as $f$
   select c.valor, c.visto_desde from public.caja_conteo_observado c
-   where c.concepto = 'CAJA_ARQUEO_ARS' order by c.visto_desde desc limit 1
+   where c.concepto = 'CAJA_ARQUEO_ARS' and public.liquida_sueldos()
+   order by c.visto_desde desc limit 1
 $f$;
-revoke all on function public.efectivo_ultimo_conteo() from public, anon;
-grant execute on function public.efectivo_ultimo_conteo() to authenticated, service_role;
+revoke all on function public.efectivo_ultimo_conteo() from public, anon, service_role;
+grant execute on function public.efectivo_ultimo_conteo() to authenticated;
 
 -- SALDO DE EFECTIVO SEGÚN POSTGRES = conteo sellado + movimientos posteriores al sello.
 --  · Entregas y devoluciones: por el INSTANTE en que se registraron contra el instante del sello (como la réplica del Sheet).

@@ -51,6 +51,11 @@ export const COLUMNAS = [
 export const COL = { fecha: 'A', entrega: 'B', persona: 'C', destino: 'D', movimiento: 'E', importe: 'F', instante: 'G' }
 export const FILA0 = 4
 
+/** «Pago de jornales» (02/10/2026): la vista ya lo trae desde la migración 20261002T1800, pero el Sheet NO cambia en la fase 1.
+ *  La réplica es «neto para la caja física» y CAJA ya resta el efectivo de jornales por «Pagado el»: copiarlo acá lo
+ *  mezclaría con esa vía. La FASE 2 lo cablea (y retira la fórmula por «Pagado el»); recién ahí se saca de esta lista. */
+export const MOVIMIENTOS_FUERA_DE_LA_REPLICA = ['Pago de jornales']
+
 const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d ?? '').slice(0, 10))
 
 /**
@@ -99,7 +104,9 @@ async function main() {
   try {
     rows = (await query(
       `select fecha, codigo, persona, destino, movimiento, importe, registrado_en
-         from public.efectivo_movimiento_caja order by fecha, registrado_en, codigo`)).rows
+         from public.efectivo_movimiento_caja
+        where movimiento <> ALL($1::text[])
+        order by fecha, registrado_en, codigo`, [MOVIMIENTOS_FUERA_DE_LA_REPLICA])).rows
   } catch (e) {
     if (e?.code !== '42P01') throw e
     console.log('· la migración 20260922T1500 no está aplicada: escribo la réplica sin movimientos')
