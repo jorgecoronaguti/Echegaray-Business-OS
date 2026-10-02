@@ -1018,7 +1018,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const campos = 'sheets(properties(title,sheetId,tabColor,gridProperties(frozenRowCount,frozenColumnCount,hideGridlines)),'
         + 'data(startRow,startColumn,columnMetadata(pixelSize),'
         + 'rowData(values(userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,'
-        + 'numberFormat,borders,textFormat(fontFamily,fontSize,bold,italic,strikethrough,foregroundColor))))))'
+        + 'numberFormat,borders,textFormat(fontFamily,fontSize,bold,italic,strikethrough,underline,foregroundColor))))))'
       const j = await apiGet(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(range)}&fields=${encodeURIComponent(campos)}`)
       const s = (j.sheets || [])[0]

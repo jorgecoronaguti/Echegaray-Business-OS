@@ -12,7 +12,9 @@
 //
 // Acá la unidad es el RANGO del request: el OS recuerda qué formato dejó en cada rango que formatea, y
 // antes de re-aplicarlo compara. Si el rango cambió, ese request no entra; los demás sí. La pestaña
-// sigue manteniéndose sola salvo exactamente en lo que él tocó.
+// sigue manteniéndose sola salvo exactamente en lo que él tocó. Desde el 01/10 el rango que no
+// coincide se mira CELDA POR CELDA y un `repeatCell` se parte alrededor de las suyas: ver
+// `huella-formato-celda.mjs` (la huella por coordenada congelaba la pestaña cuando el layout crecía).
 //
 // ═══ `userEnteredFormat`, NO `effectiveFormat` (heredado de firma-formato, 01/08) ═══
 //
@@ -27,11 +29,35 @@
 // la firma de cada rango se recorta de esa lectura. El techo de filas es el mismo de `firma-formato`
 // y por el mismo motivo: costo, no criterio. Un formato aplicado por debajo de esa fila no lleva
 // huella y por lo tanto no se protege — declarado, no escondido.
+//
+// ═══ LO QUE ESTA GUARDA NO PROTEGE (02/10/2026, auditoría — declarado, no corregido) ═══
+//
+// · Un formato del dueño IDÉNTICO al que el OS selló (o dejó pendiente) en esa misma celda es
+//   indistinguible del del OS: mirando el formato no hay forma de saber quién lo puso.
+// · Debajo de la fila TECHO_FILAS_FORMATO (2000) o a la derecha de BZ no se lee nada: ahí todo cuenta
+//   como virgen y un formato del dueño se pisa.
+// · Rotación, márgenes internos, link y SUBRAYADO no entran al hash (`normalizarFormatoCelda` no los
+//   proyecta; agregarlos cambiaría todas las huellas sembradas): un cambio sólo de eso no se ve, y
+//   un `repeatCell` con la máscara entera lo borra.
+// · La decisión usa la lectura PREVIA al lote (y cacheada por proceso): lo que el dueño edite entre
+//   esa lectura y el `batchUpdate` no se ve.
+// · La primera pasada sobre una pestaña sin ninguna huella aplica todo y siembra, aunque ya tenga
+//   formato puesto: es la regla del 04/09 y sigue vigente.
+// · `guarda-por-celda.mjs` (`filtrarPorCelda`) FALLA ABIERTO: si este módulo lanza, el lote sigue
+//   como venía, con un aviso. Esta guarda es fail-closed sólo mientras corre.
 
-import { createHash } from 'node:crypto'
 import { letraCol } from './preservar-anotaciones.mjs'
-import { normalizarFormatoCelda, TECHO_FILAS_FORMATO } from './firma-formato.mjs'
-import { citarTab } from './propiedad-celda.mjs'
+import { normalizarFormatoCelda } from './firma-formato.mjs'
+import { TIPO_CELDA1P, MARCA_RESEMBRAR, hash, a1DeCelda, celdasAjenas, recortarRango, sellosPorCelda, huellasDeRangos } from './huella-formato-celda.mjs'
+import { leerHuellasFormato, leerFormatoDePestana } from './huella-formato-base.mjs'
+import { nuevoLote, respetar, anotarAplicado, depurarRespetadas, registrarPendientes, consumirMarcasDeResembrado, sellarAplicados } from './huella-formato-sello.mjs'
+
+// La base y el caché viven en `huella-formato-base.mjs` desde el 02/10; se re-exportan para que ningún
+// llamador cambie.
+export {
+  leerHuellasFormato, guardarHuellaFormato, guardarHuellasDeCeldas, borrarHuellasPorTipo,
+  olvidarTablaFormatoVerificada, invalidarFormato, olvidarCacheFormato, leerFormatoDePestana,
+} from './huella-formato-base.mjs'
 
 export const TIPO = { CELDA: 'celda', MERGE: 'merge', ANCHO: 'ancho', ALTO: 'alto', PESTANA: 'pestana' }
 
@@ -111,9 +137,6 @@ export function claveDeFormato(req) {
   return null
 }
 
-/** Hash corto y estable de cualquier estructura normalizada. */
-function hash(x) { return createHash('sha1').update(JSON.stringify(x)).digest('hex').slice(0, 16) }
-
 /**
  * NÚCLEO PURO: la huella del formato vivo de un rango, recortada de la lectura de la pestaña.
  * Devuelve null cuando no hay con qué juzgar (lectura ausente).
@@ -173,129 +196,77 @@ export function esFormatoVirgen(tipo, lectura, gr) {
   return false
 }
 
+// ═══ EL BLOQUE QUE SE CORRIÓ DE FILA (04/09/2026) ═══
+//
+// La huella se indexa por COORDENADA. Cuando un bloque cambia de alto —se agrega un renglón al
+// titular, un cuadro pasa de 101 a 105 filas— el rango pasa de `B52:N57` a `B53:N58`: coordenada
+// nueva, sin huella, y con el formato que el layout anterior dejó ahí. Cae en este último caso y
+// queda bloqueado PARA SIEMPRE, aunque ese formato lo haya puesto el propio OS media hora antes.
+//
+// La consecuencia medida en «Impuestos y Financieros»: cualquier cambio de diseño desalineaba los
+// formatos de forma permanente —25 defectos de pantalla con un solo renglón agregado— y la pestaña
+// quedaba congelada en su layout. Un control que impide corregir un defecto lo vuelve eterno.
+//
+// El reconocimiento se ensancha SÓLO a lo que el OS probó haber puesto: si el formato vivo coincide
+// con alguna huella que este mismo Sheet selló en esta misma pestaña, es formato propio mudado de
+// lugar, no diseño del dueño. Nunca admite un formato que el OS no haya sellado antes.
+//
+// CON SELLOS POR CELDA EL ATAJO YA NO DECIDE (02/10/2026, auditoría). Compara el DIBUJO del rango,
+// no la autoría de cada celda: el auditor selló fecha en B10:B18, pegó ese mismo formato a mano en
+// D10:D18, y la capa del OS en D10:D18 entró por acá, pisó las nueve celdas y las selló como
+// propias. Donde hay sellos por celda la evidencia es más fina y la decide ella. El atajo queda SÓLO
+// para una pestaña sin ningún sello por celda —las de antes del 01/10—, porque ahí es la única
+// evidencia que existe y quitarlo congelaría las que hoy se mantienen gracias a él («sin cambio de
+// conducta hasta resembrar»). La primera corrida que siembra sellos por celda lo apaga para siempre.
+
 /**
  * LA DECISIÓN, PURA. Es el corazón de (h) y por eso vive sola, sin base ni red al lado.
  *
- * @param {{huellaViva:string|null, huellaGuardada:string|null, pestanaSinHuellas:boolean, virgen:boolean}} x
- * @returns {{aplica:boolean, sellar:boolean, motivo:string}}
+ * `celdas` sólo viene para los requests de tipo CELDA: cuántas celdas del rango no se puede probar que
+ * sean del OS (`ajenas`) y si el request se puede partir alrededor de ellas (`recortable`). Sin ese
+ * dato la decisión es la de siempre, por rango.
+ *
+ * @param {{huellaViva:string|null, huellaGuardada:string|null, pestanaSinHuellas:boolean, virgen:boolean,
+ *   huellasDeLaPestana?:Set<string>|null, celdas?:{ajenas:number, recortable:boolean}|null,
+ *   conSellosPorCelda?:boolean}} x
+ * @returns {{aplica:boolean, sellar:boolean, motivo:string, recortar?:boolean}}
  */
-export function decidirFormato({ huellaViva, huellaGuardada, pestanaSinHuellas, virgen, huellasDeLaPestana = null }) {
+export function decidirFormato({ huellaViva, huellaGuardada, pestanaSinHuellas, virgen, huellasDeLaPestana = null, celdas = null, conSellosPorCelda = false }) {
   if (!huellaViva) return { aplica: false, sellar: false, motivo: 'no pude leer el formato vivo del rango (fail-closed)' }
-  if (huellaGuardada && huellaGuardada === huellaViva) return { aplica: true, sellar: true, motivo: 'el formato es el que dejé' }
-  if (huellaGuardada) return { aplica: false, sellar: false, motivo: 'el formato de ese rango difiere del que dejé: lo cambiaste vos' }
+  const rangoIgual = Boolean(huellaGuardada) && huellaGuardada === huellaViva
+  // Con veredicto por celda, que el rango coincida no alcanza: puede coincidir con un sello VIEJO y el
+  // dueño haber repuesto en una celda un formato que el OS ya había cambiado (re-auditoría 02/10, H1c).
+  if (rangoIgual && !celdas?.ajenas) return { aplica: true, sellar: true, motivo: 'el formato es el que dejé' }
+  // ═══ POR CELDA (01/10/2026) ═══ La huella del rango no coincide —o el rango es nuevo porque el
+  // layout cambió de alto—, pero cada celda está virgen o tiene el formato que el OS selló en ELLA: no
+  // hay nada del dueño adentro. Ver `huella-formato-celda.mjs`.
+  if (celdas && celdas.ajenas === 0) return { aplica: true, sellar: true, motivo: 'cada celda está virgen o tiene el formato que yo sellé en ella' }
+  // Algunas celdas son suyas y el request se puede partir: se aplica alrededor de ellas, no se pierde
+  // el rango entero por una celda. Las suyas quedan como están y se informan.
+  const recortar = Boolean(celdas?.recortable)
+  if (rangoIgual) {
+    return recortar
+      ? { aplica: true, sellar: true, recortar, motivo: 'el rango coincide con un sello viejo pero esas celdas no tienen el que sellé en ellas: las respeto y aplico alrededor' }
+      : { aplica: false, sellar: false, motivo: 'el rango coincide con un sello viejo pero hay celdas que no tienen el formato que sellé en ellas: lo respeto' }
+  }
+  if (huellaGuardada) {
+    return recortar
+      ? { aplica: true, sellar: true, recortar, motivo: 'lo cambiaste vos en algunas celdas: las respeto y aplico alrededor' }
+      : { aplica: false, sellar: false, motivo: 'el formato de ese rango difiere del que dejé: lo cambiaste vos' }
+  }
   // SIN HUELLA PREVIA. La primera corrida después del deploy no puede quedarse sin poder formatear
   // nada: si la pestaña todavía no tiene NINGUNA huella de formato, se aplica y se siembra. A partir
   // de ahí, un rango sin huella con formato ya puesto es del dueño (o de un layout que el OS abandonó,
   // y en la duda manda él).
   if (pestanaSinHuellas) return { aplica: true, sellar: true, motivo: 'primera pasada de formato sobre esta pestaña: aplico y siembro la huella' }
   if (virgen) return { aplica: true, sellar: true, motivo: 'ese rango no tiene formato puesto: no hay diseño tuyo que respetar' }
-  // ═══ EL BLOQUE QUE SE CORRIÓ DE FILA (04/09/2026) ═══
-  //
-  // La huella se indexa por COORDENADA. Cuando un bloque cambia de alto —se agrega un renglón al
-  // titular, un cuadro pasa de 101 a 105 filas— el rango pasa de `B52:N57` a `B53:N58`: coordenada
-  // nueva, sin huella, y con el formato que el layout anterior dejó ahí. Cae en este último caso y
-  // queda bloqueado PARA SIEMPRE, aunque ese formato lo haya puesto el propio OS media hora antes.
-  //
-  // La consecuencia medida en «Impuestos y Financieros»: cualquier cambio de diseño desalineaba los
-  // formatos de forma permanente —25 defectos de pantalla con un solo renglón agregado— y la pestaña
-  // quedaba congelada en su layout. Un control que impide corregir un defecto lo vuelve eterno.
-  //
-  // El reconocimiento se ensancha SÓLO a lo que el OS probó haber puesto: si el formato vivo coincide
-  // con alguna huella que este mismo Sheet selló en esta misma pestaña, es formato propio mudado de
-  // lugar, no diseño del dueño. Nunca admite un formato que el OS no haya sellado antes.
-  if (huellasDeLaPestana?.size && huellasDeLaPestana.has(huellaViva)) {
+  // El bloque que se corrió de fila: ver el comentario sobre `decidirFormato`.
+  const atajoPermitido = !(celdas && conSellosPorCelda)
+  if (atajoPermitido && huellasDeLaPestana?.size && huellasDeLaPestana.has(huellaViva)) {
     return { aplica: true, sellar: true, motivo: 'ese formato lo puse yo en otro rango de esta pestaña: el bloque se corrió de fila' }
   }
+  if (recortar) return { aplica: true, sellar: true, recortar, motivo: 'esas celdas ya tienen un formato que yo no puse: las respeto y aplico alrededor' }
   return { aplica: false, sellar: false, motivo: 'ese rango ya tiene un formato que yo no puse: lo respeto' }
-}
-
-// ─────────────────────────────────── PERSISTENCIA (impura, base) ───────────────────────────────────
-
-async function q(deps) {
-  if (deps?.query) return deps.query
-  return (await import('./db.mjs')).query
-}
-
-// El DDL no vive acá: la fuente es la migración `20260903T1200_…`. Un módulo que se crea su propia
-// tabla puede nacer con un esquema distinto del migrado, y además la crearía SIN RLS — que es
-// exactamente lo que este archivo no puede hacer, porque guarda cómo se ve el Sheet del dueño.
-// Si la tabla no está, el SELECT falla, la guarda falla CERRADA (no se re-aplica ningún formato) y
-// se dice por qué. Una vez por proceso.
-let tablaVerificada = null
-async function asegurarTabla(query) {
-  if (tablaVerificada) return tablaVerificada
-  tablaVerificada = query("select to_regclass('public.sheet_huella_formato') as t").then((r) => {
-    if (!r.rows[0]?.t) {
-      throw new Error('falta public.sheet_huella_formato: aplicá la migración 20260903T1200_tus_ediciones_mandan_celda_por_celda.sql')
-    }
-    return true
-  })
-  // UN MEMO QUE CACHEA EL RECHAZO DEJA LA GUARDA MUERTA PARA SIEMPRE: una base que tembló una vez,
-  // o un test que arranca sin ella, envenenarían el resto del proceso. Sólo se recuerda el ÉXITO.
-  tablaVerificada = tablaVerificada.catch((e) => { tablaVerificada = null; throw e })
-  return tablaVerificada
-}
-
-/** Sólo para los tests: olvida el chequeo de una vez por proceso. */
-export function olvidarTablaFormatoVerificada() { tablaVerificada = null }
-
-/** Las huellas de formato de una pestaña: Map("tipo|rango" → huella). */
-export async function leerHuellasFormato(deps, fileId, pestana) {
-  const query = await q(deps)
-  await asegurarTabla(query)
-  const r = await query('select rango_a1, tipo, huella from public.sheet_huella_formato where file_id = $1 and pestana = $2', [fileId, pestana])
-  return new Map(r.rows.map((x) => [`${x.tipo}|${x.rango_a1}`, x.huella]))
-}
-
-/** Sella la huella del formato que quedó aplicado en un rango. */
-export async function guardarHuellaFormato(deps, fileId, pestana, tipo, rango, huella) {
-  const query = await q(deps)
-  await asegurarTabla(query)
-  await query(
-    `insert into public.sheet_huella_formato (file_id, pestana, rango_a1, tipo, huella, aplicado_en)
-     values ($1,$2,$3,$4,$5, now())
-     on conflict (file_id, pestana, rango_a1, tipo)
-     do update set huella = excluded.huella, aplicado_en = now()`,
-    [fileId, pestana, rango, tipo, huella])
-}
-
-// ═══ EL CACHÉ, PORQUE «UNA LECTURA POR PESTAÑA» ERA UNA PROMESA SIN CUMPLIR (03/09, auditoría) ═══
-//
-// El encabezado prometía una lectura por pestaña y por corrida, y lo que había era una por BATCH: un
-// generador que manda cuatro lotes de formato sobre la misma pestaña pagaba cuatro lecturas de
-// `A1:BZ2000` —156.000 celdas cada una— y el sellado, una quinta. Con catorce pestañas eso es
-// exactamente el tipo de gasto que hace que alguien apague la guarda.
-//
-// El caché vive en el PROCESO y no expira solo. Es correcto porque dentro de una corrida el único que
-// cambia el formato es el propio OS, y cuando lo cambia invalida la pestaña (`sellar` lo hace). Un
-// generador es un proceso que arranca, escribe su pestaña y termina.
-const cacheFormato = new Map()
-
-/** Se llama después de aplicar formato: lo que está en el caché ya no es lo que hay en la hoja. */
-export function invalidarFormato(fileId, tab) {
-  for (const k of [...cacheFormato.keys()]) if (k.startsWith(`${fileId}|${tab}|`)) cacheFormato.delete(k)
-}
-
-/** Sólo para los tests: vacía el caché entero. */
-export function olvidarCacheFormato() { cacheFormato.clear() }
-
-/** Lee el formato vivo de una pestaña entera. Una sola vez por proceso, pestaña y juego de campos. */
-export async function leerFormatoDePestana(cliente, fileId, tab, { conAltos = false, conMerges = false } = {}) {
-  const clave = `${fileId}|${tab}|${conAltos ? 'a' : ''}${conMerges ? 'm' : ''}`
-  if (cacheFormato.has(clave)) return cacheFormato.get(clave)
-  const ref = `${citarTab(tab)}!A1:BZ${TECHO_FILAS_FORMATO}`
-  const out = await cliente.readSheetUserFormats(fileId, ref)
-  if (!out) return null   // el fallo NO se cachea: la corrida siguiente tiene derecho a reintentar
-  if (conAltos && cliente.readSheetFormats) {
-    const f = await cliente.readSheetFormats(fileId, ref).catch(() => null)
-    out.altos = f?.altos ?? []
-  }
-  if (conMerges && cliente.readSheetGrid) {
-    const g = await cliente.readSheetGrid(fileId, ref).catch(() => null)
-    out.merges = g?.merges ?? []
-  }
-  cacheFormato.set(clave, out)
-  return out
 }
 
 /**
@@ -328,10 +299,19 @@ const virgenAlEmpezar = new Map()
 /** Olvida qué pestañas estaban vírgenes. Para los tests: sin esto, una corrida contamina la siguiente. */
 export function olvidarVirgenes() { virgenAlEmpezar.clear() }
 
-export async function filtrarFormato(cliente, fileId, requests = [], id2tab = new Map(), { esProtegible = (t) => Boolean(t) && !String(t).startsWith('_') } = {}) {
-  const claves = requests.map((r) => claveDeFormato(r))
-  const conFormato = claves.map((c, i) => ({ c, i })).filter((x) => x.c && esProtegible(id2tab.get(x.c.sheetId)))
-  if (!conFormato.length) return { requests, respetadas: [], sellar: async () => {} }
+/**
+ * Primera pasada, por familia. La pestaña es virgen si no tiene ninguna huella (sin contar la marca de
+ * resembrado); las CELDAS lo son también si `formato-resembrar` dejó su marca: una persona borró a
+ * sabiendas sólo las huellas de celdas y conservó las de anchos, merges o pestaña. PURA.
+ */
+export function primeraPasada(mapa) {
+  const marca = mapa.has(MARCA_RESEMBRAR)
+  const virgen = mapa.size - (marca ? 1 : 0) === 0
+  return { pestana: virgen, celdas: virgen || marca }
+}
+
+/** Qué hay que leer de cada pestaña: los altos y los merges cuestan una llamada más y no siempre hacen falta. */
+function necesidadesPorTab(conFormato, id2tab) {
   const porTab = new Map()
   for (const { c } of conFormato) {
     const tab = id2tab.get(c.sheetId)
@@ -339,62 +319,104 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
     if (c.tipo === TIPO.ALTO) porTab.get(tab).conAltos = true
     if (c.tipo === TIPO.MERGE) porTab.get(tab).conMerges = true
   }
-  const vivos = new Map(); const guardadas = new Map()
+  return porTab
+}
+
+/**
+ * La decisión de UN request, con el veredicto por celda cuando el rango no basta. Impura sólo por el
+ * memo de huellas vivas, que es de la llamada.
+ */
+function decidirRequest(req, c, ctx) {
+  const vivo = ctx.vivo
+  const huellaViva = huellaDeRango(c.tipo, vivo, c.gr)
+  const huellaGuardada = ctx.mapa.get(`${c.tipo}|${c.rango}`) ?? null
+  // El veredicto por celda se paga cuando la huella del rango no alcanza, y SIEMPRE en una pestaña con
+  // sellos por celda: ahí un rango igual al sellado puede ser un sello viejo (re-auditoría 02/10, H1c).
+  // Una celda sin sello propio ni pendiente, dentro de un rango que coincide, la prueba ese rango: es
+  // la evidencia de antes del 01/10 y quitarla congelaría lo que hoy se mantiene.
+  const rangoIgual = Boolean(huellaViva) && huellaViva === huellaGuardada
+  const porCelda = c.tipo === TIPO.CELDA && vivo && huellaViva && (!rangoIgual || ctx.conSellosPorCelda)
+  const ajenas = porCelda ? celdasAjenas(vivo, c.gr, ctx.sellos, ctx.memo, ctx.pendientes, { sinSelloEsMia: rangoIgual }) : []
+  // Sólo `repeatCell` se parte: aplica lo mismo a cada celda. Un `updateBorders` o un `updateCells`
+  // partido no hace lo mismo que entero, así que si toca una celda del dueño se retiene completo.
+  const partes = porCelda && ajenas.length && req.repeatCell ? recortarRango(c.gr, ajenas) : []
+  const d = decidirFormato({
+    huellaViva,
+    huellaGuardada,
+    pestanaSinHuellas: c.tipo === TIPO.CELDA ? ctx.celdasSinHuellas : ctx.pestanaSinHuellas,
+    virgen: esFormatoVirgen(c.tipo, vivo, c.gr),
+    huellasDeLaPestana: ctx.huellasDeLaPestana,
+    celdas: porCelda ? { ajenas: ajenas.length, recortable: partes.length > 0 } : null,
+    conSellosPorCelda: ctx.conSellosPorCelda,
+  })
+  return { d, ajenas, partes }
+}
+
+/** Lo que hace falta para decidir sobre cada pestaña: formato vivo, huellas y sellos. Una lectura de cada uno. */
+async function contextoPorTab(cliente, fileId, porTab) {
+  const ctxPorTab = new Map()
   for (const [tab, necesita] of porTab) {
-    vivos.set(tab, await leerFormatoDePestana(cliente, fileId, tab, necesita).catch(() => null))
-    guardadas.set(tab, await leerHuellasFormato({}, fileId, tab).catch(() => null))
-  }
-  const clave = (f, t) => `${f}|${t}`
-  const virgenDeLaCorrida = (f, t, mapa) => {
-    const k = clave(f, t)
-    if (!virgenAlEmpezar.has(k)) virgenAlEmpezar.set(k, mapa.size === 0)
-    return virgenAlEmpezar.get(k)
-  }
-  const sellosDeLaPestana = new Map()
-  for (const [tab, mapa] of guardadas) sellosDeLaPestana.set(tab, mapa ? new Set(mapa.values()) : null)
-  const salida = []; const respetadas = []; const aSellar = []
-  const frenado = new Set()
-  for (const { c, i } of conFormato) {
-    const tab = id2tab.get(c.sheetId)
-    const mapa = guardadas.get(tab)
-    if (mapa === null) {
-      frenado.add(i)
-      respetadas.push({ pestana: tab, celda: c.rango, valorDueno: null, valorOs: null, causa: 'sin base no puedo saber qué formato dejé: no lo re-aplico (fail-closed)' })
-      continue
-    }
-    const vivo = vivos.get(tab)
-    const d = decidirFormato({
-      huellaViva: huellaDeRango(c.tipo, vivo, c.gr),
-      huellaGuardada: mapa.get(`${c.tipo}|${c.rango}`) ?? null,
-      pestanaSinHuellas: virgenDeLaCorrida(fileId, tab, mapa),
-      virgen: esFormatoVirgen(c.tipo, vivo, c.gr),
-      // Todo lo que el OS selló en ESTA pestaña, sin su coordenada: con eso reconoce su propio
-      // formato cuando un bloque se corre de fila. Ver el caso en `decidirFormato`.
-      huellasDeLaPestana: sellosDeLaPestana.get(tab) ?? null,
+    const vivo = await leerFormatoDePestana(cliente, fileId, tab, necesita).catch(() => null)
+    const mapa = await leerHuellasFormato({}, fileId, tab).catch(() => null)
+    const k = `${fileId}|${tab}`
+    if (mapa && !virgenAlEmpezar.has(k)) virgenAlEmpezar.set(k, primeraPasada(mapa))
+    const sellos = sellosPorCelda(mapa)
+    const pendientes = sellosPorCelda(mapa, TIPO_CELDA1P)
+    ctxPorTab.set(tab, {
+      vivo, mapa, sellos, pendientes, memo: new Map(), huellasDeLaPestana: huellasDeRangos(mapa),
+      conSellosPorCelda: sellos.size > 0 || pendientes.size > 0,
+      pestanaSinHuellas: virgenAlEmpezar.get(k)?.pestana ?? false,
+      celdasSinHuellas: virgenAlEmpezar.get(k)?.celdas ?? false,
+      marcaResembrar: mapa?.has(MARCA_RESEMBRAR) ?? false,
     })
-    if (!d.aplica) {
-      frenado.add(i)
-      respetadas.push({ pestana: tab, celda: c.rango, valorDueno: null, valorOs: null, causa: `diseño: ${d.motivo}` })
-      console.log(`  🎨 "${tab}"!${c.rango}: no re-aplico el formato — ${d.motivo}.`)
-      continue
-    }
-    if (d.sellar) aSellar.push({ tab, tipo: c.tipo, rango: c.rango, gr: c.gr })
   }
-  requests.forEach((r, i) => { if (!frenado.has(i)) salida.push(r) })
+  return ctxPorTab
+}
+
+/** Decide un request y lo anota en el lote: retenido, recortado o entero. */
+function decidirYAnotar(lote, req, c, i, tab, ctx) {
+  if (ctx.mapa === null) {
+    lote.salida[i] = []
+    respetar(lote, tab, c.rango, 'sin base no puedo saber qué formato dejé: no lo re-aplico (fail-closed)')
+    return
+  }
+  const { d, ajenas, partes } = decidirRequest(req, c, ctx)
+  if (!d.aplica) {
+    lote.salida[i] = []
+    respetar(lote, tab, c.rango, `diseño: ${d.motivo}`)
+    console.log(`  🎨 "${tab}"!${c.rango}: no re-aplico el formato — ${d.motivo}.`)
+    return
+  }
+  const deCeldas = c.tipo === TIPO.CELDA
+  if (d.recortar) {
+    lote.salida[i] = partes.map((gr) => ({ repeatCell: { ...req.repeatCell, range: gr } }))
+    const suyas = ajenas.map((x) => ({ ...x, a1: a1DeCelda(x.fila, x.col) }))
+    for (const x of suyas) respetar(lote, tab, x.a1, `diseño: ${d.motivo}`, x)
+    console.log(`  🎨 "${tab}"!${c.rango}: aplico alrededor de ${suyas.length} celda(s) tuya(s) — ${suyas.slice(0, 8).map((x) => x.a1).join(', ')}${suyas.length > 8 ? '…' : ''}.`)
+    anotarAplicado(lote, tab, lote.salida[i].map((r) => ({ req: r, gr: r.repeatCell.range, i, rango: c.rango })))
+    // La huella del RANGO no se sella: incluiría las celdas del dueño, y la corrida siguiente la
+    // encontraría igual y aplicaría el request ENTERO por encima de ellas.
+    lote.aSellar.push({ tab, tipo: c.tipo, rango: c.rango, gr: c.gr, partes, sellarRango: false, deCeldas })
+    return
+  }
+  if (deCeldas) anotarAplicado(lote, tab, [{ req, gr: c.gr, i, rango: c.rango }])
+  lote.aSellar.push({ tab, tipo: c.tipo, rango: c.rango, gr: c.gr, partes: deCeldas ? [c.gr] : [], sellarRango: true, deCeldas })
+}
+
+export async function filtrarFormato(cliente, fileId, requests = [], id2tab = new Map(), { esProtegible = (t) => Boolean(t) && !String(t).startsWith('_') } = {}) {
+  const claves = requests.map((r) => claveDeFormato(r))
+  const conFormato = claves.map((c, i) => ({ c, i })).filter((x) => x.c && esProtegible(id2tab.get(x.c.sheetId)))
+  if (!conFormato.length) return { requests, respetadas: [], sellar: async () => ({ fallas: [] }) }
+  const porTab = necesidadesPorTab(conFormato, id2tab)
+  const ctxPorTab = await contextoPorTab(cliente, fileId, porTab)
+  const lote = nuevoLote(requests)
+  for (const { c, i } of conFormato) decidirYAnotar(lote, requests[i], c, i, id2tab.get(c.sheetId), ctxPorTab.get(id2tab.get(c.sheetId)))
+  await registrarPendientes(fileId, ctxPorTab, lote)
+  await consumirMarcasDeResembrado(fileId, ctxPorTab, lote)
+  depurarRespetadas(lote)
   return {
-    requests: salida,
-    respetadas,
-    sellar: async () => {
-      const releidos = new Map()
-      for (const s of aSellar) {
-        // Se acaba de aplicar formato: lo cacheado ya no es lo que hay en la hoja.
-        if (!releidos.has(s.tab)) {
-          invalidarFormato(fileId, s.tab)
-          releidos.set(s.tab, await leerFormatoDePestana(cliente, fileId, s.tab, porTab.get(s.tab) ?? {}).catch(() => null))
-        }
-        const h = huellaDeRango(s.tipo, releidos.get(s.tab), s.gr)
-        if (h) await guardarHuellaFormato({}, fileId, s.tab, s.tipo, s.rango, h).catch(() => {})
-      }
-    },
+    requests: lote.salida.flat(),
+    respetadas: lote.respetadas,
+    sellar: () => sellarAplicados(cliente, fileId, lote.aSellar, porTab, ctxPorTab, huellaDeRango),
   }
 }
