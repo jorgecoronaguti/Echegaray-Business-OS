@@ -20,7 +20,7 @@ import {
   frentesAbiertos, frentesDelDia, problemasDelDia, resumenDeFrentes,
 } from '@/features/jefe/services/dia'
 import { aspectoDeFrente, dotacionDeFrente, parteDeFrente } from '@/features/jefe/services/aspecto'
-import { conObra } from '@/features/jefe/services/navegacion'
+import { conObra, hrefFichaDeObra, hrefParteDiario } from '@/features/jefe/services/navegacion'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
 import { EfectivoEnHoyJefe } from '@/features/efectivo/campo/components/EfectivoEnHoyJefe'
 import { agrupar } from '@/features/administracion/services/presencia'
@@ -250,8 +250,17 @@ export default async function JefeHoyPage({
           <Acceso icono="foto" texto="Subir foto" />
         </div>
         <p style={{ marginTop: 8, fontSize: 11, color: C.faint, lineHeight: 1.5 }}>
-          Subir foto todavía no tiene dónde escribir: la foto viaja como enlace al registrar un avance.
+          Las fotos del día se suben en el Parte diario, abajo.
         </p>
+        {/* ═══ LA FICHA ENTERA Y EL PARTE DIARIO, DESDE EL TELÉFONO (dueño, 02/10/2026) ═══
+            «No pueden ver todo lo de la obra y no pueden cargar partes diarios»: J01 no llevaba a la
+            ficha del ERP, que es donde viven las cinco solapas y el parte (asistencia, producción,
+            novedad, fotos, dictado). Los dos jefes ven lo mismo: la obra que eligieron arriba. */}
+        <RotuloSeccion icono="plano" margenArriba={20}>La obra</RotuloSeccion>
+        <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-ficha">
+          <Acceso href={hrefParteDiario(obra.id)} icono="doc" texto="Parte diario" />
+          <Acceso href={hrefFichaDeObra(obra.id)} icono="plano" texto="Toda la obra" />
+        </div>
         {/* ═══ TODO EL TRABAJO DEL JEFE CUELGA DE HOY (dueño, 24/09/2026) ═══
             `/campo` («Trabajo») era un segundo «Hoy» con su propio saludo, su grilla y su «Cerrar
             sesión», y su flecha volvía a J01 SIN la obra. Se retiró para el jefe: lo que tenía y acá
@@ -285,7 +294,7 @@ const enlaceSecundario = {
 } as const
 
 /** Uno de los tres accesos de 88px. Sin `href` queda apagado: el motivo se escribe debajo del bloque. */
-function Acceso({ href, icono, texto }: { href?: string; icono: 'masivo' | 'pedido' | 'foto' | 'nota' | 'bloqueo' | 'equipo'; texto: string }) {
+function Acceso({ href, icono, texto }: { href?: string; icono: 'masivo' | 'pedido' | 'foto' | 'nota' | 'bloqueo' | 'equipo' | 'doc' | 'plano'; texto: string }) {
   const estilo = {
     flex: 1, background: C.surface, border: `1px solid ${C.linea}`, borderRadius: R.tarjeta,
     padding: '14px 8px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center',

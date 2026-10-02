@@ -60,6 +60,28 @@ export function conObra(href: string, obraId: string | null | undefined, extra?:
 }
 
 /**
+ * ═══ DEL TELÉFONO A LA FICHA ENTERA DE LA OBRA (dueño, 02/10/2026) ═══
+ *
+ * «Los jefes de obra en módulo ERP Obras desde mobile no pueden ver todo lo de la obra y no pueden
+ * cargar partes diarios». Medido en `app_registro` ese día: en siete días, ninguno de los dos jefes
+ * abrió `/obras/<obra>` desde el teléfono. No era la base —`ve_obra()` les da las diez obras activas y
+ * las policies del parte pasan— sino que J01 no tenía ningún enlace a la ficha: el parte diario
+ * (asistencia, producción, novedad, fotos, dictado) vive en Trabajo › Parte diario de la ficha, y el
+ * teléfono sólo ofrecía el avance masivo, que es otra cosa.
+ *
+ * La ficha ya se dibuja a 390 y es ruta del jefe (`RUTAS_DEL_JEFE`); el middleware no la desvía en el
+ * teléfono. Estas dos rutas se escriben acá, una vez, porque las prueba `navegacion.test.ts` contra la
+ * puerta (`puedeVerRuta`), las dos caras del jefe y `resolverVistaObra`.
+ */
+export function hrefFichaDeObra(obraId: string): string {
+  return `/obras/${encodeURIComponent(obraId)}`
+}
+
+export function hrefParteDiario(obraId: string): string {
+  return `${hrefFichaDeObra(obraId)}?vista=tareas&sub=parte`
+}
+
+/**
  * La obra que hay que mostrar, en este orden (dueño, 24/09/2026):
  *
  *   1. la PEDIDA en la URL, si el jefe la tiene — un enlace es un enlace;
