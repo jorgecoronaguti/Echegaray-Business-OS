@@ -136,3 +136,57 @@ test('sin ninguna constancia el detalle igual muestra el importe actual y lo dic
   const todo = JSON.stringify(d)
   assert.doesNotMatch(todo, /\blog\b|registro|liquidacion_|uuid|[0-9a-f]{8}-[0-9a-f]{4}/i)
 })
+
+// ═══ LAS DEMÁS CELDAS CON PUNTO AMARILLO, EN EL MISMO LENGUAJE ═══
+
+const JERGA = /\blog\b|registro|valor previo|liquidacion_|uuid|[0-9a-f]{8}-[0-9a-f]{4}/i
+
+test('una celda que NO es suma de pagos (Importe negro «=52*9200») es UNA anotación, con su cuenta como dato secundario', () => {
+  const crudas = [fila({ id: 1, columna: 'negro_manual', tipo: 'base', despues: 478400, formula_despues: '=52*9200' })]
+  const a = renglonesDePagoEnEfectivo({ cambios: crudas, pagos: null, nombres, cruce: null, campo: 'negro' })
+  assert.deepEqual(a.renglones.map((x) => x.importe), ['$478.400'])
+  assert.equal(a.renglones[0].cuando, 'Antes del 30/09/2026')
+  const d = detalleDePagoEnEfectivo({
+    campo: 'negro', persona: 'Quiroga Sebastián', quincena: '2ª quincena de septiembre · 16 al 30', valor: 478400, cuentaActual: '=52*9200', anotaciones: a,
+  })
+  assert.equal(d.titulo, 'Importe negro — Quiroga Sebastián, 2ª quincena de septiembre · 16 al 30')
+  assert.equal(d.cuenta, 'se escribió como 52*9200')
+  assert.doesNotMatch(JSON.stringify(d), JERGA)
+})
+
+test('una suma en una celda que no es de pagos tampoco se parte: «=100+50» en Banco es una anotación de $150', () => {
+  const a = renglonesDePagoEnEfectivo({
+    cambios: [fila({ id: 1, columna: 'por_banco_manual', tipo: 'base', despues: 150, formula_despues: '=100+50' })],
+    pagos: null, nombres, cruce: null, campo: 'porBanco',
+  })
+  assert.deepEqual(a.renglones.map((x) => x.importe), ['$150'])
+  assert.equal(a.cuenta, '100+50')
+})
+
+test('las horas se escriben como horas y un cambio en una celda común dice «corrigió de a»', () => {
+  const a = renglonesDePagoEnEfectivo({
+    cambios: [
+      fila({ id: 1, columna: 'horas_manual', antes: 80, despues: 88.5, autor: 'u1', en: '2026-10-01T10:00:00-03:00' }),
+    ],
+    pagos: null, nombres, cruce: null, campo: 'horas',
+  })
+  assert.equal(a.renglones[0].tipo, 'correccion')
+  assert.equal(a.renglones[0].correccion, 'corrigió de 80 a 88,5')
+  assert.equal(detalleDePagoEnEfectivo({ campo: 'horas', persona: 'Ana', quincena: null, valor: 88.5, cuentaActual: null, anotaciones: a }).total, '88,5')
+})
+
+test('la atribución por actividad es una inferencia y se dice como tal; sin ese cruce no se afirma nada', () => {
+  const previo = fila({ id: 1, tipo: 'base', despues: 40000 })
+  const cruce = {
+    actualizadoEn: new Map([['L1|' + P, '2026-10-01T15:00:20Z']]),
+    posts: [{ perfil_id: 'u1', en: '2026-10-01T15:00:40Z' }],
+  }
+  const inferido = renglonesDePagoEnEfectivo({ cambios: [previo], pagos: null, nombres, cruce }).renglones[0]
+  assert.equal(inferido.quien, 'probablemente Ana Pérez: fue quien usó la app a esa hora')
+  assert.equal(inferido.cuando, '01/10/2026, 12:00')
+  const sinPost = renglonesDePagoEnEfectivo({ cambios: [previo], pagos: null, nombres, cruce: { ...cruce, posts: [] } }).renglones[0]
+  assert.equal(sinPost.quien, 'no se pudo saber quién')
+  // un autor anotado por la base NO lleva «probablemente»: es un hecho
+  const hecho = renglonesDePagoEnEfectivo({ cambios: [fila({ id: 2, antes: null, despues: 5, autor: 'u2' })], pagos: null, nombres, cruce: null }).renglones[0]
+  assert.equal(hecho.quien, 'Beto Ruiz')
+})

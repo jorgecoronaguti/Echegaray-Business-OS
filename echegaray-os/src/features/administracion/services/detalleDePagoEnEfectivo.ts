@@ -27,7 +27,8 @@
 //     aviso de que se asignó en bloque; su nota técnica no es la nota de nadie.
 
 import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
-import { pesos } from '../components/liquidacion/formato.ts'
+import { horas, pesos } from '../components/liquidacion/formato.ts'
+import type { CampoEditable } from './liquidacionOverrides.ts'
 import { atribucionDelPrevio, INICIO_DEL_REGISTRO, type CambioCrudo, type CruceConElRegistro } from './historialDeManuales.ts'
 
 /** Una fila de `liquidacion_pago_efectivo` (0 o más por persona y quincena). */
@@ -75,6 +76,8 @@ export interface AnotacionesDePago {
 }
 
 export interface DetalleDePago {
+  /** La palabra de la columna («Importe negro»). */
+  rotulo: string
   titulo: string
   total: string
   renglones: RenglonDePago[]
@@ -114,8 +117,23 @@ export function sumandosDe(cuenta: string | null, valor: number | null): number[
 }
 
 /** La cuenta como se escribió, sólo si es una suma con más de un pago. */
-const cuentaVisible = (cuenta: string | null, valor: number | null): string | null =>
-  cuenta && sumandosDe(cuenta, valor).length > 1 ? cuenta.trim().replace(/^=/, '').replace(/\s+/g, '') : null
+const cuentaVisible = (cuenta: string | null): string | null => {
+  const cuerpo = (cuenta ?? '').trim().replace(/^=/, '').replace(/\s+/g, '')
+  // Un número solo («=237000») no es una cuenta: no hay nada que explicar.
+  return /[+*/×÷()]|.-/.test(cuerpo) ? cuerpo : null
+}
+
+/**
+ * QUÉ CELDA ES, EN LA PALABRA DE LA COLUMNA, Y CÓMO SE ESCRIBE SU NÚMERO. Sólo los pagados son una suma de pagos y se
+ * parten en renglones; el importe de otra celda es UN valor aunque se haya escrito como cuenta.
+ */
+const ROTULOS: Record<CampoEditable, string> = {
+  horas: 'Horas', cobra: 'Cobra total', adelanto: 'Adelanto en efectivo', yaTransferido: 'Adelanto banco / embargos',
+  porBanco: 'Banco', enEfectivo: 'Total efectivo', total: 'Total', horasRecibo: 'Horas recibo', valorHoraRecibo: '$/h de categoría',
+  negro: 'Importe negro', horasNegro: 'Horas negro', pagadoBanco: 'Pagado por banco', pagadoEfectivo: 'Pagado en efectivo',
+}
+const EN_HORAS: ReadonlySet<CampoEditable> = new Set(['horas', 'horasRecibo', 'horasNegro'])
+const SON_PAGOS: ReadonlySet<CampoEditable> = new Set(['pagadoBanco', 'pagadoEfectivo'])
 
 const ZONA = 'America/Argentina/Buenos_Aires'
 const partesDe = (d: Date): Record<string, string> =>
@@ -139,6 +157,9 @@ const COMO: Record<string, string> = {
   sin_sello: 'desde el chat o una sincronización',
 }
 
+type Medida = { dicho: (n: number | null) => string; partir: boolean }
+const medidaDe = (campo: CampoEditable): Medida => ({ dicho: EN_HORAS.has(campo) ? horas : pesos, partir: SON_PAGOS.has(campo) })
+
 const num = (v: number | string | null): number | null => (v == null ? null : Number(v))
 
 function quienDe(f: CambioCrudo, nombres: ReadonlyMap<string, string>, respaldo: string | null): string {
@@ -153,15 +174,16 @@ interface Contexto {
   pagos: readonly PagoEfectivoCrudo[] | null
 }
 
-function renglonesDelPrevio(f: CambioCrudo, c: Contexto, siembra: PagoEfectivoCrudo | undefined): RenglonDePago[] {
+function renglonesDelPrevio(f: CambioCrudo, c: Contexto, siembra: PagoEfectivoCrudo | undefined, m: Medida): RenglonDePago[] {
   const valor = num(f.despues)
   const a = atribucionDelPrevio(f, c.nombres, c.cruce)
-  const cuando = a.cuando ?? `Antes del ${diaDeIso(INICIO_DEL_REGISTRO).slice(0, 10)}`
-  const quien = a.motivo === 'atribuido' ? `${a.quien} (según la actividad de la app a esa hora)`
+  const cuando = a.en ? diaYHora(a.en) : `Antes del ${diaDeIso(INICIO_DEL_REGISTRO).slice(0, 10)}`
+  // INFERENCIA, NO HECHO: se cruzó la hora con quién usó la app; no es un autor anotado por la base.
+  const quien = a.motivo === 'atribuido' ? `probablemente ${a.quien}: fue quien usó la app a esa hora`
     : a.cuando ? 'no se pudo saber quién' : SIN_DATO_PREVIO
   const fechaDelPago = siembra ? `${diaDeFecha(siembra.fecha)} (día asignado en bloque, no el de cada pago)` : null
-  return sumandosDe(f.formula_despues, valor).map((n, i) => ({
-    id: `${f.id}-${i}`, tipo: 'pago', importe: pesos(n), correccion: null, cuando, quien, fechaDelPago, nota: SIN_NOTA, como: null,
+  return (m.partir ? sumandosDe(f.formula_despues, valor) : valor == null ? [] : [valor]).map((n, i) => ({
+    id: `${f.id}-${i}`, tipo: 'pago', importe: m.dicho(n), correccion: null, cuando, quien, fechaDelPago, nota: SIN_NOTA, como: null,
     deEntrega: false,
   }))
 }
@@ -181,7 +203,7 @@ function pagoDelCambio(f: CambioCrudo, pagos: readonly PagoEfectivoCrudo[], usad
 }
 
 function renglonesDelCambio(
-  f: CambioCrudo, c: Contexto, anterior: number[], pago: PagoEfectivoCrudo | undefined,
+  f: CambioCrudo, c: Contexto, anterior: number[], pago: PagoEfectivoCrudo | undefined, m: Medida,
 ): { renglones: RenglonDePago[]; sumandos: number[] } {
   const antes = num(f.antes)
   const despues = num(f.despues)
@@ -197,24 +219,25 @@ function renglonesDelCambio(
       sumandos: [],
       renglones: [{
         ...base, id: String(f.id), tipo: 'baja', importe: '—',
-        correccion: `borró lo anotado (${pesos(antes)}): vuelve al cálculo del sistema`,
+        correccion: `borró lo anotado (${m.dicho(antes)}): vuelve al cálculo del sistema`,
       }],
     }
   }
-  const sumandos = sumandosDe(f.formula_despues, despues)
-  const agregados = sumandos.length > anterior.length && anterior.every((n, i) => n === sumandos[i])
+  const sumandos = m.partir ? sumandosDe(f.formula_despues, despues) : [despues]
+  // «Agregó un pago» sólo existe en una suma de pagos con algo ya anotado; en cualquier otra celda un cambio es una corrección.
+  const agregados = m.partir && anterior.length > 0 && sumandos.length > anterior.length && anterior.every((n, i) => n === sumandos[i])
     ? sumandos.slice(anterior.length) : null
   if (antes == null || antes === 0 || agregados) {
     // «Anotó» (no había nada o sólo se agregaron sumandos): cada sumando nuevo es un pago.
     const nuevos = agregados ?? sumandos
     return {
       sumandos,
-      renglones: nuevos.map((n, i) => ({ ...base, id: `${f.id}-${i}`, tipo: 'pago' as const, importe: pesos(n), correccion: null })),
+      renglones: nuevos.map((n, i) => ({ ...base, id: `${f.id}-${i}`, tipo: 'pago' as const, importe: m.dicho(n), correccion: null })),
     }
   }
   return {
     sumandos,
-    renglones: [{ ...base, id: String(f.id), tipo: 'correccion', importe: pesos(despues), correccion: `corrigió de ${pesos(antes)} a ${pesos(despues)}` }],
+    renglones: [{ ...base, id: String(f.id), tipo: 'correccion', importe: m.dicho(despues), correccion: `corrigió de ${m.dicho(antes)} a ${m.dicho(despues)}` }],
   }
 }
 
@@ -223,23 +246,29 @@ function renglonesDelCambio(
  * `cambios` son las filas crudas de ESA celda en cualquier orden; `pagos` es `null` cuando la tabla de pagos no existe.
  */
 export function renglonesDePagoEnEfectivo(
-  { cambios, pagos, nombres, cruce }: { cambios: readonly CambioCrudo[]; pagos: readonly PagoEfectivoCrudo[] | null } & Omit<Contexto, 'pagos'>,
+  { cambios, pagos, nombres, cruce, campo = 'pagadoEfectivo' }: {
+    cambios: readonly CambioCrudo[]; pagos: readonly PagoEfectivoCrudo[] | null; campo?: CampoEditable
+  } & Omit<Contexto, 'pagos'>,
 ): AnotacionesDePago {
-  const c: Contexto = { nombres, cruce, pagos }
+  // Las fechas y notas de `liquidacion_pago_efectivo` son sólo del efectivo: en otra celda no hay con qué cruzarlas.
+  const c: Contexto = { nombres, cruce, pagos: campo === 'pagadoEfectivo' ? pagos : null }
+  const m = medidaDe(campo)
   const cronologico = [...cambios].sort((a, b) => Date.parse(a.en) - Date.parse(b.en) || a.id - b.id)
   const previos = cronologico.filter((f) => f.tipo === 'base')
   const reales = cronologico.filter((f) => f.tipo !== 'base')
-  const siembra = pagos?.find((p) => p.clave.startsWith('siembra:'))
+  const siembra = c.pagos?.find((p) => p.clave.startsWith('siembra:'))
   const usados = new Set<string>()
-  const renglones: RenglonDePago[] = previos.flatMap((f) => renglonesDelPrevio(f, c, siembra))
-  let sumandos: number[] = previos.length > 0 ? sumandosDe(previos[previos.length - 1].formula_despues, num(previos[previos.length - 1].despues)) : []
+  const renglones: RenglonDePago[] = previos.flatMap((f) => renglonesDelPrevio(f, c, siembra, m))
+  const ultimoPrevio = previos[previos.length - 1]
+  let sumandos: number[] = ultimoPrevio && num(ultimoPrevio.despues) != null
+    ? (m.partir ? sumandosDe(ultimoPrevio.formula_despues, num(ultimoPrevio.despues)) : [num(ultimoPrevio.despues) as number]) : []
   for (const f of reales) {
-    const r = renglonesDelCambio(f, c, sumandos, pagos ? pagoDelCambio(f, pagos, usados) : undefined)
+    const r = renglonesDelCambio(f, c, sumandos, c.pagos ? pagoDelCambio(f, c.pagos, usados) : undefined, m)
     renglones.push(...r.renglones)
     sumandos = r.sumandos
   }
   const ultimo = reales.length > 0 ? reales[reales.length - 1] : previos[previos.length - 1]
-  return { renglones, cuenta: ultimo ? cuentaVisible(ultimo.formula_despues, num(ultimo.despues)) : null }
+  return { renglones, cuenta: ultimo ? cuentaVisible(ultimo.formula_despues) : null }
 }
 
 /**
@@ -247,21 +276,24 @@ export function renglonesDePagoEnEfectivo(
  * que se sabe —la cuenta guardada— y la frase de que no quedó dicho quién ni cuándo: nunca un panel vacío.
  */
 export function detalleDePagoEnEfectivo(
-  { persona, quincena, valor, cuentaActual, anotaciones }: {
+  { persona, quincena, valor, cuentaActual, anotaciones, campo = 'pagadoEfectivo' }: {
+    campo?: CampoEditable
     persona: string | null; quincena: string | null; valor: number | null; cuentaActual: string | null
     anotaciones: AnotacionesDePago | undefined
   },
 ): DetalleDePago {
+  const m = medidaDe(campo)
   const donde = [persona, quincena].filter(Boolean).join(', ')
-  const sinConstancia: RenglonDePago[] = sumandosDe(cuentaActual, valor).map((n, i) => ({
-    id: `sin-${i}`, tipo: 'pago', importe: pesos(n), correccion: null, cuando: 'Sin fecha', quien: SIN_DATO_PREVIO,
+  const sinConstancia: RenglonDePago[] = (m.partir ? sumandosDe(cuentaActual, valor) : valor == null ? [] : [valor]).map((n, i) => ({
+    id: `sin-${i}`, tipo: 'pago', importe: m.dicho(n), correccion: null, cuando: 'Sin fecha', quien: SIN_DATO_PREVIO,
     fechaDelPago: null, nota: SIN_NOTA, como: null, deEntrega: false,
   }))
   const hay = (anotaciones?.renglones.length ?? 0) > 0
-  const cuenta = hay ? anotaciones?.cuenta ?? null : cuentaVisible(cuentaActual, valor)
+  const cuenta = hay ? anotaciones?.cuenta ?? null : cuentaVisible(cuentaActual)
   return {
-    titulo: donde ? `Pagado en efectivo — ${donde}` : 'Pagado en efectivo',
-    total: pesos(valor),
+    rotulo: ROTULOS[campo],
+    titulo: donde ? `${ROTULOS[campo]} — ${donde}` : ROTULOS[campo],
+    total: m.dicho(valor),
     renglones: hay ? (anotaciones as AnotacionesDePago).renglones : sinConstancia,
     cuenta: cuenta ? `se escribió como ${cuenta}` : null,
     leyendaDelPunto: LEYENDA_DEL_PUNTO,

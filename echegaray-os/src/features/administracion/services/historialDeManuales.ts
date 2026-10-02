@@ -89,7 +89,7 @@ export interface HistorialDeCelda { entradas: EntradaDeHistorial[] }
 export type HistorialDeLaQuincena = Record<string, HistorialDeCelda>
 
 /** `liquidacion_linea.efectivo_redondeado` también se anota, aunque su celda no lleve punto. */
-const CAMPO_DE_COLUMNA: ReadonlyMap<string, CampoEditable> = new Map(
+export const CAMPO_DE_COLUMNA: ReadonlyMap<string, CampoEditable> = new Map(
   (Object.entries(COLUMNA_DE) as [CampoEditable, string][]).map(([campo, columna]) => [columna, campo]),
 )
 
@@ -166,13 +166,13 @@ const minuto = (iso: string): string => iso.length >= 16 ? new Date(iso).toISOSt
  */
 export function atribucionDelPrevio(
   f: CambioCrudo, nombres: ReadonlyMap<string, string>, cruce: CruceConElRegistro | null,
-): { cuando: string | null; quien: string | null; motivo: 'sin_dato' | 'atribuido' | 'sin_post' | 'varios' } {
+): { cuando: string | null; quien: string | null; en: string | null; motivo: 'sin_dato' | 'atribuido' | 'sin_post' | 'varios' } {
   const act = cruce?.actualizadoEn.get(`${f.liquidacion_id}|${f.persona_id}`) ?? null
-  if (!act || Date.parse(act) < Date.parse(INICIO_DEL_REGISTRO)) return { cuando: null, quien: null, motivo: 'sin_dato' }
+  if (!act || Date.parse(act) < Date.parse(INICIO_DEL_REGISTRO)) return { cuando: null, quien: null, en: null, motivo: 'sin_dato' }
   const cuando = fechaDicha(act).completa
   const perfiles = new Set((cruce?.posts ?? []).filter((p) => p.perfil_id && minuto(p.en) === minuto(act)).map((p) => p.perfil_id as string))
-  if (perfiles.size === 1) return { cuando, quien: nombres.get([...perfiles][0]) ?? 'sin identificar', motivo: 'atribuido' }
-  return { cuando, quien: null, motivo: perfiles.size === 0 ? 'sin_post' : 'varios' }
+  if (perfiles.size === 1) return { cuando, quien: nombres.get([...perfiles][0]) ?? 'sin identificar', en: act, motivo: 'atribuido' }
+  return { cuando, quien: null, en: act, motivo: perfiles.size === 0 ? 'sin_post' : 'varios' }
 }
 
 function valorPrevio(

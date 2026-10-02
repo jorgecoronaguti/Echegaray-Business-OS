@@ -19,7 +19,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
-import { claveDeCelda, type EntradaDeHistorial } from '../../services/historialDeManuales'
+import { claveDeCelda } from '../../services/historialDeManuales'
 import { detalleDePagoEnEfectivo } from '../../services/detalleDePagoEnEfectivo'
 import { ALTO_BARRA } from '../../../../shared/components/movil/tokens'
 import { DetalleDePagoEnEfectivo } from './DetalleDePagoEnEfectivo'
@@ -49,10 +49,9 @@ export interface CeldaDeHistorial {
   cuenta?: string | null
 }
 
-/** El detalle propio sólo existe para el pago en efectivo; el resto de las celdas conserva el historial genérico. */
-const esPagoEnEfectivo = (c: CeldaDeHistorial): boolean => c.campo === 'pagadoEfectivo'
-/** En el teléfono la barra inferior de contextos (64 px) tapa el pie de la ventana: el cuadro no puede quedar debajo. */
 const ES_TELEFONO = '(max-width: 767px)'
+/** La cabecera de la app (`h-12` + su borde): el cuadro no puede quedar debajo de ella. */
+const ALTO_CABECERA = 49
 
 const ANCHO_DEL_PANEL = 320
 const DEMORA_AL_SALIR = 150
@@ -86,7 +85,12 @@ export function PuntoConHistorial({ celda, lectura, children }: {
     const r = boton.current.getBoundingClientRect()
     setLugar(ubicarPanel({
       ancla: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
-      ventana: { ancho: window.innerWidth, alto: window.innerHeight, reservaAbajo: window.matchMedia(ES_TELEFONO).matches ? ALTO_BARRA : 0 },
+      // En el teléfono la barra inferior de contextos (64 px) también ocupa la ventana, y no hay lugar al costado.
+      ventana: {
+        ancho: window.innerWidth, alto: window.innerHeight, reservaArriba: ALTO_CABECERA,
+        reservaAbajo: window.matchMedia(ES_TELEFONO).matches ? ALTO_BARRA : 0,
+      },
+      preferirCostado: !window.matchMedia(ES_TELEFONO).matches,
       panel: { ancho: ANCHO_DEL_PANEL, alto: panel.current?.scrollHeight ?? 160 },
     }))
   }, [])
@@ -121,24 +125,23 @@ export function PuntoConHistorial({ celda, lectura, children }: {
   }, [abierto, cerrar, ubicar])
 
   const clave = claveDeCelda(celda.grupo, celda.personaId, celda.campo)
-  const entradas = lectura.historial?.[clave]?.entradas ?? []
-  const pago = esPagoEnEfectivo(celda)
-    ? detalleDePagoEnEfectivo({
-      persona: celda.persona ?? null, quincena: lectura.quincena, valor: celda.valor ?? null,
-      cuentaActual: celda.cuenta ?? null, anotaciones: lectura.detallesDePago[clave],
-    })
-    : null
+  const detalle = detalleDePagoEnEfectivo({
+    campo: celda.campo, persona: celda.persona ?? null, quincena: lectura.quincena, valor: celda.valor ?? null,
+    cuentaActual: celda.cuenta ?? null, anotaciones: lectura.detalles[clave],
+  })
 
   return (
     <>
-      {/* El hit del punto crece con padding y margen negativo: no mueve el layout ni cambia el alto de la fila. */}
+      {/* El hit del punto crece con padding y margen negativo: no mueve el layout ni cambia el alto de la fila. En el teléfono
+          crece sólo hacia arriba y abajo: hacia los costados llegaba bajo la columna fija de «Pagar» y un toque podía
+          caer en ese botón, que escribe. */}
       <button
         ref={boton}
         type="button"
         data-testid="marca-manual-historial"
         aria-expanded={abierto}
         aria-controls={abierto ? id : undefined}
-        aria-label={pago ? 'Pagado en efectivo, escrito a mano: ver qué pagos se anotaron' : 'Escrito a mano: ver historial de cargas'}
+        aria-label={`${detalle.rotulo}, escrito a mano: ver qué se anotó`}
         onPointerEnter={(e) => { if (e.pointerType === 'mouse') { cancelarCierre(); setAbierto(true) } }}
         onPointerLeave={(e) => { if (e.pointerType === 'mouse') cierraSiNoEstaFijo() }}
         onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) setAbierto(true) }}
@@ -147,7 +150,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
           if (abierto && fijo) { cerrar(); return }
           setAbierto(true); setFijo(true)
         }}
-        className="-m-1 inline-flex cursor-pointer items-center justify-center rounded-full bg-transparent p-1 max-md:-m-2.5 max-md:p-2.5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ink"
+        className="-m-1 inline-flex cursor-pointer items-center justify-center rounded-full bg-transparent p-1 max-md:-mx-1 max-md:-my-3 max-md:px-1 max-md:py-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ink"
       >
         {children}
       </button>
@@ -156,7 +159,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
           ref={panel}
           id={id}
           role="dialog"
-          aria-label={pago ? pago.titulo : 'Historial de cargas de esta celda'}
+          aria-label={detalle.titulo}
           data-testid="historial-de-manuales"
           onPointerEnter={cancelarCierre}
           onPointerLeave={(e) => { if (e.pointerType === 'mouse') cierraSiNoEstaFijo() }}
@@ -166,32 +169,12 @@ export function PuntoConHistorial({ celda, lectura, children }: {
           }}
           className="overflow-y-auto rounded-card border border-line bg-canvas p-3 text-left text-[12px] leading-4 tabular-nums text-ink shadow-card"
         >
-          {pago && !lectura.error ? <DetalleDePagoEnEfectivo detalle={pago} /> : <CuerpoDelHistorial entradas={entradas} error={lectura.error} />}
+          {lectura.error
+            ? <p data-testid="historial-error" className="m-0 text-[11px] text-muted">No se pudo leer lo que se anotó.</p>
+            : <DetalleDePagoEnEfectivo detalle={detalle} />}
         </div>,
         document.body,
       )}
     </>
-  )
-}
-
-function CuerpoDelHistorial({ entradas, error }: { entradas: EntradaDeHistorial[]; error: string | null }) {
-  if (error) return <p data-testid="historial-error" className="m-0 text-[11px] text-muted">No se pudo leer el historial.</p>
-  if (entradas.length === 0) return <p className="m-0 text-[11px] text-muted">Sin registro de cargas.</p>
-  return (
-    <ol className="m-0 flex list-none flex-col gap-2 p-0">
-      {entradas.map((e, i) => (
-        <li key={e.id} className={i === 0 ? 'flex flex-col gap-1' : 'flex flex-col gap-1 border-t border-line pt-2'}>
-          <div className="flex items-baseline justify-between gap-2 text-[11px]">
-            {e.cuando && <span className="text-faint">{e.cuando}</span>}
-            <span className="min-w-0 break-words text-right text-muted">{e.quien}</span>
-          </div>
-          <div className="text-[12.5px]">
-            {e.esBase ? e.despues : <>{e.antes} <span className="text-faint">→</span> {e.despues}</>}
-          </div>
-          {e.cuenta && <div className="break-all text-[11px] text-muted">{e.cuenta}</div>}
-          <div className="text-[11px] text-faint">{e.como}</div>
-        </li>
-      ))}
-    </ol>
   )
 }

@@ -14,11 +14,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 import type { Quincena } from './quincena.ts'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { CampoEditable } from './liquidacionOverrides.ts'
 import { rotuloQuincena } from './quincena.ts'
 import { leerPagosEnEfectivo } from './pagosEnEfectivoService.ts'
 import { renglonesDePagoEnEfectivo, type AnotacionesDePago, type PagoEfectivoCrudo } from './detalleDePagoEnEfectivo.ts'
 import {
-  claveDeCelda, historialDeCeldas, INICIO_DEL_REGISTRO, type CambioCrudo, type CruceConElRegistro, type HistorialDeLaQuincena, type PostDelRegistro,
+  CAMPO_DE_COLUMNA, claveDeCelda, historialDeCeldas, INICIO_DEL_REGISTRO, type CambioCrudo, type CruceConElRegistro, type HistorialDeLaQuincena, type PostDelRegistro,
 } from './historialDeManuales.ts'
 
 const COLUMNAS_SIN_ORIGEN = 'id, liquidacion_id, persona_id, columna, tipo, antes, despues, formula_antes, formula_despues, autor, en, liquidacion_quincena!inner(grupo, desde, hasta)'
@@ -30,8 +31,8 @@ export interface LecturaDelHistorial {
   /** `null` = no hay log que mostrar (tabla sin aplicar o lectura fallida): la pantalla no afirma nada. */
   historial: HistorialDeLaQuincena | null
   error: string | null
-  /** El detalle de «Pagado en efectivo» por celda (`claveDeCelda(grupo, persona, 'pagadoEfectivo')`), ya dicho en texto. */
-  detallesDePago: Record<string, AnotacionesDePago>
+  /** El detalle de CADA celda escrita a mano (`claveDeCelda(grupo, persona, campo)`), ya dicho en texto. */
+  detalles: Record<string, AnotacionesDePago>
   /** «2ª quincena de septiembre · 16 al 30»: el período que titula el detalle. */
   quincena: string
 }
@@ -94,7 +95,7 @@ export async function leerHistorialDeLaQuincena(supabase: SupabaseClient, q: Qui
         .order('id', { ascending: true }).range(desde, desde + PAGINA - 1)
     }
     if (r.error) {
-      const sinLog = { detallesDePago: {}, quincena: rotuloQuincena(q) }
+      const sinLog = { detalles: {}, quincena: rotuloQuincena(q) }
       return tablaSinAplicar(r.error) ? { historial: null, error: null, ...sinLog } : { historial: null, error: r.error.message, ...sinLog }
     }
     const pagina = (r.data ?? []) as unknown as FilaConCabecera[]
@@ -112,24 +113,27 @@ export async function leerHistorialDeLaQuincena(supabase: SupabaseClient, q: Qui
   const nombres = hayNombres ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   return {
     historial: historialDeCeldas(filas, nombres, cruce), error: null,
-    detallesDePago: detallesDePagoEnEfectivo(filas, pagos, nombres, cruce), quincena: rotuloQuincena(q),
+    detalles: detallesDeCeldas(filas, pagos, nombres, cruce), quincena: rotuloQuincena(q),
   }
 }
 
-/** Una celda «Pagado en efectivo» por persona y grupo: el detalle de cada una se arma con SUS filas y SUS pagos. */
-function detallesDePagoEnEfectivo(
+/** Una celda por persona, grupo y campo: el detalle de cada una se arma con SUS filas (y, en efectivo, SUS pagos). */
+function detallesDeCeldas(
   filas: readonly CambioCrudo[], pagos: PagoEfectivoCrudo[] | null, nombres: ReadonlyMap<string, string>, cruce: CruceConElRegistro | null,
 ): Record<string, AnotacionesDePago> {
-  const porCelda = new Map<string, CambioCrudo[]>()
+  const porCelda = new Map<string, { campo: CampoEditable; cambios: CambioCrudo[] }>()
   for (const f of filas) {
-    if (f.columna !== 'pagado_efectivo') continue
-    const k = claveDeCelda(f.grupo, f.persona_id, 'pagadoEfectivo')
-    porCelda.set(k, [...(porCelda.get(k) ?? []), f])
+    const campo = CAMPO_DE_COLUMNA.get(f.columna)
+    if (!campo) continue
+    const k = claveDeCelda(f.grupo, f.persona_id, campo)
+    const previo = porCelda.get(k)
+    if (previo) previo.cambios.push(f)
+    else porCelda.set(k, { campo, cambios: [f] })
   }
   const salida: Record<string, AnotacionesDePago> = {}
-  for (const [k, cambios] of porCelda) {
+  for (const [k, { campo, cambios }] of porCelda) {
     const suyos = pagos?.filter((p) => claveDeCelda(p.grupo, p.persona_id, 'pagadoEfectivo') === k) ?? null
-    salida[k] = renglonesDePagoEnEfectivo({ cambios, pagos: suyos, nombres, cruce })
+    salida[k] = renglonesDePagoEnEfectivo({ cambios, pagos: suyos, nombres, cruce, campo })
   }
   return salida
 }

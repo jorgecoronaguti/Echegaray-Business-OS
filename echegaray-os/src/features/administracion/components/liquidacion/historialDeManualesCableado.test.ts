@@ -67,7 +67,9 @@ test('el cuadro de pago en efectivo se abre por teclado y por toque, y explica q
   const s = leer('HistorialDeManuales.tsx')
   assert.match(s, /onFocus=\{\(e\) => \{ if \(e\.currentTarget\.matches\(':focus-visible'\)\)/, 'foco con teclado abre')
   assert.match(s, /onClick=/, 'Enter o toque fijan el cuadro')
-  assert.match(s, /reservaAbajo: window\.matchMedia\(ES_TELEFONO\)\.matches \? ALTO_BARRA : 0/, 'la barra inferior del teléfono no lo tapa')
+  assert.match(s, /reservaAbajo:\s*window\.matchMedia\(ES_TELEFONO\)\.matches \? ALTO_BARRA : 0/, 'la barra inferior del teléfono no lo tapa')
+  assert.match(s, /reservaArriba: ALTO_CABECERA/, 'la cabecera de la app no lo tapa')
+  assert.match(s, /preferirCostado: !window\.matchMedia\(ES_TELEFONO\)\.matches/, 'en PC se abre al costado')
   assert.match(leer('DetalleDePagoEnEfectivo.tsx'), /detalle\.leyendaDelPunto/, 'el punto amarillo se explica dentro del cuadro')
 })
 
@@ -76,4 +78,27 @@ test('la celda de Pagado entrega persona, importe y cuenta al cuadro (sin eso el
     assert.match(leer(archivo), /persona: (nombre|fila\.nombre)/, `${archivo}: no pasa de quién es la celda`)
   }
   assert.match(leer('cuadro/CeldasDelEspejo.tsx'), /nombre=\{fila\.nombre\}/)
+})
+
+test('TODA celda con punto amarillo usa el mismo cuadro y el lenguaje nuevo (sin «valor previo», «registro» ni «log» a la vista)', () => {
+  const s = leer('HistorialDeManuales.tsx')
+  assert.doesNotMatch(s, /CuerpoDelHistorial|EntradaDeHistorial/, 'quedó el cuerpo genérico viejo')
+  assert.match(s, /campo: celda\.campo/, 'el título sale de la celda que es')
+  const texto = leer('DetalleDePagoEnEfectivo.tsx') + readFileSync(join(AQUI, '../../services/detalleDePagoEnEfectivo.ts'), 'utf8')
+  const visibles = [...texto.matchAll(/'([^'\n]*)'|`([^`\n]*)`/g)].map((m) => m[1] ?? m[2]).join('\n')
+  assert.doesNotMatch(visibles, /valor previo|anterior al registro|según el registro|\bal log\b/i)
+})
+
+test('en el teléfono el área táctil del punto no se extiende hacia los costados (llegaba bajo «Pagar»)', () => {
+  const s = leer('HistorialDeManuales.tsx')
+  assert.match(s, /max-md:-mx-1 max-md:-my-3 max-md:px-1 max-md:py-3/)
+  assert.doesNotMatch(s, /max-md:-m-2\.5|max-md:p-2\.5/, 'volvió el área táctil de 10 px por lado')
+})
+
+test('las celdas con punto entregan quién, cuánto y cuenta (el título del cuadro depende de eso)', () => {
+  for (const archivo of ['cuadro/CeldasBlancoNegro.tsx', 'cuadro/PanelDeLaPersona.tsx', 'cuadro/CeldasDelEspejo.tsx']) {
+    const usos = [...leer(archivo).matchAll(/celda=\{\{[^}]*\}\}/g)].map((m) => m[0])
+    assert.ok(usos.length > 0, archivo)
+    for (const u of usos) assert.match(u, /persona:/, `${archivo}: ${u} no dice de quién es`)
+  }
 })

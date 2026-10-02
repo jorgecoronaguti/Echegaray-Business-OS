@@ -311,7 +311,7 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
     <section data-testid="panel-cadena">
       <Rotulo>Esta quincena</Rotulo>
       <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
-        <Leida valor={l.cobra} medio origen={l.origen.cobra} celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'cobra' }} />
+        <Leida valor={l.cobra} medio origen={l.origen.cobra} celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'cobra', persona: fila.nombre, valor: l.cobra, cuenta: l.formulas.cobra ?? null }} />
       </Renglon>
       <Renglon rotulo="− Adelanto">
         <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
@@ -321,7 +321,7 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
       </Renglon>
       <Renglon rotulo="= Banco + efectivo" fuerte
         nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
-        <Leida valor={l.total} medio origen={l.origen.total} celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'total' }} />
+        <Leida valor={l.total} medio origen={l.origen.total} celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'total', persona: fila.nombre, valor: l.total, cuenta: l.formulas.total ?? null }} />
       </Renglon>
       <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
         {/* SE ESCRIBE EL NETO DEL RECIBO; al lado, «+ resta = resultado» (dueño, 30/09/2026: la celda suma y da el resultado). */}

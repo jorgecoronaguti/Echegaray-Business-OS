@@ -47,3 +47,50 @@ test('en el teléfono el panel no baja bajo la barra inferior: esa franja no cue
   assert.equal(conBarra.arriba, true)
   assert.ok(conBarra.top + 190 <= 560, 'el panel queda arriba del punto')
 })
+
+// QA 02/10: a 390×844 el cuadro tapaba la cabecera y escondía renglones bajo un scroll que no hacía falta.
+const TEL = { ancho: 390, alto: 844, reservaArriba: 48, reservaAbajo: 64 }
+
+test('teléfono: el cuadro vive ENTRE la cabecera y la barra inferior, con todo su alto si cabe (sin scroll interno)', () => {
+  for (const top of [60, 200, 420, 700]) {
+    const u = ubicarPanel({ ancla: celda(200, top), ventana: TEL, panel: { ancho: 320, alto: 380 } })
+    assert.ok(u.top >= 48 + MARGEN, `top ${u.top} bajo la cabecera (ancla en ${top})`)
+    assert.ok(u.top + 380 <= 844 - 64 - MARGEN, `el cuadro entero queda sobre la barra inferior (ancla en ${top})`)
+    assert.ok(u.altoMaximo >= 380, `el alto máximo (${u.altoMaximo}) alcanza para el contenido: no scrollea`)
+  }
+})
+
+test('teléfono: si el contenido no entra ni en toda la zona visible, el alto máximo ES la zona y recién ahí scrollea', () => {
+  const u = ubicarPanel({ ancla: celda(200, 400), ventana: TEL, panel: { ancho: 320, alto: 900 } })
+  assert.equal(u.top, 48 + MARGEN)
+  assert.equal(u.altoMaximo, 844 - 64 - MARGEN - (48 + MARGEN))
+})
+
+test('la cabecera cuenta aunque el cuadro sea chico y vaya arriba del punto', () => {
+  const u = ubicarPanel({ ancla: celda(100, 70), ventana: { ancho: 390, alto: 844, reservaArriba: 48 }, panel: { ancho: 320, alto: 200 } })
+  assert.ok(u.top >= 48 + MARGEN, 'no queda bajo la cabecera')
+})
+
+test('PC: al costado de la celda, no encima de la columna; a la izquierda si a la derecha no entra', () => {
+  const ancla = { left: 600, right: 606, top: 300, bottom: 306 }
+  const der = ubicarPanel({ ancla, ventana: { ancho: 1440, alto: 900, reservaArriba: 48 }, panel: { ancho: 320, alto: 300 }, preferirCostado: true })
+  assert.equal(der.lado, 'costado')
+  assert.ok(der.left >= ancla.right, 'a la derecha del punto')
+  assert.ok(der.top <= ancla.top && der.top + 300 >= ancla.bottom, 'alineado al renglón del punto')
+  const izq = ubicarPanel({ ancla: { ...ancla, left: 1300, right: 1306 }, ventana: { ancho: 1440, alto: 900 }, panel: { ancho: 320, alto: 300 }, preferirCostado: true })
+  assert.equal(izq.lado, 'costado')
+  assert.ok(izq.left + izq.ancho <= 1300, 'a la izquierda, sin tapar el punto')
+  assert.ok(izq.left >= MARGEN)
+})
+
+test('PC al costado: nunca fuera de la zona visible, aunque el punto esté en el borde de arriba o de abajo', () => {
+  for (const top of [50, 880]) {
+    const u = ubicarPanel({ ancla: { left: 600, right: 606, top, bottom: top + 6 }, ventana: { ancho: 1440, alto: 900, reservaArriba: 48 }, panel: { ancho: 320, alto: 300 }, preferirCostado: true })
+    assert.ok(u.top >= 48 + MARGEN && u.top + 300 <= 900 - MARGEN, `ancla en ${top}: top ${u.top}`)
+  }
+})
+
+test('si al costado no entra (ventana angosta), cae al arriba/abajo de siempre', () => {
+  const u = ubicarPanel({ ancla: celda(200, 300), ventana: { ancho: 390, alto: 844 }, panel: { ancho: 320, alto: 200 }, preferirCostado: true })
+  assert.equal(u.lado, 'vertical')
+})

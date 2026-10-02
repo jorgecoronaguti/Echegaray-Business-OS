@@ -287,6 +287,6 @@ export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicio
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
       origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined}
-      celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'horas' }} />
+      celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'horas', persona: fila.nombre, valor: l.horas, cuenta: l.formulas.horas ?? null }} />
   )
 }

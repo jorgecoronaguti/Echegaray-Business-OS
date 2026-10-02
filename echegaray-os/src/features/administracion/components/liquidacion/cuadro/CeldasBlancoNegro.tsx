@@ -202,7 +202,7 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
         <div style={{ fontWeight: 600, lineHeight: '16px', fontVariantNumeric: 'tabular-nums' }}>
           {suma.resultado_texto}
           {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
-          <MarcaDeOrigen origen={l.origen.porBanco} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'porBanco' }} />
+          <MarcaDeOrigen origen={l.origen.porBanco} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'porBanco', persona: fila.nombre, valor: l.porBanco, cuenta: l.formulas.porBanco ?? null }} />
           {s?.driveFileId && (
             <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
               title="Abrir el recibo" style={{ marginLeft: 4, fontSize: '10.5px', color: V.apagado, fontStyle: 'normal', fontWeight: 400 }}>↗</a>
@@ -217,7 +217,7 @@ export function CeldaNeto({ fila: conResta, edicion }: { fila: FilaDelEspejo; ed
       <div>
         {pesos(l.porBanco)}{estimado && <Est />}
         {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
-        <MarcaDeOrigen origen={l.origen.porBanco} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'porBanco' }} />
+        <MarcaDeOrigen origen={l.origen.porBanco} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'porBanco', persona: fila.nombre, valor: l.porBanco, cuenta: l.formulas.porBanco ?? null }} />
         {s?.driveFileId && (
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
             title="Abrir el recibo" style={{ marginLeft: 4, fontSize: '10.5px', color: V.apagado, fontStyle: 'normal' }}>↗</a>
@@ -311,7 +311,7 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
   return (
     <div data-testid={`total-${fila.personaId}`} title={[cuenta, jornales].filter(Boolean).join(' · ') || undefined}
       style={{ ...DERECHA, fontSize: '14px', fontWeight: 600, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
-      {pesos(l.cobra)}{estimado && <Est />}<MarcaDeOrigen origen={l.origen.cobra} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'cobra' }} />
+      {pesos(l.cobra)}{estimado && <Est />}<MarcaDeOrigen origen={l.origen.cobra} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo: 'cobra', persona: fila.nombre, valor: l.cobra, cuenta: l.formulas.cobra ?? null }} />
     </div>
   )
 }
