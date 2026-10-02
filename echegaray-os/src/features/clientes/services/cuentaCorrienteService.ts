@@ -1,7 +1,8 @@
 // PANTALLA 28 — cuenta corriente del cliente: antigüedad, DSO y certificados al cobro.
 //
-// Cero cálculo acá. El saldo, el vencido, el aging, el DSO y la efectividad salen de la vista
-// `public.cliente_cuenta_corriente`, que es la ÚNICA definición de esos conceptos en todo el OS:
+// Cero cálculo acá. El saldo, el vencido, el aging, el DSO y la efectividad salen de la función
+// `public.cuenta_corriente_de_clientes` (la de la vista `cliente_cuenta_corriente`, recortada a B),
+// que es la ÚNICA definición de esos conceptos en todo el OS:
 // la web, el chat y Claude Code leen la misma. Recalcularlos en TypeScript sería crear una segunda
 // versión de la empresa que un día va a discrepar con la del Sheet y nadie va a saber cuál vale.
 //
@@ -16,19 +17,32 @@ import { nombresDeObra } from './nombresDeObra.ts'
 import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 /**
- * La cuenta corriente de UN cliente.
+ * El bloque cuenta corriente es del circuito facturado (dueño, 02/10/2026: «dejalo si corresponde a
+ * cobros en blanco»). La vista `cliente_cuenta_corriente` suma B y N y la siguen leyendo la cartera, la
+ * economía del cliente y las analíticas, así que el recorte no va en la vista: se le pide a la MISMA
+ * función con su parámetro de categoría (migración 20261002T1500).
+ */
+export const CATEGORIA_DE_LA_CUENTA_CORRIENTE = 'B'
+
+/**
+ * La cuenta corriente de UN cliente, sólo lo facturado (categoría B).
  *
- * Devuelve `null` sin error cuando el cliente no tiene ni un movimiento en Cobranzas — que no es un
- * fallo: es un cliente nuevo, o uno cuyo texto en el Sheet todavía no resuelve a este `cliente_id`.
- * Un cero fabricado acá diría «no debe nada», que es una afirmación distinta de «no hay dato».
+ * Devuelve `null` sin error cuando el cliente no tiene ni un movimiento B en Cobranzas — que no es un
+ * fallo: es un cliente nuevo, uno que sólo opera en N, o uno cuyo texto en el Sheet todavía no resuelve
+ * a este `cliente_id`. Un cero fabricado acá diría «no debe nada», que es una afirmación distinta de
+ * «no hay dato».
+ *
+ * Sin respaldo a la vista: si la función con categoría no existe todavía en la base, el error sube y
+ * el bloque dice que no se pudo leer. Leer la vista publicaría B+N como si fuera blanco.
  */
 export async function getCuentaCorriente(
   supabase: SupabaseClient,
   clienteId: string,
 ): Promise<ServiceResultOpcional<CuentaCorriente>> {
   const { data, error } = await supabase
-    .from('cliente_cuenta_corriente')
-    .select('*')
+    .rpc('cuenta_corriente_de_clientes', {
+      p_desde: null, p_hasta: null, p_categoria: CATEGORIA_DE_LA_CUENTA_CORRIENTE,
+    })
     .eq('cliente_id', clienteId)
     .maybeSingle()
 
