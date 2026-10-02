@@ -1,10 +1,9 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { itemActivoDeBarra, type ItemBarraTelefono } from '@/features/auth/types/barraTelefono'
+import { hrefDeItemBarra, itemActivoDeBarra, type ItemBarraTelefono } from '@/features/auth/types/barraTelefono'
 import { BarraContextos } from './movil/Piezas'
 import { useObraRecordada } from '../hooks/useObraRecordada'
-import { conObraRecordada } from '../utils/obraRecordada'
 
 // LA BARRA DE ABAJO DEL TELÉFONO EN LAS PANTALLAS DE ESCRITORIO (dueño, 23/09/2026).
 //
@@ -25,7 +24,7 @@ export function BarraTelefono({ items }: { items: ItemBarraTelefono[] }) {
       <BarraContextos
         testid="barra-telefono-nav"
         items={items.map((i) => ({
-          href: conObraRecordada(i.href, obra), label: i.label, icono: i.icono, activo: activo === i.clave, testid: `barra-${i.clave}`,
+          href: hrefDeItemBarra(i, obra), label: i.label, icono: i.icono, activo: activo === i.clave, testid: `barra-${i.clave}`,
         }))}
       />
     </div>

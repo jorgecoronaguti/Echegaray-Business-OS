@@ -135,6 +135,26 @@ export const ENTRADA_DE_ADMINISTRACION = '/clientes'
 export const INICIO_JEFE_TELEFONO = '/obra/hoy'
 
 /**
+ * «OBRA» EN LA BARRA DEL JEFE (dueño, 02/10/2026): lleva a la ficha ENTERA de la obra que tiene elegida
+ * —la misma que llevan Hoy, Tareas, Avance y Gente—. Vive acá por lo mismo que `INICIO_JEFE_TELEFONO`:
+ * la usan las dos barras (`ShellJefe` en `/obra/*` y `BarraTelefono` en la ficha).
+ *
+ * Sin obra elegida NO va a `/obras`: la cartera está cerrada al jefe (`RUTAS_CERRADAS_AL_JEFE_EXACTAS`)
+ * y el portero lo rebotaría. Va a su Hoy, que es donde se elige la obra.
+ */
+export function hrefObraDelJefe(obraId: string | null | undefined): string {
+  return obraId ? `/obras/${encodeURIComponent(obraId)}` : INICIO_JEFE_TELEFONO
+}
+
+/**
+ * ¿Es la ficha de UNA obra? `/obras/hoy`, `/obras/gantt` y `/obras/nueva` cuelgan de `/obras/` pero no
+ * son fichas: la portada del día es del Hoy del jefe y las otras dos le están cerradas.
+ */
+export function esFichaDeObra(pathname: string): boolean {
+  return /^\/obras\/(?!(?:hoy|gantt|nueva)(?:\/|$))[^/]+(?:\/|$)/.test(pathname)
+}
+
+/**
  * ═══ LO QUE EL JEFE DE OBRA YA NO ABRE (dueño, 24/09/2026) ═══
  *
  * Textual, aprobando el mapa del teléfono: el jefe «deja de tener acciones de Administración en la

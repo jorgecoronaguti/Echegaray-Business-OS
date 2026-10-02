@@ -2,7 +2,7 @@
 
 import { usePathname, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { CONTEXTOS, contextoActivo, conObra } from '../services/navegacion'
+import { CONTEXTOS, contextoActivo, hrefDeContexto } from '../services/navegacion'
 import { MarcoMovil, BarraContextos } from '@/shared/components/movil/Piezas'
 import type { NombreIcono } from '@/shared/components/movil/Iconos'
 import { useObraRecordada } from '@/shared/hooks/useObraRecordada'
@@ -39,6 +39,7 @@ const ICONO: Record<string, NombreIcono> = {
   '/obra/tareas': 'tarea',
   '/obra/avance': 'avance',
   '/obra/personas': 'gente',
+  '/obras': 'obra',
 }
 
 export function ShellJefe({ children }: { children: ReactNode }) {
@@ -62,7 +63,7 @@ export function ShellJefe({ children }: { children: ReactNode }) {
         <BarraContextos
           testid="barra-jefe"
           items={CONTEXTOS.map((c) => ({
-            href: conObra(c.href, obraId),
+            href: hrefDeContexto(c.href, obraId),
             label: c.label,
             icono: ICONO[c.href] ?? 'casa',
             activo: activo === c.href,

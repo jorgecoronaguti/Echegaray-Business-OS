@@ -445,8 +445,9 @@ export function BarraContextos({
       }}
     >
       {items.map((n) => (
+        // La clave es el testid: sin obra elegida, «Obra» del jefe lleva al mismo Hoy que «Hoy».
         <Link prefetch={false}
-          key={n.href}
+          key={n.testid ?? n.href}
           href={n.href}
           data-testid={n.testid}
           aria-current={n.activo ? 'page' : undefined}

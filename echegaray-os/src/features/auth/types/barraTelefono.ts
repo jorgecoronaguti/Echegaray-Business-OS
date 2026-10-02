@@ -11,7 +11,8 @@
 // lo que ese rol ya puede abrir (mismas rutas que `solapasDeNav`, más Campo, que es donde se opera).
 
 import type { Rol } from './index'
-import { INICIO_JEFE_TELEFONO } from '../../../shared/auth/areas.ts'
+import { INICIO_JEFE_TELEFONO, esFichaDeObra, hrefObraDelJefe } from '../../../shared/auth/areas.ts'
+import { conObraRecordada } from '../../../shared/utils/obraRecordada.ts'
 
 export interface ItemBarraTelefono {
   clave: string
@@ -21,6 +22,11 @@ export interface ItemBarraTelefono {
   icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente' | 'pedido' | 'mas' | 'reloj'
   /** Rutas que encienden este ítem además de su `href` (por prefijo). */
   enciende?: readonly string[]
+  /**
+   * El enlace no es `href`: es la ficha de la obra elegida (`hrefObraDelJefe`). `href` queda como la
+   * raíz que lo reconoce. Sólo «Obra» del jefe (dueño, 02/10/2026).
+   */
+  fichaDeObra?: true
 }
 
 // EL JEFE DE OBRA TIENE UNA SOLA BARRA EN TODO EL TELÉFONO (dueño, 24/09/2026: «hay mezclas entre
@@ -35,6 +41,10 @@ const JEFE: ItemBarraTelefono[] = [
   // Personal entero (Plantel, Horas, Cargar asistencia) enciende Gente desde el 24/09/2026: es donde el
   // jefe lo busca, y dentro de Personal ninguna otra de las cuatro le corresponde.
   { clave: 'jefe-gente', href: '/obra/personas', label: 'Gente', icono: 'gente', enciende: ['/administracion/personas'] },
+  // «OBRA», FIJO (dueño, 02/10/2026): los jefes no encontraban «todo lo de la obra» ni el parte diario.
+  // Lleva a la ficha de la obra elegida; en la ficha (que vive fuera de `(jefe)`) esta misma barra lo
+  // muestra encendido y «Hoy» queda a un toque. Gemelo de `CONTEXTOS` en `features/jefe`.
+  { clave: 'jefe-obra', href: '/obras', label: 'Obra', icono: 'obra', fichaDeObra: true },
 ]
 
 // EL OPERARIO, FUERA DE SU APP (24/09/2026). Su barra vive en `ShellEmpleado`; ésta es la MISMA para
@@ -67,7 +77,7 @@ const GESTION: ItemBarraTelefono[] = [
  * QUÉ BARRA VE CADA NIVEL EN EL TELÉFONO dentro de las pantallas de escritorio.
  *
  * - Dirección y Administración: Obras · Personal · Compras · Analíticas · Más (dueño 24/09, opción B; «Analíticas», nunca «Datos»).
- * - Jefe de obra: Hoy · Tareas · Avance · Gente, la misma de J01 en todas las pantallas.
+ * - Jefe de obra: Hoy · Tareas · Avance · Gente · Obra, la misma de J01 en todas las pantallas.
  * - Empleado: la de su app (Hoy · Trabajo · Horas · Yo), para cuando abre `/mi-cuenta` (24/09/2026).
  * - Cliente o sin perfil: NINGUNA; se falla cerrado, igual que `solapasDeNav`.
  */
@@ -83,7 +93,14 @@ export function itemActivoDeBarra(pathname: string | null | undefined, items: re
   const ruta = (pathname ?? '').split('?')[0].replace(/\/+$/, '') || '/'
   const dentroDe = (base: string) => ruta === base || ruta.startsWith(`${base}/`)
   // El href MÁS LARGO gana: `/campo/herramientas` antes que `/campo`.
-  const candidatos = items.filter((i) => dentroDe(i.href) || (i.enciende?.some(dentroDe) ?? false))
+  // «Obra» se enciende SÓLO en una ficha: por prefijo, `/obras/hoy` (que es del Hoy) también le tocaría.
+  const lo = (i: ItemBarraTelefono) => (i.fichaDeObra ? esFichaDeObra(ruta) : dentroDe(i.href))
+  const candidatos = items.filter((i) => lo(i) || (i.enciende?.some(dentroDe) ?? false))
   if (candidatos.length === 0) return null
   return [...candidatos].sort((a, b) => b.href.length - a.href.length)[0].clave
+}
+
+/** El enlace que se dibuja: el `href` con la obra elegida, o la ficha de esa obra para «Obra» del jefe. */
+export function hrefDeItemBarra(item: ItemBarraTelefono, obra: string | null | undefined): string {
+  return item.fichaDeObra ? hrefObraDelJefe(obra) : conObraRecordada(item.href, obra)
 }

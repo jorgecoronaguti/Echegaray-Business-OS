@@ -16,20 +16,36 @@
 //
 // Las tres pantallas que se abren DESDE éstas —registrar el avance de una tarea, el avance masivo y
 // el frente— siguen sin barra y vuelven con la flecha.
+//
+// ═══ EL QUINTO: «OBRA» (dueño, 02/10/2026) ═══
+//
+// Los jefes no encontraban cómo ver «todo lo de la obra» ni el parte diario: el enlace de J01 a la
+// ficha estaba dentro de la pantalla, no en la barra. «Obra» es fijo y lleva a la ficha entera
+// (`hrefObraDelJefe`). Su `href` acá es la RAÍZ `/obras`, que sirve para reconocerlo; el enlace real
+// lo arma `hrefDeContexto` con la obra elegida. La ficha vive fuera de `(jefe)`: ahí la barra es
+// `BarraTelefono` con la lista gemela de `barraTelefonoDe('jefe_obra')`.
 
-import { INICIO_JEFE_TELEFONO } from '../../../shared/auth/areas.ts'
+import { INICIO_JEFE_TELEFONO, esFichaDeObra, hrefObraDelJefe } from '../../../shared/auth/areas.ts'
 
 export interface Contexto { href: string; label: string; testid: string }
+
+export const CONTEXTO_OBRA = '/obras'
 
 export const CONTEXTOS: Contexto[] = [
   { href: '/obra/hoy', label: 'Hoy', testid: 'nav-jefe-hoy' },
   { href: '/obra/tareas', label: 'Tareas', testid: 'nav-jefe-tareas' },
   { href: '/obra/avance', label: 'Avance', testid: 'nav-jefe-avance' },
   { href: '/obra/personas', label: 'Gente', testid: 'nav-jefe-personas' },
+  { href: CONTEXTO_OBRA, label: 'Obra', testid: 'nav-jefe-obra' },
 ]
 
 /** La raíz del perfil, y la única ruta a la que se llega sin saber todavía qué obra se mira. */
 export const INICIO = INICIO_JEFE_TELEFONO
+
+/** El enlace de un ítem de la barra con la obra elegida. «Obra» no es `/obra/*`: es la ficha. */
+export function hrefDeContexto(href: string, obraId: string | null | undefined): string {
+  return href === CONTEXTO_OBRA ? hrefObraDelJefe(obraId) : conObra(href, obraId)
+}
 
 /**
  * ¿Qué contexto está encendido? Por prefijo con barra, para que `/obra/tareas-x` no encienda
@@ -42,6 +58,10 @@ export const INICIO = INICIO_JEFE_TELEFONO
  */
 export function contextoActivo(pathname: string, conActividad = false): string | null {
   if (conActividad && pathname.startsWith('/obra/avance')) return null
+  // Por prefijo, `/obras/hoy` encendería «Obra»; sólo la ficha (y lo que cuelga de ella) lo enciende.
+  if (pathname === CONTEXTO_OBRA || pathname.startsWith(`${CONTEXTO_OBRA}/`)) {
+    return esFichaDeObra(pathname) ? CONTEXTO_OBRA : null
+  }
   const c = CONTEXTOS.find((x) => pathname === x.href || pathname.startsWith(`${x.href}/`))
   return c?.href ?? null
 }

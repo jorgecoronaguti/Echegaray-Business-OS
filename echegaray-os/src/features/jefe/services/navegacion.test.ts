@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONTEXTOS, conObra, contextoActivo, obraElegida, obrasDelSelector, volverDe } from './navegacion.ts'
+import { CONTEXTOS, conObra, contextoActivo, hrefDeContexto, hrefFichaDeObra, obraElegida, obrasDelSelector, volverDe } from './navegacion.ts'
+import { puedeVerRuta } from '../../../shared/auth/areas.ts'
 
 test('EL CONTEXTO SE ENCIENDE POR PREFIJO CON BARRA, no por «empieza con»', () => {
   // El defecto que atrapa: `startsWith('/obra/tareas')` enciende «Tareas» estando en
@@ -20,9 +21,10 @@ test('LAS PANTALLAS QUE SE ABREN DESDE OTRA NO ENCIENDEN NINGÚN CONTEXTO', () =
 // CAMBIO DE REGLA DECLARADO (Design 23/08): eran tres contextos porque el cuarto del contrato viejo
 // («Más») no tenía pantalla. El canónico J01 dibuja «Hoy · Tareas · Avance · Gente» y Avance sí la
 // tiene: J03. Los dos tests de abajo afirmaban lo contrario y se actualizan, no se borran.
-test('SON CUATRO CONTEXTOS, y Avance es uno de ellos', () => {
-  assert.equal(CONTEXTOS.length, 4)
-  assert.deepEqual(CONTEXTOS.map((c) => c.label), ['Hoy', 'Tareas', 'Avance', 'Gente'])
+test('SON CINCO CONTEXTOS: Avance es uno, y «Obra» es el quinto y fijo (dueño 02/10/2026)', () => {
+  assert.equal(CONTEXTOS.length, 5)
+  assert.deepEqual(CONTEXTOS.map((c) => c.label), ['Hoy', 'Tareas', 'Avance', 'Gente', 'Obra'])
+  assert.equal(CONTEXTOS[4].testid, 'nav-jefe-obra')
 })
 
 test('LA MISMA RUTA SON DOS PANTALLAS: J03 lleva barra, el formulario de una tarea lleva flecha', () => {
@@ -99,4 +101,29 @@ test('LA FLECHA VUELVE A UN DESTINO DECLARADO, con la obra puesta', () => {
 test('LAS PANTALLAS CON BARRA NO LLEVAN FLECHA', () => {
   assert.equal(volverDe('/obra/hoy', 'messina'), null)
   assert.equal(volverDe('/obra/tareas', 'messina'), null)
+})
+
+test('«OBRA» LLEVA A LA FICHA DE LA OBRA ELEGIDA; sin obra, al Hoy que la elige (dueño 02/10/2026)', () => {
+  // El defecto que atrapa: con `conObra` como los demás, «Obra» dibujaría `/obras?obra=…`, la cartera
+  // que el portero le cierra al jefe y lo rebota a Hoy: un botón que no lleva a ningún lado.
+  const obra = CONTEXTOS.find((c) => c.testid === 'nav-jefe-obra')!
+  assert.equal(hrefDeContexto(obra.href, 'sf-pisos-industriales'), hrefFichaDeObra('sf-pisos-industriales'))
+  assert.equal(hrefDeContexto(obra.href, null), '/obra/hoy')
+  for (const id of ['quattropani', null]) {
+    for (const c of CONTEXTOS) {
+      const href = hrefDeContexto(c.href, id).split('?')[0]
+      assert.equal(puedeVerRuta('jefe_obra', href), true, `${c.label} → ${href}`)
+    }
+  }
+  assert.equal(hrefDeContexto('/obra/tareas', 'quattropani'), '/obra/tareas?obra=quattropani')
+})
+
+test('«Obra» se enciende en la ficha y en lo que cuelga de ella, no en la portada del día', () => {
+  assert.equal(contextoActivo('/obras/quattropani'), '/obras')
+  assert.equal(contextoActivo('/obras/quattropani/dotacion'), '/obras')
+  assert.equal(contextoActivo('/obras/hoy'), null)
+  assert.equal(contextoActivo('/obras'), null)
+  assert.equal(contextoActivo('/obra/hoy'), '/obra/hoy')
+  // `volverDe` no cambia: la ficha no tiene flecha propia del jefe, tiene la barra.
+  assert.equal(volverDe('/obras/quattropani', 'quattropani'), null)
 })

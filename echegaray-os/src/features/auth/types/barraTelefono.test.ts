@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { barraTelefonoDe, itemActivoDeBarra } from './barraTelefono.ts'
+import { barraTelefonoDe, hrefDeItemBarra, itemActivoDeBarra } from './barraTelefono.ts'
 import { puedeVerRuta } from './areas.ts'
 import { esRutaCampoPermitida } from './index.ts'
 
@@ -14,7 +14,8 @@ test('Dirección y Administración: barra de gestión Obras · Personal · Compr
 })
 
 test('el jefe de obra tiene UNA barra en todo el teléfono: la de J01 (dueño 24/09)', () => {
-  assert.deepEqual(barraTelefonoDe('jefe_obra').map((i) => i.label), ['Hoy', 'Tareas', 'Avance', 'Gente'])
+  // «Obra» fijo, quinto (dueño, 02/10/2026).
+  assert.deepEqual(barraTelefonoDe('jefe_obra').map((i) => i.label), ['Hoy', 'Tareas', 'Avance', 'Gente', 'Obra'])
   assert.equal(barraTelefonoDe('jefe_obra')[0].href, '/obra/hoy')
 })
 
@@ -36,8 +37,35 @@ test('cliente y sin perfil: sin barra (fallar cerrado)', () => {
 
 test('nunca se ofrece un destino que el middleware va a rebotar', () => {
   for (const rol of ['direccion', 'administracion', 'jefe_obra'] as const) {
-    for (const i of barraTelefonoDe(rol)) assert.equal(puedeVerRuta(rol, i.href), true, `${rol} → ${i.href}`)
+    // Se prueba el enlace que se DIBUJA, con y sin obra elegida: «Obra» del jefe se reconoce por `/obras`,
+    // que le está cerrado, pero nunca lo dibuja —dibuja la ficha o, sin obra, su Hoy—.
+    for (const obra of ['quattropani', null]) {
+      for (const i of barraTelefonoDe(rol)) {
+        const href = hrefDeItemBarra(i, obra).split('?')[0]
+        assert.equal(puedeVerRuta(rol, href), true, `${rol} → ${href}`)
+      }
+    }
   }
+})
+
+test('«Obra» del jefe lleva a la ficha de la obra elegida; sin obra, a su Hoy (02/10/2026)', () => {
+  const obra = barraTelefonoDe('jefe_obra').find((i) => i.clave === 'jefe-obra')!
+  assert.equal(hrefDeItemBarra(obra, 'sf-pisos-industriales'), '/obras/sf-pisos-industriales')
+  assert.equal(hrefDeItemBarra(obra, null), '/obra/hoy')
+  // Los demás siguen llevando la obra en `?obra=` y la gestión no cambia.
+  assert.equal(hrefDeItemBarra(barraTelefonoDe('jefe_obra')[1], 'quattropani'), '/obra/tareas?obra=quattropani')
+  assert.deepEqual(barraTelefonoDe('direccion').map((i) => hrefDeItemBarra(i, 'quattropani')), barraTelefonoDe('direccion').map((i) => i.href))
+})
+
+test('en la ficha el jefe ve «Obra» encendido; en su portada del día, «Hoy»', () => {
+  const b = barraTelefonoDe('jefe_obra')
+  assert.equal(itemActivoDeBarra('/obras/quattropani', b), 'jefe-obra')
+  assert.equal(itemActivoDeBarra('/obras/quattropani/dotacion', b), 'jefe-obra')
+  assert.equal(itemActivoDeBarra('/obras/hoy', b), 'jefe-hoy')
+  assert.equal(itemActivoDeBarra('/obra/tareas', b), 'jefe-tareas')
+  assert.equal(itemActivoDeBarra('/administracion/personas', b), 'jefe-gente')
+  // Dirección sigue encendiendo «Obras» en la ficha.
+  assert.equal(itemActivoDeBarra('/obras/quattropani', barraTelefonoDe('direccion')), 'obras')
 })
 
 test('a lo sumo cinco: más no entran en 390 px con el pulgar', () => {
