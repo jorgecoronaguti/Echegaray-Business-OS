@@ -51,20 +51,16 @@ test('la celda Banco expresa la suma y su resultado; sin resta no hay suma', () 
   assert.ok(!s.operandos.includes('$'))
 })
 
-// LA RESTA SE SUMA SÓLO AL BLANCO (dueño, 02/10/2026: «no me mezcles lo de la quincena pasada con esta en el negro …
-// es valor hora por total de hs»; «la suma de q1 y q2 es solo del blanco»). Reemplaza al traslado del 30/09.
-test('la resta se suma al banco y el efectivo de la quincena no se toca', () => {
+test('traslada del efectivo al banco sin cambiar el total', () => {
   const l = linea()
   const r = conArrastre(l, RESTA)
   assert.equal(r.arrastre?.estado, 'aplicado')
   assert.equal(r.porBanco, Math.round((l.porBanco + 54580.48) * 100) / 100)
-  assert.equal(r.enEfectivo, l.enEfectivo, 'el efectivo no baja por la resta')
-  assert.equal(r.pago.negro, l.pago.negro, 'negro = valor hora × horas')
-  assert.equal(r.total, Math.round(((l.total ?? 0) + 54580.48) * 100) / 100, 'lo que falta pagar incluye la resta')
+  assert.equal(r.enEfectivo, Math.round(((l.enEfectivo ?? 0) - 54580.48) * 100) / 100)
+  assert.equal(r.total, l.total)
   assert.equal(r.cobra, l.cobra)
   assert.equal(r.pago.aPagarBanco, Math.round(((l.pago.aPagarBanco ?? 0) + 54580.48) * 100) / 100)
-  assert.equal(r.pago.aPagarEfectivo, l.pago.aPagarEfectivo)
-  assert.equal(r.pago.saldoEfectivo, Math.round(((r.pago.negro ?? 0) - r.pago.pagadoEfectivo) * 100) / 100, 'Importe − Pagado = Saldo')
+  assert.equal(r.pago.aPagarEfectivo, Math.round(((l.pago.aPagarEfectivo ?? 0) - 54580.48) * 100) / 100)
 })
 
 test('la fila sigue cerrando con la resta aplicada', () => {
@@ -75,7 +71,7 @@ test('la fila sigue cerrando con la resta aplicada', () => {
 
 // ES UN ARREGLO CON LA PERSONA (dueño, 30/09/2026): la resta se suma al banco siempre, aunque el efectivo que le
 // falta cobrar no la cubra. El freno «no alcanza» (⚠) fue rechazado: la celda tiene que sumar y dar el resultado.
-test('se aplica aunque quede poco efectivo por cobrar: el banco suma y el efectivo no se toca', () => {
+test('se aplica aunque el efectivo pendiente no cubra la resta: el banco suma y el efectivo baja', () => {
   const l = linea()
   const casiTodo = (l.pago.negro ?? 0) - 10000
   const conPagado = linea(casiTodo)
@@ -83,9 +79,8 @@ test('se aplica aunque quede poco efectivo por cobrar: el banco suma y el efecti
   assert.equal(r.arrastre?.estado, 'aplicado')
   assert.equal(r.arrastre?.efectivoDisponible, 10000)
   assert.equal(r.porBanco, Math.round((conPagado.porBanco + 54580.48) * 100) / 100)
-  assert.equal(r.enEfectivo, conPagado.enEfectivo)
-  assert.equal(r.pago.saldoEfectivo, 10000, 'le quedan los mismos 10.000 en efectivo: la resta no los come')
-  assert.equal(r.total, Math.round(((conPagado.total ?? 0) + 54580.48) * 100) / 100)
+  assert.equal(r.enEfectivo, Math.round(((conPagado.enEfectivo ?? 0) - 54580.48) * 100) / 100)
+  assert.equal(r.total, conPagado.total)
   assert.ok(sumaDelBanco(r, pesos), 'la celda suma')
   assert.doesNotMatch(textoDelArrastre(r, pesos) ?? '', /SIN trasladar/)
 })

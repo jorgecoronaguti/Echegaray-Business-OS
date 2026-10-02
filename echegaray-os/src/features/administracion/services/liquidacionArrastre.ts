@@ -32,9 +32,9 @@ export interface ArrastreSaliente {
 }
 
 /**
- * El arrastre aplicado: se sumó al banco. SIEMPRE se aplica (dueño, 30/09/2026: *«es un arreglo con la persona»*).
- * Desde el 02/10/2026 NO se resta del efectivo (dueño: *«la suma de q1 y q2 es solo del blanco»*): el negro de la
- * quincena es valor hora × horas y nada de la quincena anterior lo toca. No hay estado «no alcanza».
+ * El arrastre ya trasladado: se sumó al banco y se restó del efectivo. SIEMPRE se aplica (dueño, 30/09/2026: *«es un
+ * arreglo con la persona»*): la plata ya se le entregó en mano en la quincena de origen, así que esta quincena la
+ * paga por banco y la descuenta del efectivo, aunque el efectivo pendiente no la cubra. No hay estado «no alcanza».
  */
 export interface ArrastreAplicado extends ArrastreDeLinea {
   estado: 'aplicado'
@@ -57,19 +57,15 @@ export function conArrastre(l: LineaConOverrides, a: ArrastreDeLinea | null | un
   const importe = r2(a.importe)
   const disponible = efectivoDisponible(l)
   const porBanco = r2(l.porBanco + importe)
-  // LA RESTA SE SUMA SÓLO AL BLANCO (dueño, 02/10/2026: «no me mezcles lo de la quincena pasada con esta en el negro …
-  // es valor hora por total de hs»; «la suma de q1 y q2 es solo del blanco»). El efectivo de la quincena no se toca:
-  // negro = valor hora × horas, y su saldo = ese importe − lo pagado en efectivo. Reemplaza al traslado del 30/09
-  // (banco += resta, efectivo −= resta), que dejaba «Importe − Pagado ≠ Saldo» en las filas con resta.
+  const enEfectivo = l.enEfectivo == null ? null : r2(l.enEfectivo - importe)
   return {
     ...l,
     porBanco,
-    // LE FALTA PAGAR = BANCO + EFECTIVO: la resta es plata que sale por banco en esta quincena, así que entra en el
-    // total a pagar. `cobra` (lo ganado en la quincena) no se toca: la resta es del recibo anterior.
-    total: l.total == null ? l.total : r2(l.total + importe),
+    enEfectivo,
+    // EL TOTAL NO SE TOCA: es la misma plata por otro canal. Se rehace sólo el reparto del saldo.
     pago: pagoDeLaLinea({
       banco: l.pago.banco == null ? null : r2(l.pago.banco + importe),
-      negro: l.pago.negro,
+      negro: l.pago.negro == null ? null : r2(l.pago.negro - importe),
       pagadoBanco: l.pago.pagadoBanco,
       pagadoEfectivo: l.pago.pagadoEfectivo,
     }),
@@ -171,10 +167,16 @@ export function sumaDelBanco(l: Pick<LineaConOverrides, 'arrastre' | 'porBanco'>
 }
 
 /**
- * EL IMPORTE DEL EFECTIVO QUE SE VE ES EL QUE SE PAGA (dueño, 02/10/2026). Cuando `pago.negro` difiere del negro del
- * modelo, la celda muestra la cuenta y su resultado, como la celda Banco. Hoy el único caso es el banco 0 escrito a mano:
- * el neto entero pasa al efectivo (384.054 + 234.963,32 = 619.017,32). La resta del recibo anterior YA NO entra acá: se
- * suma sólo al banco y el negro queda en valor hora × horas (dueño, 02/10/2026). `null` cuando no hay diferencia.
+ * EL IMPORTE DEL EFECTIVO QUE SE VE ES EL QUE SE PAGA (dueño, 02/10/2026, Agüero: «Importe $333.270 · Pagado $75.000 ·
+ * Saldo $203.689,52 … calcula mal y me hiciste equivocar»). La celda mostraba el negro del MODELO mientras el saldo, el
+ * total, el pie y el recibo usaban `pago.negro`, que ya trae el traslado: la resta del recibo Q1 que pasó al banco
+ * (333.270 − 54.580,48 = 278.689,52) o el neto entero con banco 0 escrito a mano (384.054 + 234.963,32 = 619.017,32).
+ * Importe − Pagado no daba el Saldo. Como la celda Banco, ésta suma adentro y da el resultado: los operandos se ven y el
+ * número principal es `pago.negro`. `null` cuando no hay traslado: la celda es el negro solo.
+ *
+ * Que la resta salga del efectivo NO es un error a corregir sumándola al total: en la Q1-09 esa plata se entregó en
+ * mano (Agüero: banco 200.000 contra recibo 254.580,48, efectivo 360.909,28 contra negro 311.052). Sumarla al total la
+ * pagaría dos veces.
  */
 export function restaDelEfectivo(l: Pick<LineaConOverrides, 'pago' | 'sueldo'>, pesos: Pesos): {
   modelo: number; ajuste: number; resultado: number
@@ -200,7 +202,7 @@ export function restaDelEfectivo(l: Pick<LineaConOverrides, 'pago' | 'sueldo'>, 
 export function textoDelArrastre(l: Pick<LineaConOverrides, 'arrastre' | 'arrastradoA' | 'porBanco'>, pesos: Pesos): string | null {
   const a = l.arrastre
   if (a?.estado === 'aplicado') {
-    return `${a.motivo}: ${pesos(a.importe)} del recibo ${a.periodoOrigen} que no salió por banco. Se paga por banco en esta quincena (banco ${pesos(l.porBanco)}); el efectivo de esta quincena no cambia.`
+    return `${a.motivo}: ${pesos(a.importe)} del recibo ${a.periodoOrigen} que no salió por banco. Se paga por banco en esta quincena (banco ${pesos(l.porBanco)}) y sale del efectivo: el total no cambia.`
   }
   if (l.arrastradoA) return `Resta del recibo (${pesos(l.arrastradoA.importe)}) que se paga por banco en la quincena del ${l.arrastradoA.desde}.`
   return null
