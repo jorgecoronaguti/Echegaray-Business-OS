@@ -19,7 +19,7 @@ texto real —no una imagen— así que el propio motor documental del OS despu�
 
   python3 recibo-cliente-pdf.py <datos.json> <salida.pdf>
 """
-import sys, json, os
+import sys, json, os, re
 import fitz
 
 TINTA = (0.188, 0.188, 0.184)      # el grafito de la marca
@@ -82,7 +82,25 @@ class Hoja:
         self.p.draw_line(fitz.Point(M, self.y), fitz.Point(ANCHO - M, self.y), color=color, width=grosor)
 
 
+# EL NÚMERO QUE SE IMPRIME ES EL CÓDIGO DE LA SERIE RC, NO EL NÚMERO PELADO (02/10/2026). `numero` ('20')
+# es como lo guarda `recibo_cliente` para el portal; el papel dice «RC-000020», igual que el OS escribe
+# «Recibo N° RP-000123» en los de pago. Un JSON sin código es la vista previa de `recibo-cliente-armar`
+# (el número no se tomó) o uno armado antes de la serie: dibujarlo pondría delante del cliente un número
+# que nadie le asignó, y el siguiente recibo lo repetiría. No sale.
+CODIGO_RC = re.compile(r"^RC-\d{6,}$")
+
+
+def titulo_del_recibo(d):
+    codigo = str(d.get("codigo") or "").strip()
+    if not CODIGO_RC.match(codigo):
+        raise ValueError(
+            f"el recibo no trae el código de la serie RC (trae {d.get('codigo')!r}): "
+            "armalo con recibo-cliente-armar.mjs --aplicar, que toma el número")
+    return f"RECIBO N° {codigo}"
+
+
 def dibujar(d, salida):
+    titulo = titulo_del_recibo(d)
     doc = fitz.open()
     h = Hoja(doc)
 
@@ -98,7 +116,7 @@ def dibujar(d, salida):
     h.texto(M, "ECHEGARAY CONSTRUCCIONES S.A.S. · CUIT 30-71630464-3", 7.5, APAGADO)
     fin_izq = h.y
     h.y = M + 6
-    h.texto(M, f"RECIBO N° {d['numero']}", 11, TINTA, True, ancho=ANCHO - 2 * M, derecha=True)
+    h.texto(M, titulo, 11, TINTA, True, ancho=ANCHO - 2 * M, derecha=True)
     h.y += 13
     h.texto(M, fecha_ar(d["fecha"]), 8, APAGADO, ancho=ANCHO - 2 * M, derecha=True)
     h.y = fin_izq - 12
