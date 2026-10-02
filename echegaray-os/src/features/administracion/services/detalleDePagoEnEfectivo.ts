@@ -22,13 +22,16 @@
 //   · Lo anterior al 30/09/2026 no tiene autor ni día: se dice «no quedó registrado quién ni qué día».
 //   · El DÍA DEL PAGO sale de `liquidacion_pago_efectivo`, que puede no existir todavía (migración sin aplicar):
 //     sin ella el renglón no trae día de pago, y no lo reemplaza por el día en que se tipeó.
-//   · La NOTA sólo se muestra si la tabla de pagos la trae. Hoy ninguna pantalla escribe una: «Sin nota» es cierto.
+//   · La NOTA de un renglón es la que se escribió en el cuadro (`liquidacion_cambio_nota`, clave y guarda en
+//     `notaDeAnotacion.ts`); si no hay, la que trae la tabla de pagos; si tampoco, «Sin nota». Una nota escrita para
+//     otro importe no se pega a este pago: se dice aparte (`notaDescolgada`).
 //   · Un renglón «de la siembra» (fecha dicha por el dueño al activar el registro de pagos) lleva su día con el
 //     aviso de que se asignó en bloque; su nota técnica no es la nota de nadie.
 
 import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
 import { horas, pesos } from '../components/liquidacion/formato.ts'
 import type { CampoEditable } from './liquidacionOverrides.ts'
+import { notaDelRenglon, type AnclaDeNota, type NotaCruda } from './notaDeAnotacion.ts'
 import { atribucionDelPrevio, INICIO_DEL_REGISTRO, type CambioCrudo, type CruceConElRegistro } from './historialDeManuales.ts'
 
 /** Una fila de `liquidacion_pago_efectivo` (0 o más por persona y quincena). */
@@ -63,6 +66,12 @@ export interface RenglonDePago {
   fechaDelPago: string | null
   /** El texto de la nota, o «Sin nota». */
   nota: string
+  /** De qué anotación es, para escribirle la nota. `null` = no hay una anotación de la base a la que colgarla. */
+  ancla: AnclaDeNota | null
+  /** «Ana, 02/10/2026, 14:32»: quién escribió la nota del cuadro y cuándo. `null` si no la escribió nadie acá. */
+  notaPor: string | null
+  /** Una nota guardada en esta clave pero para otro importe: se dice, no se muestra como nota de este pago. */
+  notaDescolgada: string | null
   /** Cómo se anotó, sólo cuando aclara algo («al marcar la línea como pagada»). */
   como: string | null
   /** La plata salió de una entrega a rendir: no vuelve a bajar la caja. */
@@ -88,7 +97,9 @@ export interface DetalleDePago {
 }
 
 export const SIN_DATO_PREVIO = 'no quedó registrado quién ni qué día'
-const SIN_NOTA = 'Sin nota'
+export const SIN_NOTA = 'Sin nota'
+/** La tabla de notas existe pero no se pudo leer: no se dice «Sin nota» sobre algo que puede tener una. */
+export const NOTA_ILEGIBLE = 'No se pudo leer la nota'
 const LEYENDA_DEL_PUNTO = 'Punto amarillo: importe escrito a mano. Manda sobre el cálculo del sistema.'
 /** Misma ventana que la actividad del cambio: la tabla de pagos y la de cambios se escriben en la misma transacción. */
 const TOLERANCIA_MS = 5000
@@ -149,6 +160,10 @@ function diaYHora(iso: string): string {
   return `${p.day}/${p.month}/${p.year}, ${p.hour}:${p.minute}`
 }
 
+/** Quién escribió una nota y cuándo, dicho corto. */
+export const firmaDeNota = (nombre: string | null, iso: string): string =>
+  `${nombre ?? 'usuario no identificado'}, ${diaYHora(iso)}`
+
 const diaDeIso = (iso: string): string => diaYHora(iso).split(',')[0]
 const diaDeFecha = (f: string): string => `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}`
 
@@ -172,6 +187,25 @@ interface Contexto {
   nombres: ReadonlyMap<string, string>
   cruce: CruceConElRegistro | null
   pagos: readonly PagoEfectivoCrudo[] | null
+  /** Las notas del cuadro por `claveDeNota`. `null` = la tabla no existe todavía; `'ilegible'` = existe y falló. */
+  notas?: ReadonlyMap<string, NotaCruda> | 'ilegible' | null
+}
+
+const SIN_NOTA_DEL_CUADRO = { notaPor: null, notaDescolgada: null }
+
+/** La nota que corresponde a un renglón ya armado: la del cuadro manda; sin ella queda la que traía. */
+function vestirNota(r: RenglonDePago, c: Contexto): RenglonDePago {
+  if (!r.ancla || !c.notas) return r
+  if (c.notas === 'ilegible') return { ...r, nota: NOTA_ILEGIBLE, ancla: null }
+  const n = notaDelRenglon(r.ancla, c.notas)
+  if (n.estado === 'propia') {
+    return { ...r, nota: n.nota.texto, notaPor: firmaDeNota(c.nombres.get(n.nota.escrita_por ?? '') ?? null, n.nota.escrita_en) }
+  }
+  if (n.estado === 'descolgada') {
+    const para = n.nota.importe == null ? 'sin importe' : pesos(Number(n.nota.importe))
+    return { ...r, notaDescolgada: `Nota escrita para ${para}, no para este importe: «${n.nota.texto}»` }
+  }
+  return r
 }
 
 function renglonesDelPrevio(f: CambioCrudo, c: Contexto, siembra: PagoEfectivoCrudo | undefined, m: Medida): RenglonDePago[] {
@@ -184,7 +218,7 @@ function renglonesDelPrevio(f: CambioCrudo, c: Contexto, siembra: PagoEfectivoCr
   const fechaDelPago = siembra ? `${diaDeFecha(siembra.fecha)} (día asignado en bloque, no el de cada pago)` : null
   return (m.partir ? sumandosDe(f.formula_despues, valor) : valor == null ? [] : [valor]).map((n, i) => ({
     id: `${f.id}-${i}`, tipo: 'pago', importe: m.dicho(n), correccion: null, cuando, quien, fechaDelPago, nota: SIN_NOTA, como: null,
-    deEntrega: false,
+    deEntrega: false, ancla: { cambioId: f.id, posicion: i, importe: n }, ...SIN_NOTA_DEL_CUADRO,
   }))
 }
 
@@ -213,12 +247,13 @@ function renglonesDelCambio(
     nota: pago?.nota?.trim() || SIN_NOTA,
     como: f.origen ? COMO[f.origen] ?? null : null,
     deEntrega: pago?.origen === 'entrega',
+    ...SIN_NOTA_DEL_CUADRO,
   }
   if (despues == null) {
     return {
       sumandos: [],
       renglones: [{
-        ...base, id: String(f.id), tipo: 'baja', importe: '—',
+        ...base, id: String(f.id), tipo: 'baja', importe: '—', ancla: { cambioId: f.id, posicion: 0, importe: null },
         correccion: `borró lo anotado (${m.dicho(antes)}): vuelve al cálculo del sistema`,
       }],
     }
@@ -232,12 +267,18 @@ function renglonesDelCambio(
     const nuevos = agregados ?? sumandos
     return {
       sumandos,
-      renglones: nuevos.map((n, i) => ({ ...base, id: `${f.id}-${i}`, tipo: 'pago' as const, importe: m.dicho(n), correccion: null })),
+      renglones: nuevos.map((n, i) => ({
+        ...base, id: `${f.id}-${i}`, tipo: 'pago' as const, importe: m.dicho(n), correccion: null,
+        ancla: { cambioId: f.id, posicion: i, importe: n },
+      })),
     }
   }
   return {
     sumandos,
-    renglones: [{ ...base, id: String(f.id), tipo: 'correccion', importe: m.dicho(despues), correccion: `corrigió de ${m.dicho(antes)} a ${m.dicho(despues)}` }],
+    renglones: [{
+      ...base, id: String(f.id), tipo: 'correccion', importe: m.dicho(despues), correccion: `corrigió de ${m.dicho(antes)} a ${m.dicho(despues)}`,
+      ancla: { cambioId: f.id, posicion: 0, importe: despues },
+    }],
   }
 }
 
@@ -246,12 +287,12 @@ function renglonesDelCambio(
  * `cambios` son las filas crudas de ESA celda en cualquier orden; `pagos` es `null` cuando la tabla de pagos no existe.
  */
 export function renglonesDePagoEnEfectivo(
-  { cambios, pagos, nombres, cruce, campo = 'pagadoEfectivo' }: {
+  { cambios, pagos, nombres, cruce, notas = null, campo = 'pagadoEfectivo' }: {
     cambios: readonly CambioCrudo[]; pagos: readonly PagoEfectivoCrudo[] | null; campo?: CampoEditable
   } & Omit<Contexto, 'pagos'>,
 ): AnotacionesDePago {
   // Las fechas y notas de `liquidacion_pago_efectivo` son sólo del efectivo: en otra celda no hay con qué cruzarlas.
-  const c: Contexto = { nombres, cruce, pagos: campo === 'pagadoEfectivo' ? pagos : null }
+  const c: Contexto = { nombres, cruce, notas, pagos: campo === 'pagadoEfectivo' ? pagos : null }
   const m = medidaDe(campo)
   const cronologico = [...cambios].sort((a, b) => Date.parse(a.en) - Date.parse(b.en) || a.id - b.id)
   const previos = cronologico.filter((f) => f.tipo === 'base')
@@ -268,7 +309,7 @@ export function renglonesDePagoEnEfectivo(
     sumandos = r.sumandos
   }
   const ultimo = reales.length > 0 ? reales[reales.length - 1] : previos[previos.length - 1]
-  return { renglones, cuenta: ultimo ? cuentaVisible(ultimo.formula_despues) : null }
+  return { renglones: renglones.map((r) => vestirNota(r, c)), cuenta: ultimo ? cuentaVisible(ultimo.formula_despues) : null }
 }
 
 /**
@@ -286,7 +327,8 @@ export function detalleDePagoEnEfectivo(
   const donde = [persona, quincena].filter(Boolean).join(', ')
   const sinConstancia: RenglonDePago[] = (m.partir ? sumandosDe(cuentaActual, valor) : valor == null ? [] : [valor]).map((n, i) => ({
     id: `sin-${i}`, tipo: 'pago', importe: m.dicho(n), correccion: null, cuando: 'Sin fecha', quien: SIN_DATO_PREVIO,
-    fechaDelPago: null, nota: SIN_NOTA, como: null, deEntrega: false,
+    // Sin una anotación de la base no hay a qué colgar una nota: el renglón se muestra, pero no se escribe.
+    fechaDelPago: null, nota: SIN_NOTA, como: null, deEntrega: false, ancla: null, ...SIN_NOTA_DEL_CUADRO,
   }))
   const hay = (anotaciones?.renglones.length ?? 0) > 0
   const cuenta = hay ? anotaciones?.cuenta ?? null : cuentaVisible(cuentaActual)

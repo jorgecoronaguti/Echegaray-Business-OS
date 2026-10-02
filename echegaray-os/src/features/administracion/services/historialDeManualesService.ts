@@ -18,6 +18,7 @@ import type { CampoEditable } from './liquidacionOverrides.ts'
 import { rotuloQuincena } from './quincena.ts'
 import { leerPagosEnEfectivo } from './pagosEnEfectivoService.ts'
 import { renglonesDePagoEnEfectivo, type AnotacionesDePago, type PagoEfectivoCrudo } from './detalleDePagoEnEfectivo.ts'
+import { faltaLaMigracion, type NotaCruda, indiceDeNotas } from './notaDeAnotacion.ts'
 import {
   CAMPO_DE_COLUMNA, claveDeCelda, historialDeCeldas, INICIO_DEL_REGISTRO, type CambioCrudo, type CruceConElRegistro, type HistorialDeLaQuincena, type PostDelRegistro,
 } from './historialDeManuales.ts'
@@ -47,6 +48,26 @@ const grupoDe = (f: FilaConCabecera): string | null => {
 /** 42P01 = la tabla no existe; PGRST205 = PostgREST no la conoce (caché de esquema). */
 const tablaSinAplicar = (e: { code?: string; message: string }) =>
   e.code === '42P01' || e.code === 'PGRST205' || /liquidacion_cambio/.test(e.message) && /does not exist|schema cache/i.test(e.message)
+
+type NotasLeidas = ReadonlyMap<string, NotaCruda> | 'ilegible' | null
+const TANDA_DE_IDS = 200
+
+/**
+ * LAS NOTAS DEL CUADRO (20261002T2200) de las anotaciones de esta quincena, en tandas: un `in` de cientos de ids no
+ * entra en una URL. Sin la migración: `null` y el cuadro dice «Sin nota» como hasta hoy. Otro error: `'ilegible'`,
+ * para no afirmar «Sin nota» sobre una anotación que puede tener una.
+ */
+async function leerNotas(supabase: SupabaseClient, filas: readonly CambioCrudo[]): Promise<NotasLeidas> {
+  const ids = [...new Set(filas.map((f) => f.id))]
+  const notas: NotaCruda[] = []
+  for (let i = 0; i < ids.length; i += TANDA_DE_IDS) {
+    const r = await supabase.from('liquidacion_cambio_nota').select('cambio_id, posicion, importe, texto, escrita_por, escrita_en')
+      .in('cambio_id', ids.slice(i, i + TANDA_DE_IDS))
+    if (r.error) return faltaLaMigracion(r.error) ? null : 'ilegible'
+    notas.push(...((r.data ?? []) as NotaCruda[]))
+  }
+  return indiceDeNotas(notas)
+}
 
 /**
  * EL CRUCE PARA LO ESCRITO ANTES DEL TRIGGER: `liquidacion_linea.actualizado_en` contra los POST de Liquidación de
@@ -107,19 +128,23 @@ export async function leerHistorialDeLaQuincena(supabase: SupabaseClient, q: Qui
     const grupo = grupoDe(f)
     if (grupo) filas.push({ ...f, grupo })
   }
-  const [cruce, pagos] = await Promise.all([cruceConElRegistro(supabase, filas), leerPagosEnEfectivo(supabase, q.desde)])
+  const [cruce, pagos, notas] = await Promise.all([
+    cruceConElRegistro(supabase, filas), leerPagosEnEfectivo(supabase, q.desde), leerNotas(supabase, filas),
+  ])
   // Los nombres también sirven a los `perfil_id` del registro y a quien anotó cada pago, no sólo al `autor` de los cambios.
   const hayNombres = filas.some((f) => f.autor !== null) || (cruce?.posts.length ?? 0) > 0 || (pagos ?? []).some((p) => p.registrado_por)
+    || (notas instanceof Map && [...notas.values()].some((n) => n.escrita_por))
   const nombres = hayNombres ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   return {
     historial: historialDeCeldas(filas, nombres, cruce), error: null,
-    detalles: detallesDeCeldas(filas, pagos, nombres, cruce), quincena: rotuloQuincena(q),
+    detalles: detallesDeCeldas(filas, pagos, nombres, cruce, notas), quincena: rotuloQuincena(q),
   }
 }
 
 /** Una celda por persona, grupo y campo: el detalle de cada una se arma con SUS filas (y, en efectivo, SUS pagos). */
 function detallesDeCeldas(
   filas: readonly CambioCrudo[], pagos: PagoEfectivoCrudo[] | null, nombres: ReadonlyMap<string, string>, cruce: CruceConElRegistro | null,
+  notas: NotasLeidas,
 ): Record<string, AnotacionesDePago> {
   const porCelda = new Map<string, { campo: CampoEditable; cambios: CambioCrudo[] }>()
   for (const f of filas) {
@@ -133,7 +158,7 @@ function detallesDeCeldas(
   const salida: Record<string, AnotacionesDePago> = {}
   for (const [k, { campo, cambios }] of porCelda) {
     const suyos = pagos?.filter((p) => claveDeCelda(p.grupo, p.persona_id, 'pagadoEfectivo') === k) ?? null
-    salida[k] = renglonesDePagoEnEfectivo({ cambios, pagos: suyos, nombres, cruce, campo })
+    salida[k] = renglonesDePagoEnEfectivo({ cambios, pagos: suyos, nombres, cruce, notas, campo })
   }
   return salida
 }

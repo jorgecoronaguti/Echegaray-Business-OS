@@ -14,7 +14,10 @@
 //   mouse   al pasar; un clic lo FIJA (para leerlo con calma o copiar un número) y otro clic lo cierra.
 //   teclado al enfocar (sólo `:focus-visible`: un clic de mouse también enfoca y no debe abrir dos veces).
 //   toque   un toque abre fijo; tocar afuera cierra. No existe el hover en el teléfono.
-//   Escape y clic afuera cierran siempre.
+//   Escape y clic afuera cierran siempre, SALVO mientras se escribe una nota (02/10/2026): Escape cancela la nota
+//   (el campo lo marca con `preventDefault`), un clic afuera sólo saca el foco del campo —y eso la guarda— y escribir
+//   deja el cuadro fijo, así perder el hover no se lleva lo que se está tipeando.
+//   teclado  Tab desde el punto abierto entra al cuadro (vive en un portal al final de la página: sin esto no se llega).
 
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -70,10 +73,12 @@ export function PuntoConHistorial({ celda, lectura, children }: {
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null)
   const id = useId()
   // El temporizador de salida corre después del render que lo programó: lee el valor de ahora, no el de entonces.
+  const editando = useRef(false)
+  const alEditar = useCallback((si: boolean) => { editando.current = si; if (si) setFijo(true) }, [])
   const fijoAhora = useRef(false)
   useEffect(() => { fijoAhora.current = fijo }, [fijo])
 
-  const cerrar = useCallback(() => { setAbierto(false); setFijo(false); setLugar(null) }, [])
+  const cerrar = useCallback(() => { editando.current = false; setAbierto(false); setFijo(false); setLugar(null) }, [])
   const cancelarCierre = () => { if (temporizador.current) clearTimeout(temporizador.current) }
   const cierraSiNoEstaFijo = () => {
     cancelarCierre()
@@ -103,11 +108,11 @@ export function PuntoConHistorial({ celda, lectura, children }: {
     if (!abierto) return
     const alClicAfuera = (e: PointerEvent) => {
       const t = e.target as Node
-      if (boton.current?.contains(t) || panel.current?.contains(t)) return
+      if (boton.current?.contains(t) || panel.current?.contains(t) || editando.current) return
       cerrar()
     }
     const alTeclear = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (e.key !== 'Escape' || e.defaultPrevented) return
       cerrar()
       boton.current?.focus()
     }
@@ -145,7 +150,12 @@ export function PuntoConHistorial({ celda, lectura, children }: {
         onPointerEnter={(e) => { if (e.pointerType === 'mouse') { cancelarCierre(); setAbierto(true) } }}
         onPointerLeave={(e) => { if (e.pointerType === 'mouse') cierraSiNoEstaFijo() }}
         onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) setAbierto(true) }}
-        onBlur={() => { if (!fijo) cerrar() }}
+        onBlur={(e) => { if (!fijo && !panel.current?.contains(e.relatedTarget as Node | null)) cerrar() }}
+        onKeyDown={(e) => {
+          const primero = panel.current?.querySelector<HTMLElement>('button:not([disabled]), input')
+          if (e.key !== 'Tab' || e.shiftKey || !abierto || !primero) return
+          e.preventDefault(); setFijo(true); primero.focus()
+        }}
         onClick={() => {
           if (abierto && fijo) { cerrar(); return }
           setAbierto(true); setFijo(true)
@@ -171,7 +181,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
         >
           {lectura.error
             ? <p data-testid="historial-error" className="m-0 text-[11px] text-muted">No se pudo leer lo que se anotó.</p>
-            : <DetalleDePagoEnEfectivo detalle={detalle} />}
+            : <DetalleDePagoEnEfectivo detalle={detalle} alEditar={alEditar} />}
         </div>,
         document.body,
       )}

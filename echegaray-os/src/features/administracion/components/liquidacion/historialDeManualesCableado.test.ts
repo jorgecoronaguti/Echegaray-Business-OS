@@ -102,3 +102,39 @@ test('las celdas con punto entregan quién, cuánto y cuenta (el título del cua
     for (const u of usos) assert.match(u, /persona:/, `${archivo}: ${u} no dice de quién es`)
   }
 })
+
+// LA NOTA EDITABLE (dueño, 02/10/2026: «en el lugar que dice "nota" … si le hago click dejame escribir una nota»).
+test('el «Sin nota» de cada renglón es un botón que abre el campo, y el cuadro le pasa con qué avisar que se escribe', () => {
+  const d = leer('DetalleDePagoEnEfectivo.tsx')
+  assert.match(d, /<SinNota n=\{n\}/, 'el lugar de «Sin nota» es el que se toca')
+  assert.match(d, /<LineaDeNota n=\{n\} boton=\{boton\} \/>/)
+  assert.doesNotMatch(d, /<span className="flex-none text-\[11px\] text-faint">Sin nota<\/span>/, 'volvió el «Sin nota» mudo')
+  const n = leer('NotaDeAnotacion.tsx')
+  assert.match(n, /<button[\s\S]*?type="button"[\s\S]*?onClick=\{n\.abrir\}/, 'botón nativo: Enter y Espacio lo abren')
+  assert.match(n, /maxLength=\{LARGO_MAXIMO_DE_NOTA\}/)
+  assert.match(n, /onBlur=\{\(\) => void n\.guardar\(\)\}/, 'salir del campo guarda')
+  assert.match(n, /e\.key === 'Enter'/)
+  assert.match(n, /e\.key === 'Escape'\) \{\s+\/\/[^\n]*\n\s+e\.preventDefault\(\)/, 'Escape cancela sin cerrar el cuadro')
+  assert.match(n, /role="status"/, 'guardar, no cambiar o fallar dicen algo')
+  assert.match(n, /'Sin cambios'/)
+  assert.match(n, /max-md:-my-3\.5 max-md:py-3\.5/, '44 px de área táctil en el teléfono')
+  assert.match(n, /max-md:h-11/)
+})
+
+test('mientras se escribe el cuadro no se cierra por clic afuera, por Escape del campo ni por perder el hover', () => {
+  const s = leer('HistorialDeManuales.tsx')
+  assert.match(s, /panel\.current\?\.contains\(t\) \|\| editando\.current\) return/)
+  assert.match(s, /e\.key !== 'Escape' \|\| e\.defaultPrevented/)
+  assert.match(s, /editando\.current = si; if \(si\) setFijo\(true\)/)
+  assert.match(s, /<DetalleDePagoEnEfectivo detalle=\{detalle\} alEditar=\{alEditar\} \/>/)
+})
+
+test('la acción de la nota valida con zod y pregunta el permiso en el servidor antes de llamar a la base', () => {
+  const s = readFileSync(join(AQUI, '../../services/notaDeAnotacionActions.ts'), 'utf8')
+  assert.match(s, /^'use server'/)
+  const valida = s.indexOf('pedidoDeNota.safeParse(entrada)')
+  const permiso = s.indexOf('permisoDeLiquidacion(perfil?.rol, errPerfil)')
+  const rpc = s.indexOf(".rpc('liquidacion_nota_guardar'")
+  assert.ok(valida > 0 && permiso > valida && rpc > permiso, 'orden: validar, permiso, base')
+  assert.match(s, /faltaLaMigracion\(error\) \? MENSAJE_SIN_MIGRACION/, 'sin la migración avisa, no rompe')
+})
