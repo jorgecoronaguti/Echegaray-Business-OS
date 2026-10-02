@@ -365,6 +365,16 @@ export function marcaDeCategoria(s: SueldoBlancoNegro | null): ComparacionConElP
 }
 
 /**
+ * ¿SE LE PAGA TODO EN EFECTIVO? (dueño, 02/10/2026, Tello Juan: «necesito dejar registro de cero pesos y que se paga
+ * todo en efectivo porque esa persona justo no tiene banco … habilitada para todo el personal»). Es el 0 ESCRITO en la
+ * celda del banco: un 0 calculado (sin neto) no afirma nada, y un vacío vuelve al recibo del estudio. No toca lo que
+ * cobra —el neto del estudio sigue siendo parte del total—: sólo cambia el canal por el que sale.
+ */
+export function todoEnEfectivo(l: { porBanco: number; manual?: { porBanco?: boolean } }): boolean {
+  return l.manual?.porBanco === true && Math.abs(l.porBanco) < 0.005
+}
+
+/**
  * EL NEGRO DE UNA FILA, EL QUE SUMA LA COLUMNA Y EL PIE. Así Neto + Negro + Mensuales = Total cierra
  * exacto (QA, 14/09/2026):
  *
@@ -379,6 +389,8 @@ export function negroDeLaFila(l: {
   manual?: { cobra?: boolean; porBanco?: boolean }
 }): number | null {
   if (l.netoMensual != null || l.modalidad === 'mensual') return null
+  // BANCO 0 ESCRITO A MANO: lo que iba por banco sale en mano, así que el efectivo es el total entero.
+  if (todoEnEfectivo(l)) return l.cobra
   // EL NEGRO QUE MUESTRA LA FILA, SIEMPRE: el del modelo (calculado o escrito). Un Cobra total escrito a mano NO lo
   // recalcula en silencio; si deja de cerrar, lo marca `cierreDeLaFila` (dueño, 15/09/2026).
   if (l.sueldo) return l.sueldo.negro

@@ -20,6 +20,7 @@ import type { LineaConOverrides } from './liquidacionOverrides'
 import { efectivoParaRedondear, pagoDelMensual } from './liquidacionPorTipo.ts'
 import { efectivoMostrado } from './efectivoRedondeado.ts'
 import { MOTIVO_SE_LIQUIDA_EN_LA_2DA, type ReciboDelEstudio } from './recibosDelEstudio.ts'
+import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -376,6 +377,8 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
   for (const [clave, rotulo] of [['banco', ROTULO.banco], ['efectivo', ROTULO.efectivo]] as const) {
     if (!e[clave]) continue
     const x = m[clave]
+    // BANCO 0 A MANO: no hay depósito, y el papel no lleva la sección (ni un renglón de $ 0) — dueño 02/10/2026.
+    if (clave === 'banco' && todoEnEfectivo(l) && !(x.pagado ?? 0)) continue
     const restaDe = clave === 'banco' ? restaDelBanco(l) : null
     const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)

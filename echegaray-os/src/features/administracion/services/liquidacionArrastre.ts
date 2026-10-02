@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import { arrastreYaIncluido } from './recibosDelEstudio.ts'
+import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
 
 /** Una fila de `liquidacion_arrastre`. */
 export interface ArrastreDeLinea {
@@ -51,6 +52,8 @@ function efectivoDisponible(l: LineaConOverrides): number | null {
 /** La línea con el arrastre trasladado del efectivo al banco. Sin arrastre, la misma línea. */
 export function conArrastre(l: LineaConOverrides, a: ArrastreDeLinea | null | undefined): LineaConOverrides {
   if (!a || !(a.importe > 0)) return l
+  // CON BANCO 0 A MANO NO HAY BANCO AL QUE PASARLA: la resta se queda en el efectivo, que ya la incluye (02/10/2026).
+  if (todoEnEfectivo(l)) return l
   const importe = r2(a.importe)
   const disponible = efectivoDisponible(l)
   const porBanco = r2(l.porBanco + importe)

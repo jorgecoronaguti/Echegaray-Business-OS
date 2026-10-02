@@ -193,12 +193,14 @@ export function CeldaEditable({
   /** De quién es la celda: titula el detalle del pago en efectivo («Pagado en efectivo — Ana, …»). */
   nombre?: string
 }) {
-  const formato = escribirComo(unidad, ceroEsVacio)
   // El día elegido para el efectivo que sale de la caja (sólo viaja si no es hoy). Hook antes de cualquier `return`.
   const fechaDelPago = useFechaDelPagoEnEfectivo()
   // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
   // todavía no lo pasan. Los dos conviven UNA versión: quien no lo pase dibuja lo de siempre.
   const marca = origen ?? (manual ? 'manual' : 'calculado')
+  // UN 0 ESCRITO A MANO SE DIBUJA «$ 0», NO «—» (dueño 02/10/2026: «dejar registro de cero pesos»): el «—» se lee
+  // como vacío, y vacío y cero dicen cosas distintas (vacío vuelve al calculado).
+  const formato = escribirComo(unidad, ceroEsVacio && marca !== 'manual')
   if (soloLectura) {
     return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo, persona: nombre, valor, cuenta: expresion }} /></>
   }

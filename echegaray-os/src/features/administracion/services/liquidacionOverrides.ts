@@ -373,7 +373,10 @@ export function aplicarOverrides(
   const horasEquivalentes = manual.horas ? horas : base.horasEquivalentes
   // EL MODELO SE CALCULA SOBRE LAS HORAS QUE QUEDARON (manuales o de la app) Y EL $/H NEGRO VIGENTE.
   // LO ESCRITO EN EL BLANCO ENTRA AL MODELO: horas del recibo, $/h de categoría y el neto (`por_banco_manual`).
-  const netoManual = ov.porBanco != null && Number.isFinite(ov.porBanco) ? redondear2(ov.porBanco) : null
+  // SALVO EL 0 (dueño, 02/10/2026): «banco 0» es «todo en efectivo», no «el recibo vale 0». Como neto achicaba el
+  // total en el neto del estudio; afuera del modelo, el total queda igual y el 0 sólo mueve el canal (`todoEnEfectivo`).
+  const netoManual = ov.porBanco != null && Number.isFinite(ov.porBanco) && redondear2(ov.porBanco) !== 0
+    ? redondear2(ov.porBanco) : null
   const manualDelBlanco = conModelo
     ? {
       horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual, negro: puesto('negro'),

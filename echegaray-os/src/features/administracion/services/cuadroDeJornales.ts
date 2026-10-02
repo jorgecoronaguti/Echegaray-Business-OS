@@ -13,6 +13,7 @@
 import { pisoVigente, type FilaEscala, type PisoDeConvenio } from './exposicionConvenio.ts'
 import { modalidadDe, type GrupoLiquidacion, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { RegistroLiquidable } from './liquidacionDeAusencias.ts'
+import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -75,6 +76,8 @@ export interface CadenaParaCerrar {
   total: number | null
   /** La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`); ya está dentro de `porBanco`. */
   arrastre?: { importe: number; estado: 'aplicado' } | null
+  /** Para reconocer el banco 0 escrito a mano (`todoEnEfectivo`): ahí el neto sale en mano y banco + negro no es el total. */
+  manual?: { porBanco?: boolean }
 }
 
 export interface Cierre {
@@ -106,7 +109,7 @@ export function cierreDeLaFila(c: CadenaParaCerrar): Cierre | null {
   // EL ARRASTRE SE DESCUENTA DEL BANCO ANTES DE COMPARAR: es efectivo que pasó a banco, no sueldo nuevo. Sin esto la
   // fila con la resta Q1-09 aplicada se marcaba «no cierra» por exactamente la resta, y el total sí cierra.
   const aplicado = c.arrastre?.estado === 'aplicado' ? c.arrastre.importe : 0
-  const sueldo = c.negro == null ? 0 : r2(c.cobra - (c.porBanco - aplicado) - c.negro)
+  const sueldo = c.negro == null || todoEnEfectivo(c) ? 0 : r2(c.cobra - (c.porBanco - aplicado) - c.negro)
   const cierra = Math.abs(diferencia) <= 1 && Math.abs(r2(c.total - repartido)) <= 1 && Math.abs(sueldo) <= 1
   const diferenciaQueSeDice = Math.abs(diferencia) > 1 ? diferencia
     : Math.abs(r2(c.total - repartido)) > 1 ? r2(c.total - repartido) : sueldo
