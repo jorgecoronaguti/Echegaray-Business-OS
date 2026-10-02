@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoDeDescarte, raicesDelCliente, ubicacionAdmisible } from './recibos-drive-sembrar.mjs'
+import { choquesConLaSerie, motivoDeDescarte, raicesDelCliente, ubicacionAdmisible } from './recibos-drive-sembrar.mjs'
 
 test('la carpeta del cliente y la de cada obra son raíces, agrupadas por carpeta', () => {
   // Messina declara la MISMA carpeta de Drive para dos obras distintas.
@@ -45,4 +45,20 @@ test('el descarte dice POR QUÉ, con la ruta real', () => {
   assert.match(
     motivoDeDescarte({ name: 'Recibo 3.xlsm', mimeType: 'application/vnd.ms-excel', ruta: [] }),
     /no es un PDF ni una imagen/)
+})
+
+test('serie RC: avisa el recibo de Drive con número mayor a los de mano que no está en el libro, y el anulado', () => {
+  const libro = new Map([[20, { anulado_motivo: null }], [21, { anulado_motivo: 'JSON descartado: monto mal' }]])
+  const fila = (numero, nombre_archivo) => ({ numero, nombre_archivo })
+  const avisos = choquesConLaSerie([
+    fila('7', 'Recibo 7 - 01-03-2026.pdf'),      // a mano, antes del libro: no se reclama
+    fila('19', 'Recibo 19 - 20-09-2026.pdf'),    // el último a mano
+    fila('20', 'Recibo 20 - 01-10-2026.pdf'),    // tomado por la serie, con dueño
+    fila('21', 'Recibo 21 - 02-10-2026.pdf'),    // anulado: el papel no debía salir
+    fila('22', 'Recibo 22 - 02-10-2026.pdf'),    // hecho a mano: choca con la serie
+    fila(null, 'Recibo sin numero.pdf'),
+  ], { aManoHasta: 19, libro })
+  assert.equal(avisos.length, 2)
+  assert.match(avisos[0], /^⚠ .*Recibo 21.*ANULADO.*JSON descartado/)
+  assert.match(avisos[1], /^⚠ .*Recibo 22.*n° 22 .*no está en el libro/)
 })

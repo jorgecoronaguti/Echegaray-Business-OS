@@ -15,12 +15,19 @@
 // recibo con el número de uno ya entregado. Ahora el número sale de `recibo_serie` (migración 20261002T1200):
 //   · sin `--aplicar` muestra el que TOMARÍA (último + 1) y no escribe nada: ni la serie ni el JSON. Un JSON
 //     con un número no tomado se dibuja y se entrega igual, y el siguiente recibo repetiría ese número.
-//   · con `--aplicar` lo toma (`tomar_numero_de_recibo('RC')`) y escribe el JSON DENTRO de la misma
+//   · con `--aplicar` lo toma (`tomar_numero_de_recibo('RC', <referencia>)`) y escribe el JSON DENTRO de la misma
 //     transacción: si el archivo no se escribe, el número vuelve a la serie.
 // Lo propio de cada recibo (cliente, fecha, pago) viaja en `<pago.json>`, no en el código.
 // `numero` queda pelado ('20'), como lo guarda `recibo_cliente` y lo cruza el portal; `codigo` es RC-000020.
 //
+// ═══ EL NÚMERO QUEDA ASENTADO CON SU DUEÑO ═══
+// `recibo_cliente` se carga después, desde Drive: hasta entonces la base no sabía para quién era el número.
+// Al tomarlo se le pasa la referencia (cliente, CUIT, fecha, forma e importe) y la base la asienta en
+// `recibo_numero_asignado` en la misma transacción. Si el JSON se descarta, el número se ANULA con
+// `--anular <n> --motivo "<por qué>"`: sigue ocupado y dice por qué no hay recibo.
+//
 //   node orquestador/scripts/recibo-cliente-armar.mjs <cobranzas.json> <pago.json> <salida.json> [--aplicar]
+//   node orquestador/scripts/recibo-cliente-armar.mjs --anular <numero> --motivo "<por qué>"
 //   pago.json = { fecha, cliente, cuit_cliente, pago: { forma, monto, aplica: [{ concepto, monto }] },
 //                 filas_de_este_pago: [<fila de Cobranzas>, …] }
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -57,6 +64,23 @@ export function armarDatos(filas, pago, numero) {
   }
 }
 
+/**
+ * Para quién es el número, dicho para una persona: lo que se asienta en el libro. Sin cliente, fecha o
+ * importe no se toma número — un asiento que no dice de quién es vuelve a ser un hueco mudo.
+ */
+export function referenciaDelCobro(pago) {
+  const cliente = String(pago?.cliente ?? '').trim()
+  const fecha = String(pago?.fecha ?? '').trim()
+  const monto = Number(pago?.pago?.monto)
+  if (!cliente || !/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !Number.isFinite(monto) || monto <= 0) {
+    throw new Error('el pago tiene que decir cliente, fecha (AAAA-MM-DD) e importe: sin eso no se toma número')
+  }
+  const cuit = String(pago.cuit_cliente ?? '').trim()
+  const forma = String(pago.pago.forma ?? '').trim()
+  return [cliente, cuit && `CUIT ${cuit}`, fechaDicha(fecha), `${forma ? `${forma} ` : ''}$${monto}`]
+    .filter(Boolean).join(' · ')
+}
+
 /** Lo que la serie RC daría ahora, SIN consumirlo. */
 const SIN_SERIE = 'La serie RC no existe: falta aplicar la migración 20261002T1200. No tomé ni escribí nada.'
 
@@ -69,7 +93,25 @@ async function numeroQueTomaria(query) {
   return Number(rows[0].ultimo) + 1
 }
 
+/** `--anular 20 --motivo "…"`: el número queda ocupado, con su motivo. No vuelve a la serie. */
+async function anular(argv) {
+  const numero = Number(argv[argv.indexOf('--anular') + 1])
+  const motivo = argv.includes('--motivo') ? argv[argv.indexOf('--motivo') + 1] : ''
+  if (!Number.isSafeInteger(numero) || numero < 1 || !motivo?.trim()) {
+    console.error('uso: recibo-cliente-armar.mjs --anular <numero> --motivo "<por qué>"')
+    process.exit(2)
+  }
+  const { query, closePool } = await import('../lib/db.mjs')
+  try {
+    const { rows } = await query("select public.anular_numero_de_recibo('RC', $1, $2) as en", [numero, motivo])
+    console.log(`ANULADO ${codigoDeRecibo('RC', numero)} · ${rows[0].en.toISOString()} · ${motivo.trim()}`)
+  } finally {
+    await closePool()
+  }
+}
+
 async function main(argv) {
+  if (argv.includes('--anular')) return anular(argv)
   const [cobranzas, pagoJson, salida] = argv.filter((a) => !a.startsWith('--'))
   if (!cobranzas || !pagoJson || !salida) {
     console.error('uso: recibo-cliente-armar.mjs <cobranzas.json> <pago.json> <salida.json> [--aplicar]')
@@ -77,6 +119,7 @@ async function main(argv) {
   }
   const filas = JSON.parse(readFileSync(cobranzas, 'utf8'))
   const pago = JSON.parse(readFileSync(pagoJson, 'utf8'))
+  const referencia = referenciaDelCobro(pago)
   const { query, withTx, closePool } = await import('../lib/db.mjs')
   try {
     if (!argv.includes('--aplicar')) {
@@ -87,12 +130,12 @@ async function main(argv) {
       return
     }
     const datos = await withTx(async (c) => {
-      const { rows } = await c.query("select public.tomar_numero_de_recibo('RC') as n")
+      const { rows } = await c.query("select public.tomar_numero_de_recibo('RC', $1) as n", [referencia])
       const d = armarDatos(filas, pago, Number(rows[0].n))
       writeFileSync(salida, JSON.stringify(d, null, 1))
       return d
     })
-    console.log(`TOMADO ${datos.codigo} · escrito ${salida}`)
+    console.log(`TOMADO ${datos.codigo} · asentado para «${referencia}» · escrito ${salida}`)
   } finally {
     await closePool()
   }

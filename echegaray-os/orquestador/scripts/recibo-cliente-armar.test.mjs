@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { armarDatos } from './recibo-cliente-armar.mjs'
+import { armarDatos, referenciaDelCobro } from './recibo-cliente-armar.mjs'
 
 const PY = join(import.meta.dirname, '..', 'lib', 'recibo-cliente-pdf.py')
 const hayPyMuPDF = spawnSync('python3', ['-c', 'import fitz'], { encoding: 'utf8' }).status === 0
@@ -62,8 +62,19 @@ test('la vista previa (sin número tomado) NO se dibuja: un papel sin código re
 })
 
 test('un JSON viejo, con número pero sin código, tampoco se dibuja', { skip: !hayPyMuPDF && 'sin python3 + PyMuPDF' }, () => {
-  const { codigo: _sinCodigo, ...viejo } = armarDatos(FILAS, PAGO, 18)
+  const viejo = armarDatos(FILAS, PAGO, 18)
+  delete viejo.codigo
   const { status, stderr } = dibujarYLeer(viejo)
   assert.notEqual(status, 0)
   assert.match(stderr, /código de la serie RC/)
+})
+
+test('la referencia que se asienta con el número dice cliente, CUIT, fecha, forma e importe', () => {
+  assert.equal(referenciaDelCobro(PAGO), 'Cliente de Prueba SA · CUIT 30-00000000-0 · 01/10/2026 · transferencia $500')
+})
+
+test('sin cliente, fecha o importe no hay referencia: no se toma un número sin dueño', () => {
+  assert.throws(() => referenciaDelCobro({ ...PAGO, cliente: '  ' }), /cliente, fecha/)
+  assert.throws(() => referenciaDelCobro({ ...PAGO, fecha: '1/10/26' }), /cliente, fecha/)
+  assert.throws(() => referenciaDelCobro({ ...PAGO, pago: { ...PAGO.pago, monto: 0 } }), /cliente, fecha/)
 })

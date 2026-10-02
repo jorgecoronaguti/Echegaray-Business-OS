@@ -187,6 +187,46 @@ async function guardar(f) {
   )
 }
 
+/**
+ * ¿QUÉ RECIBOS DE DRIVE CHOCAN CON LA SERIE RC? (auditor, 02/10/2026)
+ *
+ * Los números hasta `aManoHasta` se dieron a mano antes del libro: no se reclaman. De ahí para arriba cada
+ * número sale de `tomar_numero_de_recibo` y queda en `recibo_numero_asignado`. Un papel en Drive con un
+ * número mayor que NO está en el libro es un recibo hecho a mano que repite (o va a repetir) uno de la
+ * serie; uno cuyo número está ANULADO es un papel que alguien dijo que no salía. Se avisa, no se frena:
+ * el archivo existe igual y el portal lo tiene que mostrar.
+ *
+ * @param libro Map<numero, { anulado_motivo: string | null }> de la serie RC.
+ */
+export function choquesConLaSerie(filas, { aManoHasta, libro }) {
+  const avisos = []
+  for (const f of filas) {
+    const n = /^\d{1,9}$/.test(String(f.numero ?? '').trim()) ? Number(f.numero) : null
+    if (n == null || n <= aManoHasta) continue
+    const asiento = libro.get(n)
+    if (!asiento) {
+      avisos.push(`⚠ «${f.nombre_archivo}» dice recibo n° ${n} y ese número no está en el libro de la serie RC `
+        + `(los a mano llegan hasta el ${aManoHasta}): ¿se hizo a mano? choca con la serie`)
+    } else if (asiento.anulado_motivo) {
+      avisos.push(`⚠ «${f.nombre_archivo}» dice recibo n° ${n} y ese número está ANULADO en el libro: ${asiento.anulado_motivo}`)
+    }
+  }
+  return avisos
+}
+
+/** El libro de la serie RC, o `null` (diciéndolo) si la migración 20261002T1200 no está aplicada. */
+async function libroDeLaSerieRC() {
+  try {
+    const { rows: [serie] } = await query("select a_mano_hasta from public.recibo_serie where serie = 'RC'")
+    if (!serie) return null
+    const { rows } = await query("select numero, anulado_motivo from public.recibo_numero_asignado where serie = 'RC'")
+    return { aManoHasta: Number(serie.a_mano_hasta), libro: new Map(rows.map((r) => [Number(r.numero), r])) }
+  } catch (e) {
+    if (e?.code === '42P01' || e?.code === '42703') return null
+    throw e
+  }
+}
+
 /** La tabla tiene que existir: la migración es una decisión del dueño, no de este script. */
 async function tablaExiste() {
   const { rows } = await query("select to_regclass('public.recibo_cliente') is not null as hay")
@@ -247,6 +287,10 @@ async function main() {
     }
     for (const d of descartes) di(`   ✗ ${d.name} — ${d.motivo}`)
   }
+  // A stderr: en modo `--json` la salida estándar es de otro programa, y el aviso igual tiene que verse.
+  const serie = await libroDeLaSerieRC()
+  if (!serie) console.warn('⚠ sin libro de la serie RC (migración 20261002T1200 sin aplicar): no se pudo cruzar la numeración')
+  else for (const aviso of choquesConLaSerie(barridas, serie)) console.warn(aviso)
   di(!hay ? '\nNO SE ESCRIBIÓ NADA: la tabla todavía no existe (ver arriba). El barrido es informativo.'
     : APLICAR ? `\n${escritas} filas escritas.`
     : '\nEN SECO: no se escribió nada. Agregá --aplicar.')

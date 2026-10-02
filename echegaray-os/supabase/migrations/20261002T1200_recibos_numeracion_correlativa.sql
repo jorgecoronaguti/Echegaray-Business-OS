@@ -35,7 +35,15 @@
 -- ═══ UN NÚMERO IMPRESO NO CAMBIA ═══
 --
 -- Un recibo con número ya pudo haberse entregado firmado. Un trigger rechaza cualquier UPDATE que cambie
--- `serie_numero` o `codigo` de una fila que ya los tiene; `efectivo_recibo_firma` ya rechazaba todo UPDATE.
+-- `serie_numero` o `codigo` de una fila que ya los tiene, y el DELETE de una fila numerada;
+-- `efectivo_recibo_firma` ya rechazaba todo UPDATE y DELETE. Los de quincena de antes conservan su
+-- 'REC-2026-000N' en `codigo_anterior`.
+--
+-- ═══ CADA NÚMERO TIENE DUEÑO ═══
+--
+-- `recibo_numero_asignado` es el libro: cada número que se toma deja ahí su referencia en la MISMA
+-- transacción. El número que no llegó a recibo (un JSON de cobro descartado) se anula con motivo
+-- (`anular_numero_de_recibo`), no se borra ni se reusa.
 -- Reemitir un recibo de la quincena no reusa el número: es OTRA fila (otro hecho, 20260922T2600) y toma
 -- el siguiente. El lote que encuentra el MISMO papel ya guardado no registra otro y conserva el número.
 --
@@ -58,6 +66,10 @@ create table if not exists public.recibo_serie (
   descripcion text not null,
   ultimo      integer not null check (ultimo >= 0)
 );
+-- Hasta qué número la serie se numeró A MANO, antes del libro: esos no tienen asiento y no se reclaman.
+-- Un recibo con número mayor que no está en el libro es uno hecho a mano que choca con la serie.
+alter table public.recibo_serie add column if not exists a_mano_hasta integer not null default 0
+  check (a_mano_hasta >= 0);
 comment on table public.recibo_serie is
   'El último número entregado de cada serie de recibos (RP pago, RC cobro). Lo avanza sólo '
   'tomar_numero_de_recibo, dentro de la transacción del recibo: sin huecos.';
@@ -74,11 +86,11 @@ on conflict (serie) do nothing;
 
 -- RC arranca donde terminó la numeración a mano. Sólo los valores que son un entero: un número de recibo
 -- escrito raro no se adivina. `greatest` hace la corrida repetible: nunca baja una serie que ya avanzó.
-insert into public.recibo_serie (serie, descripcion, ultimo)
-select 'RC', 'Recibos de cobro a clientes',
-       coalesce(max(btrim(numero)::integer), 0)
-  from public.recibo_cliente
- where btrim(numero) ~ '^[0-9]{1,9}$'
+-- `a_mano_hasta` se fija la PRIMERA vez y no se mueve: después de eso, todo número sale del libro.
+insert into public.recibo_serie (serie, descripcion, ultimo, a_mano_hasta)
+select 'RC', 'Recibos de cobro a clientes', n, n
+  from (select coalesce(max(btrim(numero)::integer), 0) as n
+          from public.recibo_cliente where btrim(numero) ~ '^[0-9]{1,9}$') m
 on conflict (serie) do update set ultimo = greatest(public.recibo_serie.ultimo, excluded.ultimo);
 
 -- ── EL CÓDIGO ────────────────────────────────────────────────────────────────────────────────────
@@ -97,27 +109,129 @@ begin
 end $$;
 grant execute on function public.codigo_de_recibo(text, integer) to authenticated;
 
--- ── TOMAR EL SIGUIENTE ───────────────────────────────────────────────────────────────────────────
-create or replace function public.tomar_numero_de_recibo(p_serie text) returns integer
-language plpgsql security definer set search_path = public as $$
-declare v_numero integer;
+-- ── EL LIBRO: A QUIÉN SE DIO CADA NÚMERO (auditor, 02/10/2026) ─────────────────────────────────────
+-- El recibo de cobro toma su número al escribir un JSON, y `recibo_cliente` se carga DESPUÉS, desde el
+-- nombre del archivo en Drive. Entre las dos cosas el número no tenía dueño: un JSON descartado era un
+-- hueco mudo, y un recibo hecho a mano con el mismo número no chocaba con nada. Cada número tomado deja
+-- acá su asiento EN LA MISMA transacción que lo toma: si el recibo se cae, se caen los dos.
+-- Un número no se borra ni se reusa: se ANULA, con motivo, y sigue ocupado.
+create table if not exists public.recibo_numero_asignado (
+  serie          text not null references public.recibo_serie (serie),
+  numero         integer not null check (numero >= 1),
+  codigo         text not null,
+  -- Quién lo tiene, dicho para una persona: el id del recibo (RP) o cliente, fecha e importe (RC).
+  referencia     text not null check (btrim(referencia) <> ''),
+  tomado_en      timestamptz not null default now(),
+  tomado_por     uuid,
+  anulado_en     timestamptz,
+  anulado_motivo text,
+  anulado_por    uuid,
+  primary key (serie, numero),
+  constraint recibo_numero_asignado_codigo_de_su_numero check (codigo = public.codigo_de_recibo(serie, numero)),
+  constraint recibo_numero_asignado_anulado_con_motivo
+    check ((anulado_en is null) = (anulado_motivo is null) and (anulado_motivo is null or btrim(anulado_motivo) <> ''))
+);
+comment on table public.recibo_numero_asignado is
+  'Libro de números de recibo: cada número que tomó tomar_numero_de_recibo, con su referencia. No se borra; '
+  'un número que no se usó se anula con motivo (anular_numero_de_recibo) y no vuelve a la serie.';
+
+alter table public.recibo_numero_asignado enable row level security;
+revoke all on public.recibo_numero_asignado from anon, public, authenticated;
+grant select on public.recibo_numero_asignado to authenticated;
+-- La referencia nombra personas y clientes con importes: la leen dirección y administración, no el portal.
+drop policy if exists recibo_numero_asignado_select on public.recibo_numero_asignado;
+create policy recibo_numero_asignado_select on public.recibo_numero_asignado
+  for select to authenticated using ((select public.liquida_sueldos()));
+
+-- El asiento sólo puede ganar su anulación, una vez. Nada más cambia y nada se borra.
+create or replace function public._recibo_numero_asignado_inmutable() returns trigger
+language plpgsql as $$
 begin
+  if tg_op = 'DELETE' then
+    raise exception 'el número % no se borra del libro: se anula con motivo', old.codigo using errcode = 'P0001';
+  end if;
+  if old.anulado_en is not null
+     or (new.serie, new.numero, new.codigo, new.referencia, new.tomado_en, new.tomado_por)
+        is distinct from (old.serie, old.numero, old.codigo, old.referencia, old.tomado_en, old.tomado_por) then
+    raise exception 'el asiento de % no se cambia: sólo se anula, una vez', old.codigo using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+drop trigger if exists recibo_numero_asignado_inmutable on public.recibo_numero_asignado;
+create trigger recibo_numero_asignado_inmutable before update or delete on public.recibo_numero_asignado
+  for each row execute function public._recibo_numero_asignado_inmutable();
+
+-- Un trigger de fila no ve el TRUNCATE: éste lo frena para las tablas de recibos numerados.
+create or replace function public._recibo_numerado_no_se_vacia() returns trigger
+language plpgsql as $$
+begin
+  raise exception '% guarda recibos numerados: no se vacía', tg_table_name using errcode = 'P0001';
+end $$;
+drop trigger if exists recibo_numero_asignado_no_se_vacia on public.recibo_numero_asignado;
+create trigger recibo_numero_asignado_no_se_vacia before truncate on public.recibo_numero_asignado
+  for each statement execute function public._recibo_numerado_no_se_vacia();
+
+-- ── TOMAR EL SIGUIENTE ───────────────────────────────────────────────────────────────────────────
+-- La versión sin referencia no queda: un número sin dueño es justo lo que el libro existe para evitar.
+drop function if exists public.tomar_numero_de_recibo(text);
+create or replace function public.tomar_numero_de_recibo(p_serie text, p_referencia text) returns integer
+language plpgsql security definer set search_path = public as $$
+declare v_numero integer; v_ref text := nullif(btrim(coalesce(p_referencia, '')), '');
+begin
+  if v_ref is null then
+    raise exception 'un número de recibo se toma diciendo para qué recibo es' using errcode = 'P0001';
+  end if;
   update public.recibo_serie set ultimo = ultimo + 1 where serie = p_serie returning ultimo into v_numero;
   if v_numero is null then
     raise exception 'la serie de recibos «%» no existe', p_serie using errcode = 'P0001';
   end if;
+  insert into public.recibo_numero_asignado (serie, numero, codigo, referencia, tomado_por)
+  values (p_serie, v_numero, public.codigo_de_recibo(p_serie, v_numero), v_ref, auth.uid());
   return v_numero;
 end $$;
-revoke all on function public.tomar_numero_de_recibo(text) from public, anon, authenticated;
-grant execute on function public.tomar_numero_de_recibo(text) to service_role;
+revoke all on function public.tomar_numero_de_recibo(text, text) from public, anon, authenticated;
+grant execute on function public.tomar_numero_de_recibo(text, text) to service_role;
+
+-- ── ANULAR UN NÚMERO QUE NO SE USÓ ───────────────────────────────────────────────────────────────
+-- El JSON que se descartó, el recibo que no se entregó: el número queda ocupado y dice por qué.
+create or replace function public.anular_numero_de_recibo(p_serie text, p_numero integer, p_motivo text)
+returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare v_motivo text := nullif(btrim(coalesce(p_motivo, '')), ''); v_en timestamptz;
+begin
+  if v_motivo is null or length(v_motivo) < 5 then
+    raise exception 'anular un número exige decir por qué' using errcode = 'P0001';
+  end if;
+  update public.recibo_numero_asignado
+     set anulado_en = now(), anulado_motivo = v_motivo, anulado_por = auth.uid()
+   where serie = p_serie and numero = p_numero and anulado_en is null
+  returning anulado_en into v_en;
+  if v_en is null then
+    raise exception 'el número % de la serie % no está en el libro o ya está anulado', p_numero, p_serie
+      using errcode = 'P0001';
+  end if;
+  return v_en;
+end $$;
+revoke all on function public.anular_numero_de_recibo(text, integer, text) from public, anon, authenticated;
+grant execute on function public.anular_numero_de_recibo(text, integer, text) to service_role;
 
 -- ── EL NÚMERO NO CAMBIA UNA VEZ PUESTO ───────────────────────────────────────────────────────────
--- Se permite pasar de vacío a numerado (el backfill de abajo); nunca de un número a otro.
+-- Se permite pasar de vacío a numerado (el backfill de abajo); nunca de un número a otro, ni borrar el
+-- recibo numerado: el papel ya pudo salir firmado, y el número no puede volver a quedar libre.
+-- (Buscado el 02/10: ni la app, ni el orquestador, ni las migraciones borran `recibo_liquidacion`; un recibo
+-- que salió mal se corrige emitiendo otro y éste queda «observado». La persona es `on delete restrict`.)
 create or replace function public._recibo_numero_inmutable() returns trigger
 language plpgsql as $$
 begin
+  if tg_op = 'DELETE' then
+    if old.serie_numero is not null then
+      raise exception 'un recibo numerado no se borra: % ya está impreso', old.codigo using errcode = 'P0001';
+    end if;
+    return old;
+  end if;
   if old.serie_numero is not null
-     and (new.serie_numero is distinct from old.serie_numero or new.codigo is distinct from old.codigo) then
+     and (new.serie_numero is distinct from old.serie_numero or new.codigo is distinct from old.codigo
+          or new.codigo_anterior is distinct from old.codigo_anterior) then
     raise exception 'el número de un recibo no se cambia: % ya está impreso', old.codigo using errcode = 'P0001';
   end if;
   return new;
@@ -128,13 +242,29 @@ end $$;
 -- `recibo_liquidacion_emitido` ya lo leen así, y siguen leyéndolo sin cambiar una línea.
 alter table public.recibo_liquidacion add column if not exists serie_numero integer;
 alter table public.recibo_liquidacion alter column codigo drop expression if exists;
+-- EL CÓDIGO QUE TENÍA ANTES. Los recibos de antes de la serie se emitieron como 'REC-2026-0001' y dos ya se
+-- mandaron a firmar con ese código: si alguien pregunta por él, la fila lo dice. Lo llena sólo el backfill.
+alter table public.recibo_liquidacion add column if not exists codigo_anterior text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'recibo_liquidacion_codigo_anterior_rec') then
+    alter table public.recibo_liquidacion add constraint recibo_liquidacion_codigo_anterior_rec
+      check (codigo_anterior is null or codigo_anterior ~ '^REC-');
+  end if;
+end $$;
+comment on column public.recibo_liquidacion.codigo_anterior is
+  'El código REC-<año>-<NNNN> con que se emitió antes de la serie RP (backfill 20261002T1200). Null en los nuevos.';
 
 drop trigger if exists recibo_liquidacion_numero_inmutable on public.recibo_liquidacion;
-create trigger recibo_liquidacion_numero_inmutable before update on public.recibo_liquidacion
+create trigger recibo_liquidacion_numero_inmutable before update or delete on public.recibo_liquidacion
   for each row execute function public._recibo_numero_inmutable();
+drop trigger if exists recibo_liquidacion_no_se_vacia on public.recibo_liquidacion;
+create trigger recibo_liquidacion_no_se_vacia before truncate on public.recibo_liquidacion
+  for each statement execute function public._recibo_numerado_no_se_vacia();
 
 -- LOS YA EMITIDOS, EN EL ORDEN EN QUE SE EMITIERON (`numero`, la identity): RP-000001 en adelante, y la
--- serie queda en el último. Sólo los que no tienen número: correrla dos veces no renumera nada.
+-- serie queda en el último. Sólo los que no tienen número: correrla dos veces no renumera nada. Cada uno
+-- deja su asiento en el libro (`on conflict`: la segunda corrida no duplica ni falla).
 do $$
 declare v_base integer; v_n integer;
 begin
@@ -145,10 +275,18 @@ begin
   )
   update public.recibo_liquidacion r
      set serie_numero = v_base + p.orden,
-         codigo = public.codigo_de_recibo('RP', (v_base + p.orden)::integer)
+         codigo = public.codigo_de_recibo('RP', (v_base + p.orden)::integer),
+         codigo_anterior = r.codigo
     from pendientes p where r.id = p.id;
   get diagnostics v_n = row_count;
   update public.recibo_serie set ultimo = ultimo + v_n where serie = 'RP';
+  insert into public.recibo_numero_asignado (serie, numero, codigo, referencia, tomado_en)
+  select 'RP', r.serie_numero, r.codigo,
+         'recibo_liquidacion:' || r.id || ' · ' || r.nombre || ' · quincena ' || r.quincena_desde || '/'
+           || r.quincena_hasta || coalesce(' · antes ' || r.codigo_anterior, ''),
+         r.emitido_en
+    from public.recibo_liquidacion r
+  on conflict (serie, numero) do nothing;
 end $$;
 
 alter table public.recibo_liquidacion alter column serie_numero set not null;
@@ -174,7 +312,7 @@ create or replace function public.registrar_recibo_liquidacion(
   p_efectivo numeric default null, p_total numeric default null
 ) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare v_id uuid; v_numero integer;
+declare v_id uuid := gen_random_uuid(); v_numero integer;
 begin
   if auth.uid() is null then
     raise exception 'hace falta un usuario logueado' using errcode = '42501';
@@ -193,11 +331,13 @@ begin
    + coalesce(jsonb_array_length(p_renglones -> 'medios'), 0) = 0 then
     raise exception 'el recibo no dice nada: no se emite' using errcode = 'P0001';
   end if;
-  v_numero := public.tomar_numero_de_recibo('RP');
-  insert into recibo_liquidacion (persona_id, quincena_desde, quincena_hasta, nombre, categoria,
+  -- El id se elige ANTES para que el asiento del libro diga qué recibo tiene el número.
+  v_numero := public.tomar_numero_de_recibo('RP',
+    'recibo_liquidacion:' || v_id || ' · ' || trim(p_nombre) || ' · quincena ' || p_desde || '/' || p_hasta);
+  insert into recibo_liquidacion (id, persona_id, quincena_desde, quincena_hasta, nombre, categoria,
                                   horas, banco, efectivo, total, renglones, emitido_por,
                                   serie_numero, codigo)
-  values (p_persona, p_desde, p_hasta, trim(p_nombre), nullif(trim(p_categoria), ''),
+  values (v_id, p_persona, p_desde, p_hasta, trim(p_nombre), nullif(trim(p_categoria), ''),
           p_horas, p_banco, p_efectivo, p_total, p_renglones, auth.uid(),
           v_numero, public.codigo_de_recibo('RP', v_numero))
   returning id into v_id;
@@ -229,6 +369,12 @@ begin
   get diagnostics v_n = row_count;
   alter table public.efectivo_recibo_firma enable trigger efectivo_recibo_firma_inmutable;
   update public.recibo_serie set ultimo = ultimo + v_n where serie = 'RP';
+  insert into public.recibo_numero_asignado (serie, numero, codigo, referencia, tomado_en)
+  select 'RP', f.serie_numero, f.codigo,
+         'efectivo_recibo_firma:' || f.rendicion_id || ' · ' || f.aclaracion || ' · $' || f.monto,
+         f.firmado_en
+    from public.efectivo_recibo_firma f
+  on conflict (serie, numero) do nothing;
 end $$;
 
 alter table public.efectivo_recibo_firma alter column serie_numero set not null;
@@ -283,7 +429,8 @@ begin
      or p_trazo !~ '^<svg [^>]*viewBox="0 0 [0-9]+ [0-9]+">' or p_trazo !~ '<path d="M[0-9 MLl-]+"' or p_trazo not like '%</svg>' then
     raise exception 'falta la firma: firmá arriba de la línea' using errcode = 'P0001';
   end if;
-  v_numero := public.tomar_numero_de_recibo('RP');
+  v_numero := public.tomar_numero_de_recibo('RP',
+    'efectivo_recibo_firma:' || r.id || ' · ' || v_acl || ' · $' || r.monto);
   insert into public.efectivo_recibo_firma
     (rendicion_id, entrega_id, monto, fecha, concepto, proveedor, trazo, aclaracion, dni, registrado_por,
      serie_numero, codigo)

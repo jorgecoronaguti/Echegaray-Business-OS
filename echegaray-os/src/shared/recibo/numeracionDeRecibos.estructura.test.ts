@@ -32,7 +32,11 @@ test('la serie avanza con update … returning bajo lock, nunca con una sequence
 })
 
 test('nadie toma números sueltos por la API: sin execute para authenticated ni anon', () => {
-  assert.match(SQL, /revoke all on function public\.tomar_numero_de_recibo\(text\) from public, anon, authenticated;/)
+  // La firma vieja, sin referencia, no queda viva como sobrecarga: tomaría números sin dueño.
+  assert.match(SQL, /drop function if exists public\.tomar_numero_de_recibo\(text\);/)
+  assert.match(SQL, /revoke all on function public\.tomar_numero_de_recibo\(text, text\) from public, anon, authenticated;/)
+  assert.match(SQL, /revoke all on function public\.anular_numero_de_recibo\(text, integer, text\) from public, anon, authenticated;/)
+  assert.doesNotMatch(SQL, /grant execute on function public\.anular_numero_de_recibo[^;]*\b(authenticated|anon|public)\b/)
   assert.doesNotMatch(SQL, /grant execute on function public\.tomar_numero_de_recibo[^;]*\b(authenticated|anon|public)\b/)
   assert.match(SQL, /revoke all on public\.recibo_serie from anon, public, authenticated;/)
   assert.doesNotMatch(SQL, /grant (insert|update|delete|all)[^;]*recibo_serie/i)
@@ -40,7 +44,7 @@ test('nadie toma números sueltos por la API: sin execute para authenticated ni 
 
 test('dos series: RP para todos los pagos y RC que sigue al mayor número entero ya entregado al cliente', () => {
   assert.match(SQL, /values \('RP', '[^']+', 0\)\s*on conflict \(serie\) do nothing/)
-  assert.match(SQL, /coalesce\(max\(btrim\(numero\)::integer\), 0\)\s*from public\.recibo_cliente\s*where btrim\(numero\) ~ '\^\[0-9\]\{1,9\}\$'/)
+  assert.match(SQL, /coalesce\(max\(btrim\(numero\)::integer\), 0\) as n\s*from public\.recibo_cliente\s*where btrim\(numero\) ~ '\^\[0-9\]\{1,9\}\$'/)
   // Correrla otra vez no BAJA una serie que ya avanzó (repetiría números entregados).
   assert.match(SQL, /do update set ultimo = greatest\(public\.recibo_serie\.ultimo, excluded\.ultimo\)/)
 })
@@ -58,7 +62,7 @@ for (const [fn, tabla, original] of [
 ] as const) {
   test(`${fn}: toma RP después de validar y en la misma transacción del insert, con la misma firma de antes`, () => {
     const c = cuerpo(SQL, fn)
-    const toma = c.indexOf("v_numero := public.tomar_numero_de_recibo('RP');")
+    const toma = c.indexOf("v_numero := public.tomar_numero_de_recibo('RP',")
     assert.ok(toma > 0, 'no toma número de la serie RP')
     // Un recibo rechazado no consume número: ninguna validación después de tomarlo.
     assert.ok(c.lastIndexOf('raise exception') < toma, 'hay una validación después de tomar el número')
@@ -82,7 +86,8 @@ test('el número impreso no cambia: trigger en la quincena, y el de efectivo vue
   const t = cuerpo(SQL, '_recibo_numero_inmutable')
   assert.match(t, /old\.serie_numero is not null/)
   assert.match(t, /new\.serie_numero is distinct from old\.serie_numero or new\.codigo is distinct from old\.codigo/)
-  assert.match(SQL, /create trigger recibo_liquidacion_numero_inmutable before update on public\.recibo_liquidacion/)
+  assert.match(SQL, /create trigger recibo_liquidacion_numero_inmutable before update or delete on public\.recibo_liquidacion/)
+  assert.match(t, /if tg_op = 'DELETE' then\s*if old\.serie_numero is not null then\s*raise exception 'un recibo numerado no se borra/)
   const apaga = SQL.indexOf('disable trigger efectivo_recibo_firma_inmutable')
   const prende = SQL.indexOf('enable trigger efectivo_recibo_firma_inmutable')
   assert.ok(apaga > 0 && prende > apaga, 'el trigger de efectivo se apaga para el backfill y se vuelve a prender')
@@ -131,7 +136,7 @@ test('CABLEADO: guardar devuelve el número leído de la fila, y el mismo papel 
 test('el script del recibo de cobro no tiene el número escrito: lo toma de RC sólo con --aplicar', () => {
   const s = leer('orquestador/scripts/recibo-cliente-armar.mjs')
   assert.doesNotMatch(s, /numero:\s*'\d+'/)
-  assert.match(s, /tomar_numero_de_recibo\('RC'\)/)
+  assert.match(s, /tomar_numero_de_recibo\('RC', \$1\) as n", \[referencia\]/)
   const previa = s.slice(s.indexOf("if (!argv.includes('--aplicar'))"), s.indexOf('const datos = await withTx'))
   assert.doesNotMatch(previa, /tomar_numero_de_recibo|writeFileSync/, 'la vista previa no consume número ni escribe el JSON')
   // El JSON se escribe DENTRO de la transacción: si falla, el número vuelve a la serie.
