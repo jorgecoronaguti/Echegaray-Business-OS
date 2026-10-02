@@ -83,16 +83,27 @@ test('LA GRILLA: el mensual va en su propio cuadro y su subtotal no se mezcla co
   assert.match(fuente('../components/liquidacion/cuadro/FilasJornaleros.tsx'), /<Leida valor=\{t\.netoBandas\} testid="espejo-total-neto" \/>/)
 })
 
+// CAMBIÓ EL 02/10/2026 (dueño: el mensual se liquida en la 2ª). Las horas se ven en LAS DOS quincenas —es el pedido
+// que este test protege—; la plata, sólo en la 2ª. MUTACIÓN: vaciar las horas en la 1ª, o multiplicar el neto por ellas.
+const jefeConHoras = (dia: string) => armarCuadros({
+  quincena: quincenaDe(dia),
+  personas: [{ id: 'maldonado', nombre: 'MALDONADO', nombreOrden: 'MALDONADO', cuil: null, enLaEmpresa: true, esJefe: true }],
+  tarifas: [{ persona_id: 'maldonado', desde: '2026-08-01', valor_hora: null, neto_mensual: 1800000, origen: 't' }],
+  horas: new Map([['maldonado', { horas: 89, horasEquivalentes: 89, presentesSinHoras: 0 }]]),
+  recibos: [], adelantos: [], redondeos: new Map(),
+}).filter((c) => c.grupo === 'oficina')[0].lineas[0]
+
 test('LOS JEFES MUESTRAN SUS HORAS: la columna Horas de un mensual no es «—»', () => {
-  const [oficina] = armarCuadros({
-    quincena: quincenaDe('2026-09-01'),
-    personas: [{ id: 'maldonado', nombre: 'MALDONADO', nombreOrden: 'MALDONADO', cuil: null, enLaEmpresa: true, esJefe: true }],
-    tarifas: [{ persona_id: 'maldonado', desde: '2026-08-01', valor_hora: null, neto_mensual: 1800000, origen: 't' }],
-    horas: new Map([['maldonado', { horas: 89, horasEquivalentes: 89, presentesSinHoras: 0 }]]),
-    recibos: [], adelantos: [], redondeos: new Map(),
-  }).filter((c) => c.grupo === 'oficina')
-  assert.equal(oficina.lineas[0].horas, 89)
-  assert.equal(oficina.lineas[0].cobra, 1800000, 'las horas no multiplican el neto mensual')
+  const segunda = jefeConHoras('2026-09-16')
+  assert.equal(segunda.horas, 89)
+  assert.equal(segunda.cobra, 1800000, 'las horas no multiplican el neto mensual')
+  const primera = jefeConHoras('2026-09-01')
+  assert.equal(primera.horas, 89, 'en la 1ª quincena las horas del jefe siguen a la vista')
+  assert.equal(primera.cobra, null, 'en la 1ª no hay sueldo: el mes se liquida en la 2ª')
+  // Y la fila las dibuja también en la 1ª: la asistencia no depende de `seLiquidaEnLa2da`, sólo de la cerrada.
+  const fm = fuente('../components/liquidacion/cuadro/FilasMensuales.tsx')
+  assert.match(fm, /\) : enLa2da \? <Vacia testid=\{`sueldo-/, 'en la 1ª se vacía el sueldo, no la asistencia')
+  assert.match(fm, /data-testid=\{`asistencia-\$\{fila\.personaId\}`\} title="Referencia: un mensual no cobra por hora\."/)
 })
 
 test('EL BUSCADOR SE REARMA CUANDO CAMBIA LO BUSCADO: `key` = el valor', () => {

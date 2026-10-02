@@ -92,6 +92,20 @@ test('REHACER 01/10 · quien no tiene nada que cobrar se sabe ANTES de tildar, c
   assert.deepEqual(armarLote(filas, new Set(['a', 'c']), Q, fmt, rotulo).sinNada, [])
 })
 
+// EL MENSUAL EN LA 1ª NO EMITE (dueño, 02/10/2026), aunque su fila muestre el banco del recibo del estudio de esa
+// quincena: el mes se liquida en la 2ª. MUTACIÓN: que el recibo de la 1ª vuelva a llevar ese banco → deja de estar
+// en `sinNada` y el lote imprime una hoja que paga el mes dos veces.
+test('02/10 · el mensual en la 1ª quincena no tiene recibo que emitir; en la 2ª sí', () => {
+  const mensual = (en1ra: boolean) => ({
+    ...jornalero, modalidad: 'mensual', sueldo: null, porBanco: 705532.04, enEfectivo: en1ra ? null : 1794467.96,
+    cobra: en1ra ? null : 2500000, reciboNeto: 705532.04, manual: {}, ...(en1ra ? { seLiquidaEnLa2da: true } : {}),
+    pago: pagoDeLaLinea({ banco: 705532.04, negro: en1ra ? null : 1794467.96 }),
+  }) as unknown as LineaConOverrides
+  const Q1 = { desde: '2026-09-01', hasta: '2026-09-15' }
+  assert.deepEqual([...sinNadaQueCobrar([fila('m', 'MALDONADO', mensual(true))], Q1, fmt, rotulo)], ['m'])
+  assert.deepEqual([...sinNadaQueCobrar([fila('m', 'MALDONADO', mensual(false))], Q, fmt, rotulo)], [])
+})
+
 test('REHACER 01/10 · el título de la vista previa dice recibos y hojas', () => {
   assert.equal(textoDelLote(1), '1 recibo · 1 hoja')
   assert.equal(textoDelLote(4), '4 recibos · 1 hoja')
@@ -126,7 +140,11 @@ test('CABLEADO: una sola regla de «qué lleva», registrar antes de imprimir, A
   assert.match(previa, /<Drawer testid="vista-previa-recibos"/, 'panel lateral compartido, no un modal propio')
   // La grilla apaga la casilla ANTES y pasa la marca de impreso.
   const grilla = fuente('../GrillaEspejoQuincena.tsx')
-  assert.match(grilla, /apagada: sinNada\.has\(fila\.personaId\) \? MOTIVO_SIN_NADA : undefined/)
+  // CAMBIÓ EL 02/10/2026 (el mensual se liquida en la 2ª): la casilla apagada tiene DOS motivos y los dos se exigen.
+  // Quien no está en `sinNada` se puede tildar; quien está, sale con su motivo —el del mensual en la 1ª o el genérico—.
+  assert.match(grilla, /apagada: !sinNada\.has\(fila\.personaId\) \? undefined\s*: fila\.linea\.seLiquidaEnLa2da \? MOTIVO_SE_LIQUIDA_EN_LA_2DA : MOTIVO_SIN_NADA/,
+    'la casilla apagada perdió uno de sus dos motivos')
+  assert.match(grilla, /visibles\.filter\(\(f\) => !sinNada\.has\(f\.personaId\)\)/, 'quien no tiene nada no entra en lo tildado')
   assert.match(grilla, /impreso: impresos\[fila\.personaId\]/)
   assert.match(fuente('./HojaDelRecibo.tsx'), /size: A4 landscape/)
   assert.match(fuente('./HojasDeRecibosA4.tsx'), /gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr'/)

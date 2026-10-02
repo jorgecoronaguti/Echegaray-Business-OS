@@ -26,6 +26,7 @@ import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
 import { SaldoTotal, type EdicionDeFila } from './FilasJornaleros'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { rotuloDelMensual } from '../../../services/cobroMensual'
+import { totalVacioEnLa1ra } from '../../../services/recibosDelEstudio'
 import { sinSello } from './estadoDelPago'
 import {
   asistenciaDeReferencia, efectivoDelRedondeo, pagoDelMensual, type PagoDelMensual, type TotalesDeMensuales,
@@ -141,8 +142,8 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={efectivoDelRedondeo(fila)}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
-      {/* LO ESCRITO A MANO NO SE OCULTA: un Cobra total anotado en la 1ª se sigue viendo y editando. */}
-      {enLa2da && !l.manual.cobra ? <Vacia testid={`total-${fila.personaId}`} /> : <CeldaTotal fila={fila} edicion={edicion} />}
+      {/* LO ESCRITO A MANO NO SE OCULTA: un Cobra total anotado en la 1ª se sigue viendo y editando; un 0, no. */}
+      {totalVacioEnLa1ra(l, cerrada) ? <Vacia testid={`total-${fila.personaId}`} /> : <CeldaTotal fila={fila} edicion={edicion} />}
       <CeldaPagadoTotal fila={fila} pago={p} />
       <CeldaSaldo fila={fila} lado="total" pago={p} sinDato={sinSaldoCerrada ?? { texto: 'sin sueldo', titulo: 'Sin sueldo cargado no hay saldo que afirmar.' }} />
       <CeldaSaldoRedondeado fila={fila} pago={p} />

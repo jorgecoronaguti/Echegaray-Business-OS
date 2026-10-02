@@ -67,14 +67,27 @@ test('LIQUIDACIÓN: sin neto mensual, COBRA es el importe que cargó la planilla
   assert.equal(rotuloDelMensual(l), 'mensual · importe cargado de la planilla')
 })
 
-test('LIQUIDACIÓN: el neto mensual vigente le gana al importe cargado', () => {
-  const [l] = cuadro(armarCuadros(datos({
-    quincena: quincenaDe('2026-09-05'),
-    tarifas: [{ persona_id: MALDONADO, desde: '2026-09-01', valor_hora: null, neto_mensual: 1800000, origen: 'acuerdo' }],
-    importesCargados: new Map([[MALDONADO, 398200]]),
-  })), 'oficina').lineas
+// CAMBIÓ EL 02/10/2026 (dueño: el mensual se liquida en la 2ª quincena). La regla se prueba donde hay plata —la 2ª— y
+// la 1ª se clava aparte: ni el neto ni el importe cargado aparecen ahí, porque el mes se paga una sola vez.
+const conNetoEImporte = (dia: string) => cuadro(armarCuadros(datos({
+  quincena: quincenaDe(dia),
+  tarifas: [{ persona_id: MALDONADO, desde: '2026-09-01', valor_hora: null, neto_mensual: 1800000, origen: 'acuerdo' }],
+  importesCargados: new Map([[MALDONADO, 398200]]),
+})), 'oficina').lineas[0]
+
+test('LIQUIDACIÓN: el neto mensual vigente le gana al importe cargado (2ª quincena, la que liquida el mes)', () => {
+  const l = conNetoEImporte('2026-09-20')
   assert.equal(l.cobra, 1800000)
   assert.equal(l.origenTarifa, 'acuerdo')
+  assert.notEqual(l.seLiquidaEnLa2da, true)
+})
+
+test('LIQUIDACIÓN: en la 1ª quincena el mensual no muestra plata —ni el neto ni el importe cargado— y conserva sus horas', () => {
+  const l = conNetoEImporte('2026-09-05')
+  assert.equal(l.seLiquidaEnLa2da, true)
+  assert.equal(l.cobra, null, 'MUTACIÓN: el importe cargado (398.200) o el neto (1.800.000) en la 1ª paga el mes dos veces')
+  assert.equal(l.origenTarifa, 'acuerdo', 'sigue siendo mensual por su neto, no por el importe cargado')
+  assert.equal(l.horas, 44, 'las horas del jefe se ven también en la 1ª')
 })
 
 test('LIQUIDACIÓN: quien no es jefe y no tiene neto mensual sigue en Obreros', () => {

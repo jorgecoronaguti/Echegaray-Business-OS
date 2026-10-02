@@ -20,6 +20,7 @@ import { CasillaDeRecibo } from './BarraDeRecibos'
 import type { MarcaDeRecibo } from './lotesDeRecibos'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
+import { ofrecePagar } from '../../../services/recibosDelEstudio'
 
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
@@ -63,8 +64,8 @@ export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, de
             <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ color: V.tenue }}>{fila.baja.texto}</span>
           )}
         </div>
-        {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca. */}
-        {camposEditables.includes('pagadoBanco') && (
+        {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca, y no en la 1ª del mensual. */}
+        {camposEditables.includes('pagadoBanco') && ofrecePagar(fila.linea) && (
           <MarcaDePago personaId={fila.personaId} grupo={fila.grupo} quincena={quincena} pagadaEn={fila.linea.pagadaEn} cerrada={fila.cerrada} />
         )}
       </div>

@@ -67,6 +67,21 @@ export const seLiquidaEnLa2da = (modalidad: ModalidadDeCobro, desde: string): bo
 /** Lo que se le dice a quien intenta emitir el recibo de pago desde la 1ª quincena. Corto: el dueño no quiere más. */
 export const MOTIVO_SE_LIQUIDA_EN_LA_2DA = 'Se liquida en la 2ª quincena.'
 
+/**
+ * ¿Se ofrece «Pagar» en la fila? En la 1ª del mensual no hay nada que pagar (QA, 02/10: el botón seguía en Maldonado y
+ * Nievas). Una marca que ya existía de antes de la regla sigue a la vista: esconderla dejaría un sello sin deshacer.
+ */
+export const ofrecePagar = (l: { seLiquidaEnLa2da?: boolean; pagadaEn?: string | null }): boolean =>
+  l.seLiquidaEnLa2da !== true || l.pagadaEn != null
+
+/**
+ * ¿El Total del mensual va «—»? En la 1ª no liquida (QA, 02/10: salía «$0»). Sólo un importe escrito a mano distinto de
+ * cero se sigue viendo: un 0 anotado no es un total, es la misma ausencia que el «—».
+ */
+export const totalVacioEnLa1ra = (
+  l: { seLiquidaEnLa2da?: boolean; cobra: number | null; manual: { cobra: boolean } }, cerrada: boolean,
+): boolean => !cerrada && l.seLiquidaEnLa2da === true && !(l.manual.cobra && l.cobra != null && l.cobra !== 0)
+
 /** Lo pagado en la 1ª quincena a quien cobra por mes: en la 2ª cuenta contra el mes. */
 export interface PagadoDeLa1ra { banco: number; efectivo: number }
 

@@ -40,6 +40,7 @@ import { pendientesPorPersona } from './grillaHorasQuincena'
 import { avisoDeAutocierre, decisionDeAutocierre, type LineaCongelada } from './autocierreDeQuincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { pagoAlMarcarPagada } from './pagoAlMarcarPagada'
+import { MOTIVO_SE_LIQUIDA_EN_LA_2DA } from './recibosDelEstudio'
 import { escribirRedondeo, verificarGuardadoDelRedondeo } from './efectivoRedondeado'
 import { COLUMNA_FECHA_DEL_PAGO, fechaDelPagoSchema, puenteParaElPago } from './fechaDelPagoEnEfectivo'
 
@@ -560,6 +561,8 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
     lineasDelGrupo = cuadro.liquidacion.cuadros.find((c) => c.grupo === v.grupo)?.lineas ?? []
     const linea = lineasDelGrupo.find((l) => l.personaId === personaId)
     if (!linea) return { ok: false, error: 'No encuentro la línea de esta persona en la quincena.' }
+    // LA 1ª DEL MENSUAL NO SE PAGA: el mes se liquida en la 2ª. Esconder el botón no alcanza; la base tampoco lo acepta.
+    if (linea.seLiquidaEnLa2da) return { ok: false, error: MOTIVO_SE_LIQUIDA_EN_LA_2DA }
     const { data: sesion } = await supabase.auth.getUser()
     if (!sesion.user) return { ok: false, error: 'Sin sesión.' }
     const p = linea.pago
