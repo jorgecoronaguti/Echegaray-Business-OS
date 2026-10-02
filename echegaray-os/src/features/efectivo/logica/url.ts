@@ -12,6 +12,7 @@
 //   …&entrega=ER-0147&panel=editar                               editar la entrega (25/09/2026)
 //   …&entrega=ER-0147&panel=editar-devolucion&item=<id>          editar una devolución
 //   …&entrega=ER-0147&panel=editar-comprobante&item=<id>         editar un ticket o una rendición
+//   …&panel=emitir-recibo                                        recibo de pago en efectivo a un tercero, sobre D01 (02/10/2026)
 
 export const RUTA = '/administracion/compras'
 
@@ -23,7 +24,7 @@ export interface EstadoURL {
   entrega?: string | null
   /** El id de la persona cuya cronología se abre (29/09/2026: la unidad de la pantalla es la persona). */
   persona?: string | null
-  panel?: 'entregar' | 'devolucion' | 'imputar' | 'rendir' | 'recibo' | PanelEdicion | null
+  panel?: 'entregar' | 'devolucion' | 'imputar' | 'rendir' | 'recibo' | 'emitir-recibo' | PanelEdicion | null
   comprobante?: string | null
   /** El id de lo que se edita en `editar-devolucion` / `editar-comprobante`, o la rendición cuyo recibo se firma en `recibo`. */
   item?: string | null

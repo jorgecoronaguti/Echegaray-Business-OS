@@ -22,7 +22,7 @@ test('el importe en letras, en castellano y dentro de la frase', () => {
 test('la frase del caso Tello: razón social, letras, cifra y concepto', () => {
   assert.equal(
     fraseDelReciboPago({ importe: 950_000, concepto: 'pago de mano de obra pisos industriales.' }),
-    'Recibí de ECHEGARAY CONSTRUCCIONES S.A.S. la suma de pesos novecientos cincuenta mil ($ 950.000,00) en concepto de pago de mano de obra pisos industriales.',
+    'Recibí de ECHEGARAY CONSTRUCCIONES S.A.S. la suma de pesos novecientos cincuenta mil ($\u00a0950.000,00) en concepto de pago de mano de obra pisos industriales.',
   )
 })
 

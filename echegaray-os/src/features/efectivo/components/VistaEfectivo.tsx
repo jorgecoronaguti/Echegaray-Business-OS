@@ -23,6 +23,7 @@ import { leerComprasPorClave, leerEfectivo, leerExtraDeFicha, leerLecturaDelTick
 import { leerParaImputar } from '../services/imputar'
 import { leerEdicionDeFicha } from '../services/edicionDatos'
 import { leerReciboParaFirmar, leerRendicionesFirmadas } from '../services/reciboDatos'
+import { MIGRACION_RECIBO_PAGO, leerOpcionesReciboPago, leerRecibosEmitidos } from '../services/reciboPagoDatos'
 import { PanelEditarComprobante, PanelEditarDevolucion, PanelEditarEntrega } from './Edicion'
 import { BotonExportar } from './Botones'
 import { FichaEntrega } from './FichaEntrega'
@@ -31,6 +32,8 @@ import { ListaPersonas } from './ListaPersonas'
 import { Tarjetas } from './Tarjetas'
 import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
+import { PanelEmitirRecibo } from './PanelEmitirRecibo'
+import { RecibosEmitidos } from './RecibosEmitidos'
 import { PanelRendirManual } from './PanelRendirManual'
 import { PanelFirmarRecibo } from './PanelFirmarRecibo'
 import { PanelImputar } from './PanelImputar'
@@ -88,22 +91,35 @@ export async function VistaEfectivo({ sp }: { sp: Params }) {
       <RefrescarEnVivo tablas={TABLAS_DE.efectivo} />
       {entrega ? await vistaFicha({ d, entrega, sp, abiertas, cabecera })
         : sp.persona ? await vistaPersona({ d, sp, abiertas, cabecera })
-        : vistaLista({ d, sp, abiertas, cabecera })}
+        : await vistaLista({ d, sp, abiertas, cabecera })}
     </>
   )
 }
 
 type Cabecera = (accion?: React.ReactNode, cuenta?: number | null, espacioPanel?: boolean | number) => React.ReactNode
 
-function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Params; abiertas: number; cabecera: Cabecera }) {
+async function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Params; abiertas: number; cabecera: Cabecera }) {
   const filtro = filtroDeLista(sp.f)
-  const entregando = sp.panel === 'entregar'
+  // RECIBO DE PAGO A UN TERCERO (dueño, 02/10/2026): lo emite quien gestiona el efectivo (`ve_economia`, la
+  // misma regla que la base). Las opciones del panel se leen sólo con el panel abierto.
+  const emitiendo = sp.panel === 'emitir-recibo' && d.veEconomia
+  const entregando = sp.panel === 'entregar' && !emitiendo
+  const conPanel = entregando || emitiendo
+  const [recibos, opciones] = await Promise.all([
+    d.veEconomia ? leerRecibosEmitidos() : Promise.resolve(null),
+    emitiendo ? leerOpcionesReciboPago() : Promise.resolve(null),
+  ])
   const puestos = Object.fromEntries(d.personas.map((p) => [p.id, p.puesto]))
   const accion = (
     // EN EL TELÉFONO, «Entregar efectivo» arriba y a todo el ancho, «Exportar» debajo (24/09/2026). El
     // color es el del diseño de la sección (`botonOscuro`); sólo cambian el ancho y el alto.
     <span className="max-md:!flex max-md:!flex-col-reverse max-md:!items-stretch max-md:!gap-2 max-md:[&>*]:!min-h-[48px] max-md:[&>*]:!w-full max-md:[&>*]:!justify-center max-md:[&>*]:!text-[15px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <BotonExportar entregas={d.entregas} hoy={d.hoy} />
+      {d.veEconomia && (
+        <Link href={urlEfectivo({ f: filtro, panel: 'emitir-recibo' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-emitir-recibo">
+          Emitir recibo
+        </Link>
+      )}
       <Link href={urlEfectivo({ f: filtro, panel: 'entregar' })} prefetch={false} scroll={false} style={botonOscuro} data-testid="abrir-entregar">
         <span aria-hidden style={{ fontSize: '15px', lineHeight: 1 }}>+</span> Entregar efectivo
       </Link>
@@ -115,13 +131,21 @@ function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Param
           mientras se entrega no se toca; «Exportar» y «Entregar efectivo» seguían encima de esa
           zona, vivos y clickeables —abrir el panel de nuevo sobre el panel abierto—. Y el hueco
           mide lo que mide EL PANEL, no lo que mide el del patrón. */}
-      {cabecera(entregando ? undefined : accion, abiertas, entregando && ANCHO_PANEL)}
+      {cabecera(conPanel ? undefined : accion, abiertas, conPanel && ANCHO_PANEL)}
       <div className="flex flex-col lg:flex-row lg:items-start">
         {/* Con el panel abierto, el teléfono muestra sólo el panel: apilado debajo quedaba fuera de la vista. */}
-        <div className={`min-w-0 flex-1 max-md:!px-4 ${entregando ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: entregando ? 0.4 : 1 }}>
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${conPanel ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: conPanel ? 0.4 : 1 }}>
           <Tarjetas r={resumir(d.entregas, d.comprobantes, d.rendiciones, d.hoy)} />
           <ListaPersonas personas={agruparPorPersona(d.entregas, d.rendiciones, d.devoluciones, d.hoy, filtro)} filtro={filtro} puestos={puestos} />
+          {recibos?.estado === 'ok' && <RecibosEmitidos recibos={recibos.recibos} />}
+          {recibos?.estado === 'falta_migracion' && (
+            <Aviso tono="info" titulo="Recibos de pago: falta publicar la base">
+              La base no tiene todavía los recibos de pago en efectivo (migración {MIGRACION_RECIBO_PAGO}). Hasta que se aplique no se puede emitir ninguno.
+            </Aviso>
+          )}
+          {recibos?.estado === 'error' && <Aviso tono="neg" titulo="No pude leer los recibos emitidos">{recibos.mensaje}</Aviso>}
         </div>
+        {emitiendo && opciones && <PanelEmitirRecibo opciones={opciones} obras={d.obras} cerrarHref={urlEfectivo({ f: filtro })} />}
         {entregando && (
           <PanelEntregar personas={d.personas} obras={d.obras} entregas={d.entregas} cerrarHref={urlEfectivo({ f: filtro })} />
         )}

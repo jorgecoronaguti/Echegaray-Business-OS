@@ -89,11 +89,14 @@ export interface ReciboPagoImpreso {
   anulado: boolean
 }
 
-/** «Recibí de ECHEGARAY CONSTRUCCIONES S.A.S. la suma de pesos … ($ …) en concepto de ….» */
+/**
+ * «Recibí de ECHEGARAY CONSTRUCCIONES S.A.S. la suma de pesos … ($ …) en concepto de ….» El signo y la cifra van
+ * unidos por un espacio duro: el corte de renglón del PDF dejaba «($» al final de una línea y la cifra en la otra.
+ */
 export function fraseDelReciboPago(r: Pick<ReciboPagoImpreso, 'importe' | 'concepto'>): string {
   const letras = letrasDelImporte(r.importe) ?? ''
   const concepto = limpio(r.concepto).replace(/[.\s]+$/, '')
-  return `Recibí de ${RAZON_SOCIAL_RECIBO} la suma de pesos ${letras} ($ ${montoComoSeImprime(r.importe)}) en concepto de ${concepto}.`
+  return `Recibí de ${RAZON_SOCIAL_RECIBO} la suma de pesos ${letras} ($\u00a0${montoComoSeImprime(r.importe)}) en concepto de ${concepto}.`
 }
 
 /** Una fila de Compras pagada en efectivo, como se ofrece para precargar. */
