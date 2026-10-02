@@ -42,6 +42,7 @@ export type { ExtraDeHoras } from './liquidacionDeAusencias.ts'
 import { horasEsperadasDeDias, jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
+import type { ReciboDelEstudio } from './recibosDelEstudio.ts'
 
 /** Los tres cuadros de la pestaña. Cada uno se cierra por su cuenta. */
 export type GrupoLiquidacion = 'obreros' | 'oficina' | 'final'
@@ -211,8 +212,15 @@ export interface EntradaDeLinea {
   adelanto: number
   /** Girado por banco ANTES del lote de haberes (`nomina_adelanto`). */
   yaTransferido: number
-  /** El neto del recibo del estudio contable (`nomina_recibo_neto`). `null` = no hay recibo. */
+  /**
+   * El neto del recibo del estudio contable (`nomina_recibo_neto`). `null` = no hay recibo. Del mensualizado es la SUMA
+   * de los dos recibos del mes (`recibosDelEstudio.ts`), `null` si falta alguno.
+   */
   reciboNeto: number | null
+  /** Los recibos que componen `reciboNeto` (uno quincenal, dos mensual). Ausente = no se discriminó. */
+  recibosDelEstudio?: ReciboDelEstudio[]
+  /** Períodos que corresponden a la persona y el estudio no cargó (`['Q2-09/2026']`). Vacío = ninguno. */
+  recibosFaltantes?: string[]
   /** ¿El extracto muestra el giro de ese recibo en el lote de haberes? */
   giroEnElLote: boolean
   /** Sólo liquidaciones finales: la mitad blanca que liquidó el estudio. El total es el doble. */
@@ -261,6 +269,10 @@ export interface LineaLiquidada {
    * tiene recibo (auditoría del 10/09/2026).
    */
   reciboNeto: number | null
+  /** Los recibos del estudio que componen `reciboNeto`: el mensualizado trae los dos del mes. */
+  recibosDelEstudio?: ReciboDelEstudio[]
+  /** Períodos del estudio que corresponden y todavía no llegaron. */
+  recibosFaltantes?: string[]
   /**
    * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50
    * que publicar — hoy, Oficina y las finales sin recibo (ver `liquidacionAcuerdo.ts`).
@@ -332,6 +344,8 @@ export function liquidarLinea(
     // que no es el de la fuente, y dejaría de coincidir el día que el recibo no sea la mitad justa.
     ...repartoComoCampos(cobra, modalidad, e.mitadBlanca ?? null),
     reciboNeto: e.reciboNeto,
+    ...(e.recibosDelEstudio ? { recibosDelEstudio: e.recibosDelEstudio } : {}),
+    ...(e.recibosFaltantes ? { recibosFaltantes: e.recibosFaltantes } : {}),
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? (grupo === 'oficina' && e.importeCargado != null ? 'importe cargado de la planilla' : null),
     esJefe: e.esJefe === true,

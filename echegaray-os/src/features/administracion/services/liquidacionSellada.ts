@@ -102,6 +102,8 @@ function lineaDeLaFoto(
     // EL RECIBO DEL PERÍODO ES UN HECHO DE ESE PERÍODO (`nomina_recibo_neto`), no un dato de hoy: viaja de la línea viva
     // para la solapa Recibos. Lo GIRADO no se vuelve a inferir del extracto: el banco de la foto es `por_banco`.
     reciboNeto: viva?.reciboNeto ?? null,
+    ...(viva?.recibosDelEstudio ? { recibosDelEstudio: viva.recibosDelEstudio } : {}),
+    ...(viva?.recibosFaltantes ? { recibosFaltantes: viva.recibosFaltantes } : {}),
     reciboSinGiro: false,
     ...repartoComoCampos(cobra, modalidad),
     origenTarifa: ORIGEN_SELLADO,
@@ -124,7 +126,7 @@ function lineaSinFoto(viva: LineaLiquidada, efectivoRedondeado: number | null): 
     // NI EL RECIBO DE HOY (auditor, 18/09/2026): Oficina 16–31/08 decía «sin línea sellada» y a la vez publicaba el
     // recibo del estudio ($663.141,56 por jefe) como Banco y Saldo, porque `bancoDelMensual` caía al recibo. Sin foto,
     // nada vivo se cuela: ni recibo, ni banco, ni saldo.
-    reciboNeto: null,
+    reciboNeto: null, recibosDelEstudio: [], recibosFaltantes: [],
     sinTarifa: false, reciboSinGiro: false,
     blancoAcuerdo: null, efectivoAcuerdo: null,
     origenTarifa: null,

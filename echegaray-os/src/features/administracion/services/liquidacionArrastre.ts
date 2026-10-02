@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
+import { arrastreYaIncluido } from './recibosDelEstudio.ts'
 
 /** Una fila de `liquidacion_arrastre`. */
 export interface ArrastreDeLinea {
@@ -116,8 +117,12 @@ export async function leerArrastres(supabase: SupabaseClient, desde: string, per
  */
 export function conArrastres(l: LineaConOverrides, a: ArrastresDeLaQuincena, abierta: boolean): LineaConOverrides {
   const entrante = a.entrantes.get(l.personaId)
+  // EL MENSUAL NO ARRASTRA SU PROPIO RECIBO (02/10/2026): su banco ya es la suma de los dos recibos del mes; la «resta
+  // del recibo Q1» sería ese mismo neto una segunda vez.
+  const incluidos = l.modalidad === 'mensual' ? [...(l.recibosDelEstudio ?? []).map((r) => r.periodo), ...(l.recibosFaltantes ?? [])] : []
+  const entranteReal = entrante && arrastreYaIncluido(entrante.periodoOrigen, incluidos) ? undefined : entrante
   // La cerrada no suma: su banco sellado ya lo trae. Pero el recibo tiene que poder decir cuánto de ese banco es resta.
-  const conEntrante = abierta ? conArrastre(l, entrante) : entrante && entrante.importe > 0 ? { ...l, arrastreIncluido: entrante } : l
+  const conEntrante = abierta ? conArrastre(l, entranteReal) : entranteReal && entranteReal.importe > 0 ? { ...l, arrastreIncluido: entranteReal } : l
   const saliente = a.salientes.get(l.personaId) ?? null
   return saliente ? { ...conEntrante, arrastradoA: saliente } : conEntrante
 }

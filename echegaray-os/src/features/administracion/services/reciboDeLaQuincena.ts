@@ -19,6 +19,7 @@
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { efectivoParaRedondear, pagoDelMensual } from './liquidacionPorTipo.ts'
 import { efectivoMostrado } from './efectivoRedondeado.ts'
+import type { ReciboDelEstudio } from './recibosDelEstudio.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -213,10 +214,17 @@ const origenesDichos = (periodoOrigen: string): string => periodoOrigen.split(',
  * debajo van las dos partes: el neto del recibo de sueldo, que es el del estudio, y el saldo del recibo de otra
  * quincena que se paga por este banco. Los importes pagados no cambian; sólo se dice de dónde sale cada uno.
  */
-function desgloseDelBanco(neto: number, arrastre: number, periodoOrigen: string, residuo = 0): RenglonDelRecibo[] {
+function desgloseDelBanco(
+  neto: number, arrastre: number, periodoOrigen: string, residuo = 0, partes?: readonly ReciboDelEstudio[],
+): RenglonDelRecibo[] {
+  // EL MENSUAL TIENE DOS RECIBOS DEL ESTUDIO Y SE PAGA POR MES (dueño, 02/10): un sub-renglón por recibo, cada uno con
+  // su quincena, y su suma es el banco. Los demás, un solo «Recibo de sueldo».
+  const recibos: RenglonDelRecibo[] = partes && partes.length > 1
+    ? partes.map((r) => ({ rotulo: `${ROTULO_SUB.reciboDeSueldo} ${quincenaDeOrigen(r.periodo)}`, importe: r.neto, sub: true }))
+    : [{ rotulo: ROTULO_SUB.reciboDeSueldo, importe: neto, sub: true }]
   // SIN TEXTO DE MÁS (dueño, 02/10: «no me gustan las aclaraciones extras… confunden»): rótulo corto, sin repetir el del banco.
   return [
-    { rotulo: ROTULO_SUB.reciboDeSueldo, importe: neto, sub: true },
+    ...recibos,
     ...(arrastre > 0 ? [{ rotulo: `Saldo ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true }] : []),
     // LO QUE NO CIERRA SE DICE: el neto del estudio manda y la diferencia queda a la vista, no repartida en silencio.
     ...(residuo !== 0 ? [{ rotulo: ROTULO_SUB.diferencia, importe: residuo, sub: true }] : []),
@@ -297,18 +305,23 @@ const bancoEstimado = (l: LineaConOverrides): boolean =>
  */
 export function desglosarBancoSellado(
   medios: RenglonDelRecibo[],
-  d: { netoDelEstudio: number | null; arrastre: { importe: number; periodoOrigen: string } | null },
+  d: {
+    netoDelEstudio: number | null; arrastre: { importe: number; periodoOrigen: string } | null
+    /** Los dos recibos del mensual: se desglosa aunque no haya arrastre, porque el banco es la suma. */
+    recibos?: readonly ReciboDelEstudio[]
+  },
 ): RenglonDelRecibo[] {
   const i = medios.findIndex((m) => !m.sub && m.rotulo === ROTULO.banco)
   const banco = i >= 0 ? medios[i].importe : null
   if (i < 0 || banco == null || d.netoDelEstudio == null) return medios
-  if (medios.some((m) => m.sub && m.rotulo === ROTULO_SUB.reciboDeSueldo)) return medios
+  if (medios.some((m) => m.sub && m.rotulo.startsWith(ROTULO_SUB.reciboDeSueldo))) return medios
   const resta = d.arrastre && d.arrastre.importe > 0 ? r2(d.arrastre.importe) : 0
   const neto = r2(d.netoDelEstudio)
   const residuo = r2(banco - resta - neto)
-  if (resta === 0 && residuo === 0) return medios
+  const dosRecibos = (d.recibos?.length ?? 0) > 1
+  if (resta === 0 && residuo === 0 && !dosRecibos) return medios
   const sal = [...medios]
-  sal.splice(i + 1, 0, ...desgloseDelBanco(neto, resta, d.arrastre?.periodoOrigen ?? '', residuo))
+  sal.splice(i + 1, 0, ...desgloseDelBanco(neto, resta, d.arrastre?.periodoOrigen ?? '', residuo, dosRecibos ? d.recibos : undefined))
   return sal
 }
 
@@ -353,7 +366,10 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
       const estudio = netoDelEstudio(l)
       const neto = estudio ?? r2(x.total - resta)
       const residuo = r2(x.total - resta - neto)
-      if (resta > 0 || residuo !== 0) renglones.push(...desgloseDelBanco(r2(neto), resta, restaDe?.periodoOrigen ?? '', residuo))
+      const dosRecibos = l.modalidad === 'mensual' && (l.recibosDelEstudio?.length ?? 0) > 1 && estudio != null
+      if (resta > 0 || residuo !== 0 || dosRecibos) {
+        renglones.push(...desgloseDelBanco(r2(neto), resta, restaDe?.periodoOrigen ?? '', residuo, dosRecibos ? l.recibosDelEstudio : undefined))
+      }
     }
     if (e.pagado && x.pagado != null) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })

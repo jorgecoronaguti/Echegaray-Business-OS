@@ -11,7 +11,7 @@ function falso(tablas: Record<string, { data?: unknown; error?: { message: strin
   const consulta = (t: string) => {
     const r = { data: tablas[t]?.data ?? null, error: tablas[t]?.error ?? null }
     const q: Record<string, unknown> = {}
-    for (const m of ['select', 'eq', 'in']) q[m] = () => q
+    for (const m of ['select', 'eq', 'in', 'lte']) q[m] = () => q
     q.maybeSingle = () => Promise.resolve(r)
     q.then = (ok: (v: unknown) => unknown) => Promise.resolve(r).then(ok)
     return q
@@ -67,4 +67,46 @@ test('el esquema de entrada declara `estimado` y `registrar` consulta al estudio
   const src = readFileSync(new URL('./recibosEmitidosActions.ts', import.meta.url), 'utf8')
   assert.match(src, /estimado: z\.boolean\(\)\.optional\(\)/)
   assert.match(src, /await verificarContraElEstudio\(supabase, r\)/)
+})
+
+// ═══ EL MENSUALIZADO SE PAGA POR MES: EL CONTROL COMPARA CONTRA LOS DOS RECIBOS (dueño, 02/10/2026) ═══
+// Cifras reales de septiembre (Maldonado): Q1 705.532,04 + Q2 685.914,88 = 1.391.446,92.
+// MUTACIÓN: que el control vuelva a mirar sólo la 2ª quincena → «mensual con los dos recibos» rojo.
+const mensual = (netos: { periodo: string; neto: number }[], arrastre: unknown[] = []) => falso({
+  persona_legajo: { data: { cuil: '20-35923266-8' } },
+  persona_directorio: { data: { puesto: 'Jefe de obra' } },
+  persona_tarifa: { data: [{ desde: '2026-09-01', neto_mensual: 1800000 }] },
+  liquidacion_arrastre: { data: arrastre },
+  nomina_recibo_neto: { data: netos.map((n) => ({ cuil: '20359232668', ...n })) },
+})
+const Q1M = { periodo: 'Q1-09/2026', neto: 705532.04 }
+const Q2M = { periodo: 'Q2-09/2026', neto: 685914.88 }
+
+test('mensual con los dos recibos: el banco de la suma se emite; el de la 2ª sola no', async () => {
+  const sb = mensual([Q1M, Q2M])
+  assert.equal(await verificarContraElEstudio(sb, sellado(1391446.92)), null)
+  const m = await verificarContraElEstudio(sb, sellado(685914.88))
+  assert.match(m ?? '', /no coincide con los dos recibos del estudio \(\$ 1\.391\.446,92\)/)
+})
+
+test('mensual con un recibo faltante: no se emite, nombra cuál falta, aunque el papel no lleve banco', async () => {
+  const m = await verificarContraElEstudio(mensual([Q1M]), sellado(705532.04))
+  assert.match(m ?? '', /falta el de la 2ª quincena de septiembre/)
+  const sinBanco = await verificarContraElEstudio(mensual([Q2M]), sellado(null))
+  assert.match(sinBanco ?? '', /falta el de la 1ª quincena de septiembre/)
+  // Ninguno cargado y sin banco: todo en efectivo, se emite como siempre.
+  assert.equal(await verificarContraElEstudio(mensual([]), sellado(null)), null)
+})
+
+test('mensual con arrastre de su propio recibo Q1: no se cuenta dos veces', async () => {
+  const sb = mensual([Q1M, Q2M], [{ importe: 54580.48, periodo_origen: 'Q1-09/2026' }])
+  assert.equal(await verificarContraElEstudio(sb, sellado(1391446.92)), null)
+})
+
+test('quincenal sin cambios: sigue comparando contra su recibo de la quincena', async () => {
+  const sb = falso({
+    persona_legajo: { data: { cuil: CUIL } }, liquidacion_arrastre: { data: [] },
+    nomina_recibo_neto: { data: [{ cuil: '20111111111', periodo: 'Q1-09/2026', neto: 1 }, { cuil: '20111111111', periodo: 'Q2-09/2026', neto: 234963.32 }] },
+  })
+  assert.equal(await verificarContraElEstudio(sb, sellado(234963.32)), null)
 })

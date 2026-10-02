@@ -38,6 +38,7 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
 import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 import { textoDelRecibo } from './FilasMensuales'
+import { quincenaDeOrigen } from '../../../services/reciboDeLaQuincena'
 import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
@@ -336,9 +337,19 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
           <span style={{ fontSize: '12px', color: V.apagado }}>{`banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`}</span>
         </Renglon>
       )}
-      {l.reciboNeto != null && (
-        <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>
-      )}
+      {/* EL MENSUAL TIENE DOS RECIBOS Y SE PAGA POR MES: cada uno con su quincena, y el que falta se dice. */}
+      {(l.recibosDelEstudio?.length ?? 0) > 1 || ((l.recibosFaltantes?.length ?? 0) > 0 && (l.recibosDelEstudio?.length ?? 0) > 0)
+        ? (
+          <>
+            {l.recibosDelEstudio?.map((r) => (
+              <Renglon key={r.periodo} rotulo={`Recibo del estudio · ${quincenaDeOrigen(r.periodo)}`}><span>{pesos(r.neto)}</span></Renglon>
+            ))}
+            {l.recibosFaltantes?.map((p) => (
+              <Renglon key={p} rotulo={`Recibo del estudio · ${quincenaDeOrigen(p)}`} alerta><span>falta</span></Renglon>
+            ))}
+          </>
+        )
+        : l.reciboNeto != null && <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>}
     </section>
   )
 }

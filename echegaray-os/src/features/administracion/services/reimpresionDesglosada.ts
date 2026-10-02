@@ -8,17 +8,16 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { mismoCuil, cuilNormalizado } from './cuil.ts'
-import { desglosarBancoSellado, limpiarMediosSellados } from './reciboDeLaQuincena.ts'
+import { arrastreYaIncluido, recibosDelEstudio } from './recibosDelEstudio.ts'
+import { leerModalidadDeCobro } from './recibosDelEstudioService.ts'
+import { cuilNormalizado } from './cuil.ts'
+import { ROTULO, desglosarBancoSellado, limpiarMediosSellados } from './reciboDeLaQuincena.ts'
 import type { ReciboEnElLegajo } from './reciboEmitido.ts'
 
 const FilaNeto = z.object({ cuil: z.string().nullable(), periodo: z.string(), neto: z.coerce.number().finite() })
 const FilaArrastre = z.object({ desde: z.string(), importe: z.coerce.number().finite().positive(), periodo_origen: z.string() })
 
 const r2 = (n: number) => Math.round(n * 100) / 100
-
-/** `2026-09-16` → `Q2-09/2026`, la clave de período del estudio. */
-const periodoDe = (desde: string) => `Q${Number(desde.slice(8, 10)) === 1 ? 1 : 2}-${desde.slice(5, 7)}/${desde.slice(0, 4)}`
 
 /** Devuelve los mismos recibos con el banco desglosado donde las cuentas cierran. Ante un error de lectura, los deja como están. */
 export async function conBancoDesglosado(supabase: SupabaseClient, personaId: string, crudos: ReciboEnElLegajo[]): Promise<ReciboEnElLegajo[]> {
@@ -28,11 +27,14 @@ export async function conBancoDesglosado(supabase: SupabaseClient, personaId: st
     return medios.every((m, i) => m === r.renglones.medios[i]) ? r : { ...r, renglones: { ...r.renglones, medios } }
   })
   if (recibos.length === 0) return recibos
-  const [arr, per] = await Promise.all([
+  const ultimoHasta = recibos.reduce((m, r) => (r.quincenaHasta > m ? r.quincenaHasta : m), '')
+  const [arr, per, modalidad] = await Promise.all([
     supabase.from('liquidacion_arrastre').select('desde, importe, periodo_origen').eq('persona_id', personaId),
     supabase.from('persona_legajo').select('cuil').eq('id', personaId).maybeSingle(),
+    leerModalidadDeCobro(supabase, personaId, ultimoHasta),
   ])
-  if (arr.error || per.error) return recibos
+  if (arr.error || per.error || modalidad == null) return recibos
+  const mensual = modalidad === 'mensual'
   const arrastres = new Map<string, { importe: number; periodoOrigen: string }>()
   for (const crudo of arr.data ?? []) {
     const f = FilaArrastre.safeParse(crudo)
@@ -43,14 +45,25 @@ export async function conBancoDesglosado(supabase: SupabaseClient, personaId: st
       : { importe: r2(f.data.importe), periodoOrigen: f.data.periodo_origen })
   }
   const cuil = typeof per.data?.cuil === 'string' ? per.data.cuil : null
-  if (arrastres.size === 0 || !cuil) return recibos
+  // El mensual se desglosa aunque no tenga arrastre: su banco son dos recibos.
+  if ((arrastres.size === 0 && !mensual) || !cuil) return recibos
   const { data: netos, error } = await supabase.from('nomina_recibo_neto')
     .select('cuil, periodo, neto').in('cuil', [...new Set([cuil, cuilNormalizado(cuil) ?? cuil])])
   if (error) return recibos
   const filas = (netos ?? []).flatMap((x) => { const f = FilaNeto.safeParse(x); return f.success ? [f.data] : [] })
   return recibos.map((r) => {
-    const neto = filas.find((f) => mismoCuil(f.cuil, cuil) && f.periodo === periodoDe(r.quincenaDesde))?.neto ?? null
-    const medios = desglosarBancoSellado(r.renglones.medios, { netoDelEstudio: neto, arrastre: arrastres.get(r.quincenaDesde) ?? null })
+    const estudio = recibosDelEstudio({ cuil, modalidad, desde: r.quincenaDesde, filas })
+    const crudaResta = arrastres.get(r.quincenaDesde) ?? null
+    // El recibo de la 1ª quincena de un mensual ya está dentro de su banco: no es «saldo» (`arrastreYaIncluido`).
+    const resta = mensual && crudaResta && arrastreYaIncluido(crudaResta.periodoOrigen, estudio.periodos) ? null : crudaResta
+    if (mensual) {
+      // LO SELLADO NO SE TOCA: un papel de mensual que se firmó con otro banco (sólo la 2ª quincena) sale como se selló.
+      const banco = r.renglones.medios.find((m) => !m.sub && m.rotulo === ROTULO.banco)?.importe ?? null
+      if (estudio.total == null || banco == null || r2(banco - (resta?.importe ?? 0) - estudio.total) !== 0) return r
+    }
+    const medios = desglosarBancoSellado(r.renglones.medios, {
+      netoDelEstudio: estudio.total, arrastre: resta, ...(mensual ? { recibos: estudio.recibos } : {}),
+    })
     return medios === r.renglones.medios ? r : { ...r, renglones: { ...r.renglones, medios } }
   })
 }

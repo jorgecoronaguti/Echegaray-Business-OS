@@ -17,9 +17,10 @@
 // eso se cuenta primero si hay movimientos bancarios en la quincena: si no los hay, la columna dice
 // «sin extracto» y ninguna fila se marca sin giro.
 
-import { mismoCuil } from './cuil.ts'
+import { cobraPorMes } from './cobroMensual.ts'
+import { recibosDelEstudio } from './recibosDelEstudio.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { CONCEPTO_DEL_GIRO, girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
+import { CONCEPTO_DEL_GIRO, girosDe, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
@@ -156,7 +157,6 @@ function armarPersonas(
     ((directorio ?? []) as { id: string; puesto: string | null }[])
       .filter((d) => esJefeDeObra(d.puesto)).map((d) => d.id),
   )
-  const periodo = periodoDeRecibo(q)
   const filasRecibo = (recibos ?? []) as FilaRecibo[]
   const filasAdelanto = ((adelantos ?? []) as FilaAdelanto[])
     .map((a) => ({ ...a, importe: numero(a.importe) }))
@@ -181,9 +181,11 @@ function armarPersonas(
         q.hasta,
       )
       const doc = delEstudio.get(p.id)
-      const neto = p.cuil
-        ? (filasRecibo.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === periodo)?.neto ?? null)
-        : null
+      // LOS RECIBOS QUE CORRESPONDEN LOS ELIGE `recibosDelEstudio`: el mensualizado suma los dos del mes (02/10/2026).
+      const neto = recibosDelEstudio({
+        cuil: p.cuil ?? null, desde: q.desde, filas: filasRecibo,
+        modalidad: cobraPorMes({ esJefe: jefes.has(p.id), netoMensual: vigente?.netoMensual ?? null }) ? 'mensual' : 'quincenal',
+      }).total
       const reciboNeto = neto != null ? numero(neto) : (doc?.neto != null ? numero(doc.neto) : null)
       // SIN EXTRACTO NADIE SE MARCA SIN GIRO: no se puede afirmar lo que no se pudo mirar.
       // EL CONCEPTO SALE DE `CONCEPTO_DEL_GIRO`, NO DE UN STRING SUELTO. Acá se buscaba «sueldo», que no

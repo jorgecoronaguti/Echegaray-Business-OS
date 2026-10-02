@@ -34,6 +34,7 @@ import {
   type TarifaVigente,
 } from './liquidacionQuincena.ts'
 import { cobraPorMes } from './cobroMensual.ts'
+import { recibosDelEstudio } from './recibosDelEstudio.ts'
 import type { Quincena } from './quincena.ts'
 import { ORDEN_DE_CUADROS, ordenarComoPersonal } from './ordenDePersonal.ts'
 
@@ -194,8 +195,13 @@ function entradaDe(
   // jefes decía «—» con días de 9 h cargados, y la regla única de horas pide que Liquidación muestre el
   // mismo total que «Horas». Su COBRA sigue siendo el neto mensual (`cobraDe`): las horas no multiplican.
   const h = ctx.horas.get(p.id) ?? null
-  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === ctx.periodo) ?? null
-  const neto = recibo == null ? null : Number(recibo.neto)
+  // QUÉ RECIBOS CORRESPONDEN LO DECIDE `recibosDelEstudio` (dueño, 02/10/2026): quien está en Oficina cobra por mes y
+  // el estudio le emite dos recibos, uno por quincena; su banco es la suma. Elegir acá sólo el de esta quincena le
+  // dejaba la mitad del mes.
+  const delEstudio = recibosDelEstudio({
+    cuil: p.cuil, modalidad: grupo === 'oficina' ? 'mensual' : 'quincenal', desde: ctx.quincena.desde, filas: ctx.recibos,
+  })
+  const neto = delEstudio.total
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
   return {
     personaId: p.id,
@@ -210,6 +216,8 @@ function entradaDe(
     adelanto: 0,
     yaTransferido,
     reciboNeto: neto,
+    recibosDelEstudio: delEstudio.recibos,
+    recibosFaltantes: delEstudio.faltan,
     giroEnElLote,
     importeCargado: grupo === 'oficina' ? ctx.importesCargados?.get(p.id) ?? null : null,
   }
