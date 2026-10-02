@@ -87,7 +87,6 @@ async function copia(l: Lienzo, r: ReciboPagoImpreso, techo: number, cual: 'ORIG
     texto(rotulo, x, base - 12, normal, 9, GRIS)
     if (ref) texto(ref, x, base - 24, normal, 8, GRIS)
   })
-  texto('Documento no válido como factura', M, techo - MITAD + M - 4, normal, 8, GRIS)
 
   if (r.anulado) {
     const t = 'ANULADO'

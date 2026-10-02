@@ -89,7 +89,7 @@ export async function pdfDeReciboFirmado(r: ReciboParaFirmar, firma: FirmaDelRec
   texto(`Firmado en pantalla el ${fechaHoraDeFirma(firma.firmado_en)}`, M, base - 30, normal, 9, GRIS)
 
   // Pie chico: de dónde salió y que no es una factura.
-  const pie = [`Entrega ${r.entrega}`, r.pagador ? `pagó ${r.pagador}` : null, 'Documento no válido como factura'].filter(Boolean).join(' · ')
+  const pie = [`Entrega ${r.entrega}`, r.pagador ? `pagó ${r.pagador}` : null].filter(Boolean).join(' · ')
   texto(pie, M, M - 4, normal, 8, GRIS)
   return doc.save()
 }
