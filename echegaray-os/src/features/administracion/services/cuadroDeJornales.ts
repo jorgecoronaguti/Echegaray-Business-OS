@@ -101,14 +101,15 @@ export interface Cierre {
  */
 export function cierreDeLaFila(c: CadenaParaCerrar): Cierre | null {
   if (c.cobra == null || c.total == null) return null
-  const esperado = r2(c.cobra - c.adelanto - c.yaTransferido)
+  // LA RESTA DEL RECIBO ANTERIOR SE SUMA SÓLO AL BANCO (dueño, 02/10/2026): no es sueldo de esta quincena (`cobra` no la
+  // trae) pero sí se paga en ésta, así que lo que falta pagar es lo ganado + la resta.
+  const aplicado = c.arrastre?.estado === 'aplicado' ? c.arrastre.importe : 0
+  const esperado = r2(c.cobra - c.adelanto - c.yaTransferido + aplicado)
   const repartido = r2(c.porBanco + (c.enEfectivo ?? 0))
   const diferencia = r2(c.total - esperado)
   // CON BLANCO + NEGRO TAMBIÉN: COBRA TOTAL = BANCO + NEGRO. Con celdas escritas a mano puede no dar, y se dice
   // (dueño, 15/09/2026: se guarda igual, la fila se marca).
-  // EL ARRASTRE SE DESCUENTA DEL BANCO ANTES DE COMPARAR: es efectivo que pasó a banco, no sueldo nuevo. Sin esto la
-  // fila con la resta Q1-09 aplicada se marcaba «no cierra» por exactamente la resta, y el total sí cierra.
-  const aplicado = c.arrastre?.estado === 'aplicado' ? c.arrastre.importe : 0
+  // EL ARRASTRE SE DESCUENTA DEL BANCO ANTES DE COMPARAR: es resta del recibo anterior, no sueldo de esta quincena.
   const sueldo = c.negro == null || todoEnEfectivo(c) ? 0 : r2(c.cobra - (c.porBanco - aplicado) - c.negro)
   const cierra = Math.abs(diferencia) <= 1 && Math.abs(r2(c.total - repartido)) <= 1 && Math.abs(sueldo) <= 1
   const diferenciaQueSeDice = Math.abs(diferencia) > 1 ? diferencia
