@@ -34,7 +34,7 @@
 /** La réplica: hoja, primera fila de datos, columnas (el contrato de `haberes-pagados-raw-pestana.mjs`). */
 export const HAB = Object.freeze({
   hoja: "'_HABERES_PAGADOS_RAW'", desde: 4, corte: '$B$2',
-  fecha: 'A', quincena: 'C', grupo: 'E', medio: 'G', importe: 'I', anotado: 'K',
+  fecha: 'A', quincena: 'C', hasta: 'D', grupo: 'E', medio: 'G', importe: 'I', anotado: 'K',
 })
 
 /** Los grupos de la web que tienen su propio renglón en CAJA. `obreros` = todo lo que no es oficina. */
@@ -103,3 +103,81 @@ export function maxHaberesWebEfectivo(sello, grupo, h = HAB) {
   return `SUMPRODUCT(MAX(${filasDesdeElCorte('efectivo', grupo, h)}*ISNUMBER(${f})*${despuesDelSello(sello, h)}`
     + `*(${importe(h)}<>0)*IF(ISNUMBER(${f});${f};0)))`
 }
+
+// ═══ LO PAGADO TAMBIÉN DESCARGA LA OBLIGACIÓN, NO SÓLO LA CAJA (02/10/2026) ═══
+//
+// El dueño pagó la quincena 16–30/09 y el sueldo de Oficina de septiembre, los marcó en la web, y CAJA bajó la
+// caja por esos $12.986.224 — pero `_MOVIMIENTOS` seguía publicando la MISMA quincena (Jornales proyectada al
+// 30/09, $9.103.379) y el MISMO mes (Oficina · 01/10, $5.000.000) como VENCIDOS. «Faltan» pasó de $23,6 M a
+// $36,5 M: lo pagado restado dos veces, una por la caja y otra por la deuda. Una obligación pagada confirma la
+// proyección, no se suma a ella.
+//
+// El arreglo vive en el LIBRO, que es la fuente de la deuda (CAJA, Semanal y Mensual sólo lo leen): el renglón
+// pendiente de una quincena ≥ corte vale MAX(0; lo proyectado − lo pagado en la web de ESA quincena y ESE grupo).
+// Es fórmula, igual que el puente de Nómina: un pago marcado en la web descarga la deuda en cuanto la réplica se
+// reescribe, sin esperar la corrida del libro. Lo pagado de más NO genera crédito (el MAX): un excedente en una
+// quincena no es un adelanto de la siguiente hasta que alguien lo diga. Las quincenas < corte no tienen filas
+// que pasen el filtro: siguen exactamente como antes.
+
+const SERIAL_0 = Date.UTC(1899, 11, 30)
+const serialDe = (anio, mes) => Math.round((Date.UTC(anio, mes - 1, 1) - SERIAL_0) / 864e5)
+
+/** Las filas de la réplica de un grupo y de quincenas ≥ corte, en los DOS medios. */
+const filasDelGrupo = (grupo, h) => {
+  const q = col(h, h.quincena)
+  return `${GRUPO[grupo](col(h, h.grupo))}*ISNUMBER(${q})*(${q}>=${corteQuincena(h)})`
+}
+
+/**
+ * NÚCLEO PURO: lo pagado en la web (banco + efectivo) de UNA quincena de obreros, identificada por su «hasta».
+ * @param {number} hasta serial del último día de la quincena (la columna D de la réplica)
+ */
+export function formulaPagadoWebQuincena(hasta, h = HAB) {
+  if (!Number.isFinite(hasta)) throw new Error('caja-haberes-web: la quincena necesita su «hasta» como serial')
+  const d = col(h, h.hasta)
+  return `SUMPRODUCT(${filasDelGrupo('obreros', h)}*ISNUMBER(${d})*(${d}=${hasta})*${importe(h)})`
+}
+
+/**
+ * NÚCLEO PURO: lo pagado en la web de un MES de oficina (el mensualizado se liquida en la 2ª quincena del mes:
+ * su «hasta» cae en ese mes). Rango de seriales y no YEAR()/MONTH(), que con un texto en la columna da #VALUE!.
+ */
+export function formulaPagadoWebMes(anio, mes, grupo = 'oficina', h = HAB) {
+  if (!GRUPO[grupo]) throw new Error(`caja-haberes-web: grupo desconocido ${grupo}`)
+  const d = col(h, h.hasta)
+  const desde = serialDe(anio, mes)
+  const tope = mes === 12 ? serialDe(anio + 1, 1) : serialDe(anio, mes + 1)
+  return `SUMPRODUCT(${filasDelGrupo(grupo, h)}*ISNUMBER(${d})*(${d}>=${desde})*(${d}<${tope})*${importe(h)})`
+}
+
+/** NÚCLEO PURO: la celda del libro = lo pendiente, nunca negativo. `base` = número o fórmula (con o sin «=»). */
+export const netoDeLoPagadoWeb = (base, pagado) => `=MAX(0;(${String(base).replace(/^=/, '')})-${pagado})`
+
+/**
+ * NÚCLEO PURO: la réplica leída (desde A1, valores sin formato) → lo pagado por quincena (obreros) y por mes
+ * (por grupo), con el MISMO filtro que las fórmulas. Es el valor en memoria del libro: el control de la corrida
+ * compara lo escrito contra esto, así que tiene que decir lo mismo que la fórmula.
+ * @returns {{quincena:(hasta:number)=>number, mes:(anio:number, mes:number, grupo?:string)=>number}}
+ */
+export function pagadoWebDeLaReplica(grilla, h = HAB) {
+  const filas = Array.isArray(grilla) ? grilla : []
+  const corte = typeof filas[1]?.[1] === 'number' ? filas[1][1] : Infinity
+  const porQ = new Map(); const porMes = new Map()
+  for (const f of filas.slice(h.desde - 1)) {
+    const [, , desde, hasta, grupo, , , , imp] = f ?? []
+    if (typeof desde !== 'number' || desde < corte || typeof hasta !== 'number' || typeof imp !== 'number') continue
+    const g = grupo === 'oficina' ? 'oficina' : 'obreros'
+    if (g === 'obreros') porQ.set(hasta, (porQ.get(hasta) ?? 0) + imp)
+    const dt = new Date(SERIAL_0 + hasta * 864e5)
+    const k = `${g}:${dt.getUTCFullYear()}-${dt.getUTCMonth() + 1}`
+    porMes.set(k, (porMes.get(k) ?? 0) + imp)
+  }
+  return Object.freeze({
+    corte,
+    quincena: (hasta) => porQ.get(hasta) ?? 0,
+    mes: (anio, mes, grupo = 'oficina') => porMes.get(`${grupo}:${anio}-${mes}`) ?? 0,
+  })
+}
+
+/** Sin réplica leída: nadie pagó nada en la web y ningún renglón se toca (el comportamiento de antes). */
+export const SIN_PAGOS_WEB = Object.freeze({ corte: Infinity, quincena: () => 0, mes: () => 0 })

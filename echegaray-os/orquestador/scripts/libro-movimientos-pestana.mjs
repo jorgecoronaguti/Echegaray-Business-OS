@@ -40,6 +40,7 @@ import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.
 // Directo del módulo de nómina y no por el barril `libro-extractores.mjs`: ese archivo lo está tocando
 // otro trabajo en paralelo (18/09) y agregar una línea acá no le genera conflicto.
 import { pactadosDelBloque, PESTANA_REGISTRO_NOMINA } from '../lib/libro-extractores-nomina.mjs'
+import { HAB, pagadoWebDeLaReplica, SIN_PAGOS_WEB } from '../lib/caja-haberes-web.mjs'
 // ═══ LAS OBLIGACIONES QUE DEJARON DE TENER FILA EN COMPRAS (11/09/2026) ═══
 //
 // El dueño vacía de Compras todo lo que no sea Civil/Estructura/Mantenimiento. El F931 pagado, los
@@ -192,6 +193,16 @@ export async function extraerDeLasFuentes(google, corte) {
     const v = await google.readSheetValues(ID, nombre, { render: 'UNFORMATTED_VALUE' }).catch(() => null)
     puente[k] = serieDelPuente(v)
     if (!puente[k]) console.warn(`  ⚠ no pude leer ${nombre} (cuadro 6 de «Nómina»): esa línea proyecta como antes, no desde Nómina.`)
+  }
+
+  // ═══ LO PAGADO EN LA WEB DESCARGA LA QUINCENA PENDIENTE (02/10/2026) — ver lib/caja-haberes-web.mjs ═══
+  // Lectura BLANDA: sin la réplica, el valor en memoria no descuenta nada y la celda (fórmula) igual lo
+  // descuenta en vivo; la diferencia la declara la relectura como edición de una fuente.
+  let pagadoWeb = SIN_PAGOS_WEB
+  try {
+    pagadoWeb = pagadoWebDeLaReplica(await google.readSheetValues(ID, `${HAB.hoja}!A1:I`, { render: 'UNFORMATTED_VALUE' }))
+  } catch (e) {
+    console.warn(`  ⚠ no pude leer ${HAB.hoja} (${e.message}): la quincena pagada en la web se descuenta sólo en la celda.`)
   }
 
   // ═══ LO PACTADO DE CADA MES DE OFICINA Y DIRECCIÓN (18/09/2026) ═══
@@ -579,10 +590,10 @@ export async function extraerDeLasFuentes(google, corte) {
           total: R.JORNALES_REAL_TOTAL, banco: R.JORNALES_REAL_BANCO,
         },
         proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
-      }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`), nomina: puente.jornales }),
+      }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`), nomina: puente.jornales, pagadoWeb }),
       Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO,
         pactado: pactados.oficina },
-        corte, { extracto, nomina: puente.oficina }),
+        corte, { extracto, nomina: puente.oficina, pagadoWeb }),
       Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO,
         pactado: pactados.direccion },
         corte, { extracto, nomina: puente.direccion }),

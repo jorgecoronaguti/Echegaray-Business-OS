@@ -27,6 +27,9 @@ import { estadoDeEgreso } from './caja-canales.mjs'
 import { respaldoEnLote } from './libro-respaldo-banco.mjs'
 import { NOMBRES_PUENTE, formulaDelPuente, fechaViva } from './nomina-puente.mjs'
 import { giroDelMes } from './nomina-giro-banco.mjs'
+// Lo pagado en la web descarga la obligación de su quincena/mes (02/10/2026). La definición vive en
+// caja-haberes-web.mjs, la misma que descarga la caja: una sola lectura de la réplica para los dos lados.
+import { netoDeLoPagadoWeb, formulaPagadoWebQuincena, formulaPagadoWebMes, SIN_PAGOS_WEB } from './caja-haberes-web.mjs'
 // El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
 // DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
 // la evidencia al dueño). Escrito dos veces, el libro y la tabla podrían decir cosas distintas.
@@ -59,6 +62,16 @@ const columna = (v) => (Array.isArray(v) ? v : []).map((c) => (Array.isArray(c) 
  * movimiento y uno de los dos desaparecería del libro sin que ninguna suma se rompa.
  */
 const filaDe = (bloque, i) => `${bloque}:${i + 1}`
+
+/**
+ * Un renglón PENDIENTE de haberes, neto de lo que la web ya pagó de esa quincena/mes: en memoria con el
+ * número leído de la réplica, en la celda con la fórmula viva (base = el puente o el importe). Nunca negativo.
+ */
+function netoDeLaWeb(mov, pagado, formulaPagado) {
+  const base = mov.importeNomina ?? mov.importe
+  const resto = Math.max(0, Math.round((mov.importe - (pagado || 0)) * 100) / 100)
+  return Object.freeze({ ...mov, importe: resto, importeNomina: netoDeLoPagadoWeb(base, formulaPagado) })
+}
 
 /**
  * NÚCLEO PURO: el estado de una quincena que NADIE probó — la diferencia entre "no salió" y "no sé".
@@ -104,7 +117,7 @@ const estadoSinProbar = (fecha, corte) => (
  * bancario coincide sería presentar una inferencia como hecho. Se emiten dos renglones —el mismo
  * patrón que `partirContraElExtracto` usa para Dirección— y la suma no se mueve un peso.
  */
-function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe, i }, { corte, extracto, aviso }) {
+function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe, i }, { corte, extracto, aviso, pagadoWeb = SIN_PAGOS_WEB }) {
   const comun = {
     signo: SALE,
     importe,
@@ -127,8 +140,10 @@ function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe
     return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
   }
   // NADIE LA MARCÓ Y EL BANCO NO LA PRUEBA: no es un compromiso firme, es un renglón sin conciliar.
+  // Sin probar por el banco ni marcada en la planilla, pero quizá PAGADA EN LA WEB: neta de lo pagado.
   if (t.veredicto !== VEREDICTO.banco || !t.cubierto) {
-    return [movimiento({ ...comun, fecha, estado: estadoSinProbar(fecha, corte) })]
+    const m = movimiento({ ...comun, fecha, estado: estadoSinProbar(fecha, corte) })
+    return [!(q.hasta >= pagadoWeb.corte) ? m : netoDeLaWeb(m, pagadoWeb.quincena(q.hasta), formulaPagadoWebQuincena(q.hasta))]
   }
   // El débito respaldó a esta quincena y no puede respaldar a otra.
   for (const fila of t.filas) extracto?.usados?.add(fila)
@@ -186,7 +201,7 @@ function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe
  * @returns {Array} movimientos
  */
 export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, corte = null,
-  { aviso = avisoPorDefecto, extracto = null, nomina = null } = {}) {
+  { aviso = avisoPorDefecto, extracto = null, nomina = null, pagadoWeb = SIN_PAGOS_WEB } = {}) {
   const out = []
   const real = {
     pago: columna(reales.pago), hasta: columna(reales.hasta), banco: columna(reales.banco),
@@ -252,7 +267,7 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
     const fecha = declarada ?? q.pago ?? q.hasta
     if (fecha === null || !importe) continue
     out.push(...quincenaAMovimientos({ q, t, fecha, declarada, marcada, importe, i },
-      { corte, extracto, aviso }))
+      { corte, extracto, aviso, pagadoWeb }))
   }
   const proy = { pago: columna(proyectadas.pago), hasta: columna(proyectadas.hasta), total: columna(proyectadas.total) }
   const largo = Math.max(proy.total.length, proy.pago.length, proy.hasta.length)
@@ -284,7 +299,10 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
       origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas proyectadas', i) },
     })
     const vivo = num(proy.pago[i]) !== null ? { ...mov, fechaFormula: fechaViva('JORNALES_PROY_PAGO', i) } : mov
-    out.push(desdeNomina ? conFormulaDeNomina(vivo, formulaDelPuente(NOMBRES_PUENTE.jornales, m, partes.get(m))) : Object.freeze(vivo))
+    const proyectada = desdeNomina ? conFormulaDeNomina(vivo, formulaDelPuente(NOMBRES_PUENTE.jornales, m, partes.get(m))) : Object.freeze(vivo)
+    const hasta = num(proy.hasta[i])
+    out.push(hasta !== null && hasta >= pagadoWeb.corte
+      ? netoDeLaWeb(proyectada, pagadoWeb.quincena(hasta), formulaPagadoWebQuincena(hasta)) : proyectada)
   }
   return out
 }
@@ -324,7 +342,12 @@ export function conFormulaDeNomina(mov, formula) {
  */
 const MARCA_SIN_PACTADO = '▲ parcial sin lo pactado del mes'
 
-function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque, aviso, extracto, nomina = null, puente = null, rangoPago = null }) {
+function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte,
+  { bloque, aviso, extracto, nomina = null, puente = null, rangoPago = null, grupoWeb = null, pagadoWeb = SIN_PAGOS_WEB }) {
+  // El mes de la fila es i+1 y se identifica contra la web por «Se paga el» ≥ corte, igual que en CAJA
+  // (caja-haberes-web.mjs): el sueldo de septiembre se paga el 01/10 y la web lo tiene en la quincena 16–30/09.
+  const netoWeb = (mov, i) => (grupoWeb && i < 12 && mov.fecha >= pagadoWeb.corte
+    ? netoDeLaWeb(mov, pagadoWeb.mes(ANIO_NOMINA, i + 1, grupoWeb), formulaPagadoWebMes(ANIO_NOMINA, i + 1, grupoWeb)) : mov)
   const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado); const K = columna(pactado)
   const out = []
   for (let i = 0; i < Math.max(P.length, G.length, Y.length); i++) {
@@ -366,7 +389,7 @@ function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque,
           { corte, extracto, bloque, i, aviso }))
         continue
       }
-      out.push(conPuente(movimiento({ ...comun, importe: proy, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) })))
+      out.push(netoWeb(conPuente(movimiento({ ...comun, importe: proy, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) })), i))
       continue
     }
     const sinPactado = proy && !(pact > 0)
@@ -512,8 +535,13 @@ function partirContraElExtracto(base, { corte, extracto, bloque, i, aviso }) {
 const avisoPorDefecto = (m) => console.warn(m)
 
 /** OFICINA (bloque "Oficina 26" de la planilla) → sueldos de administración. */
-export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null, nomina = null } = {}) {
-  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso, extracto, nomina, puente: NOMBRES_PUENTE.oficina, rangoPago: 'OFICINA_PAGO' })
+// El «resto del mes» (planilla con «Pagado» parcial) NO se neta de la web: ese pagado de la planilla puede ser
+// el mismo pago que la web ya tiene, y restarlo dos veces escondería deuda. Sólo el mes entero sin pagar.
+export function deOficina(bloque = {}, corte = null,
+  { aviso = avisoPorDefecto, extracto = null, nomina = null, pagadoWeb = SIN_PAGOS_WEB } = {}) {
+  return deBloqueMensual(bloque, corte, {
+    bloque: 'Oficina', aviso, extracto, nomina, puente: NOMBRES_PUENTE.oficina, rangoPago: 'OFICINA_PAGO', grupoWeb: 'oficina', pagadoWeb,
+  })
 }
 
 /**
