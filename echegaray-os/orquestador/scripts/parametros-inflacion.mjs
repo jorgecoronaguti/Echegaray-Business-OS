@@ -133,6 +133,32 @@ export function filasBloque(indices = [], fila0 = FILA_DATOS) {
   })
 }
 
+/**
+ * VERIFICAR MIRANDO LA PESTAÑA, no el request que se mandó. Compara EXACTAMENTE las N filas que esta
+ * corrida escribió (mes por mes), no un rango más largo: `no-borrar` conserva la fila vieja cuando el
+ * bloque se achica (01/10: A79 de septiembre), y releer ese rango contaba 6 contra 5 y fallaba todas
+ * las corridas con los datos bien escritos. La cola es un hallazgo a avisar con su celda y contenido,
+ * no un fallo del paso: no es de esta corrida y no se vacía.
+ */
+export async function verificarBloque(google, { id, tab, filaDatos, indices, sobran = 0 }) {
+  const n = indices.length
+  const v = (await google.readSheetValues(id, `'${tab}'!A${filaDatos}:D${filaDatos + n - 1}`)) ?? []
+  const diferencias = []
+  indices.forEach((x, i) => {
+    const hay = String(v[i]?.[0] ?? '').trim()
+    if (hay !== ar(x.periodo)) diferencias.push(`fila ${filaDatos + i}: esperaba ${ar(x.periodo)} y hay «${hay}»`)
+  })
+  const cola = []
+  if (sobran > 0) {
+    const f0 = filaDatos + n
+    const t = (await google.readSheetValues(id, `'${tab}'!A${f0}:D${f0 + sobran - 1}`)) ?? []
+    t.forEach((fila, i) => (fila ?? []).forEach((c, j) => {
+      if (String(c ?? '').trim()) cola.push({ celda: `${'ABCD'[j]}${f0 + i}`, contenido: String(c).trim() })
+    }))
+  }
+  return { ok: diferencias.length === 0, escritas: n - diferencias.length, diferencias, cola }
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
@@ -184,15 +210,14 @@ async function main() {
     return
   }
 
-  // ── VERIFICAR MIRANDO LA PESTAÑA, no el request que se mandó ──
-  const v = await google.readSheetValues(ID, `'${TAB}'!A${ubic.filaDatos}:D${ubic.filaDatos + bloque.length - 1}`)
-  const escritas = (v ?? []).filter((f) => String(f?.[0] ?? '').trim()).length
-  // Se cuenta contra los índices REALES, no contra la grilla: las filas de limpieza tienen que quedar
-  // vacías, así que sumarlas daría un ⚠ cada vez que se limpia bien.
-  console.log(escritas === rows.length
-    ? `✓ ${escritas} fila(s) de índice en la pestaña, con su fecha de lectura a la vista`
-    : `${ALERTA} escribí ${rows.length} fila(s) de índice y la pestaña devuelve ${escritas}: algo se tragó la escritura o quedó una cola vieja`)
-  if (escritas !== rows.length) process.exitCode = 1
+  const ver = await verificarBloque(google, { id: ID, tab: TAB, filaDatos: ubic.filaDatos, indices: rows, sobran })
+  for (const c of ver.cola) {
+    console.warn(`  ${ALERTA} quedó cola de una corrida anterior en ${TAB}!${c.celda}: «${c.contenido}». No la vacío (el OS no vacía celdas); la saca una persona.`)
+  }
+  console.log(ver.ok
+    ? `✓ ${ver.escritas} fila(s) de índice en la pestaña, con su fecha de lectura a la vista`
+    : `${ALERTA} escribí ${rows.length} fila(s) de índice y la pestaña devuelve distinto: ${ver.diferencias.join('; ')}`)
+  if (!ver.ok) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

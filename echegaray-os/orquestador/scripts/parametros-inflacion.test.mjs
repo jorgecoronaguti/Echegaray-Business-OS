@@ -6,7 +6,7 @@
 // mismo concepto en dos caras del mismo sistema, sin un solo error a la vista.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ubicarBloque, filasBloque, ANCLA, FILA_DATOS, ENCABEZADOS, LECTORES_CON_FILA_FIJA } from './parametros-inflacion.mjs'
+import { ubicarBloque, filasBloque, verificarBloque, ANCLA, FILA_DATOS, ENCABEZADOS, LECTORES_CON_FILA_FIJA } from './parametros-inflacion.mjs'
 
 /** Parámetros tal como está hoy: el título en la 72, los encabezados en la 73, los datos en la 74. */
 const parametros = () => {
@@ -93,6 +93,44 @@ test('EL BLOQUE VIEJO ES MÁS LARGO QUE EL NUEVO: la cola se cuenta para poder l
   f[77] = ['Desfase de pago de la quincena (días hábiles)', '1', 'otro parámetro, no es del bloque']
   const u = ubicarBloque(f)
   assert.equal(u.largoPrevio, 3, 'el largo se corta en la primera fila en blanco, no se come el parámetro de abajo')
+})
+
+// ═══ LA VERIFICACIÓN CONTABA UN RANGO MÁS LARGO QUE EL ESCRITO (01/10/2026) ═══
+// Bloque previo de 6 filas, corrida nueva de 5: no-borrar conserva la sexta (A79) y el paso fallaba
+// «escribí 5 y devuelve 6» en todas las corridas, con los datos bien escritos.
+const CINCO = ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02'].map((periodo) => ({ periodo, variacion: 0.02 }))
+const FECHAS = ['1/10/2026', '1/11/2026', '1/12/2026', '1/1/2027', '1/2/2027']
+/** Pestaña simulada: lee cualquier rango A{n}:D{m} de una grilla en memoria. */
+const hojaCon = (grilla) => ({
+  readSheetValues: async (_id, rango) => {
+    const [, a, b] = rango.match(/A(\d+):D(\d+)/).map(Number)
+    return grilla.slice(a - 1, b)
+  },
+})
+const grilla = (fechas, colaViejo) => {
+  const g = Array.from({ length: 90 }, () => [])
+  fechas.forEach((d, i) => { g[73 + i] = [d, '0,02'] })
+  if (colaViejo) g[78] = [colaViejo]
+  return g
+}
+const verificar = (g) => verificarBloque(hojaCon(g), { id: 'x', tab: 'P', filaDatos: 74, indices: CINCO, sobran: 1 })
+
+test('bloque previo de 6, corrida de 5: NO falla, verifica sus 5 y avisa la cola con celda y contenido', async () => {
+  const r = await verificar(grilla(FECHAS, '1/9/2026'))
+  assert.equal(r.ok, true)
+  assert.equal(r.escritas, 5)
+  assert.deepEqual(r.cola, [{ celda: 'A79', contenido: '1/9/2026' }])
+})
+
+test('si una de las 5 filas escritas vuelve distinta, FALLA', async () => {
+  const malas = [...FECHAS]; malas[2] = '1/3/2026'
+  const r = await verificar(grilla(malas, '1/9/2026'))
+  assert.equal(r.ok, false)
+  assert.match(r.diferencias[0], /fila 76/)
+})
+
+test('sin cola no avisa nada', async () => {
+  assert.deepEqual((await verificar(grilla(FECHAS))).cola, [])
 })
 
 test('un bloque recién creado no tiene cola: largoPrevio 0 y nada que limpiar', () => {
