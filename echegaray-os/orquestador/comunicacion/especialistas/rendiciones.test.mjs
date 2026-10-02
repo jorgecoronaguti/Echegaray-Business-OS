@@ -48,11 +48,10 @@ function portFalso({ canal = true, persona = 'p1', abiertas = [A], esPrueba = fa
 }
 const actor = { plataforma_user_id: 'mm1', channel_id: 'ch1', root_post_id: 'post1' }
 
-test('las puertas fallan cerrado ANTES de bajar un archivo: canal ajeno, sin legajo, sin entrega', async () => {
+test('las puertas fallan cerrado ANTES de bajar un archivo: canal ajeno, sin legajo', async () => {
   for (const [port, estado] of [
     [portFalso({ canal: false }), 'rechazado_canal'],
     [portFalso({ persona: null }), 'rechazado_sin_persona'],
-    [portFalso({ abiertas: [] }), 'rechazado_sin_entrega'],
     [portFalso({ abiertas: [A, C] }), 'pregunta_entrega'],
   ]) {
     const r = await especialista.atender({ texto: '', port, actor, fileIds: ['f1'], postId: 'post1' })
@@ -150,11 +149,24 @@ test('Dirección y Administración con entrega propia siguen rindiendo la foto c
   }
 })
 
-test('Administración sin entrega propia no oye «no tenés efectivo»: se le dice cómo rendir lo de un tercero', async () => {
-  for (const rol of ['administracion', 'direccion']) {
+test('SIN entrega abierta: el comprobante NO se descarta, entra como compra común y no toca ninguna entrega (02/10)', async () => {
+  for (const [rol, re] of [['jefe_obra', /No tenés efectivo a rendir abierto: lo cargué como compra \(sin descontar de ninguna entrega\)/],
+    ['administracion', /No tenés una entrega propia abierta: lo cargué como compra \(sin descontar de ninguna entrega\)/],
+    ['direccion', /lo cargué como compra \(sin descontar de ninguna entrega\)/]]) {
     const port = portFalso({ rol, abiertas: [] })
-    const r = await especialista.atender({ texto: '', port, actor, fileIds: ['f1'], postId: 'post1' })
-    assert.equal(r.estado, 'rechazado_sin_entrega')
-    assert.ok(!/No tenés efectivo/.test(r.texto) && /ER-/.test(r.texto) && /No cargué|no cargué/.test(r.texto), rol)
+    const llamadas = []
+    const r = await especialista.atender({
+      texto: 'ferretería', port, actor, fileIds: ['f1', 'f2'], postId: 'post1',
+      procesar: async (d, m) => { llamadas.push({ d, m }); return { texto: 'Cargado en Compras.', estado: 'cargado', fajoId: 'f9' } },
+    })
+    assert.equal(llamadas.length, 1, `${rol}: el archivo entra al circuito de Compras`)
+    assert.deepEqual(llamadas[0].m.fileIds, ['f1', 'f2'])
+    assert.equal(llamadas[0].m.forzar, undefined, `${rol}: ni «A rendir» ni pagado forzado`)
+    assert.equal(llamadas[0].m.texto, 'ferretería')
+    assert.equal(llamadas[0].m.postId, 'post1')
+    assert.ok(!port.q.some((x) => /insert into public\.efectivo_comprobante|vincular_rendiciones_pendientes/.test(x)), `${rol}: no imputa a ninguna entrega`)
+    assert.match(r.texto.split('\n')[0], re, rol)
+    assert.match(r.texto, /Cargado en Compras/)
+    assert.equal(r.estado, 'cargado'); assert.equal(r.fajoId, 'f9')
   }
 })

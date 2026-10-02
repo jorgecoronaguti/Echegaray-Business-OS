@@ -56,8 +56,8 @@ export const TEXTO = Object.freeze({
   SIN_PERSONA: 'No encuentro tu legajo detrás de este usuario de Mattermost, y cada rendición descuenta del saldo de una persona. Avisale a Administración.',
   ES_PRUEBA: 'Esta persona es de PRUEBA: no cargo su ticket en Compras. Si esto no es una prueba, avisale a Administración.',
   // Dirección/Administración rinden por otro: no se les dice «no tenés efectivo», se les dice cómo rendir lo de un tercero.
-  SIN_ENTREGA_ADMIN: 'No tenés una entrega propia abierta, así que no cargué el ticket. Si es el recibo de otra persona, rendilo contra SU entrega: mandá la foto con el número de la entrega (por ejemplo «ER-0021») en el canal de Compras, o cargalo desde la ficha de la entrega en la app. Si salió de la caja, mandalo como compra común.',
-  SIN_ENTREGA: 'No tenés efectivo a rendir abierto, así que no cargué el ticket. Si pagaste con plata de la empresa, avisale a Administración para que registre la entrega.',
+  SIN_ENTREGA_ADMIN: 'No tenés una entrega propia abierta: lo cargué como compra (sin descontar de ninguna entrega). Si es el recibo de otra persona, rendilo contra SU entrega: mandá la foto con el número de la entrega (por ejemplo «ER-0021») en el canal de Compras, o desde la ficha de la entrega en la app.',
+  SIN_ENTREGA: 'No tenés efectivo a rendir abierto: lo cargué como compra (sin descontar de ninguna entrega). Si pagaste con plata de la empresa, avisale a Administración para que registre la entrega.',
   AYUDA: [
     'Soy **Rendiciones**. Para rendir un gasto pagado con efectivo que te entregó la empresa:',
     '',
@@ -174,7 +174,9 @@ export const especialista = {
     // QUIÉN RINDE (dueño, 01/10/2026): «solo los usuarios con nivel jefe de obra y admin, rinden gastos». Un `campo`
     // —con o sin entrega— no rinde: el ticket NO toca su entrega, sigue como compra común (la forma de pago la dice
     // el papel, sin «A rendir») y se le dice en una línea que sus gastos los rinde Administración.
-    if (!rinde(yo.rol)) {
+    // COMPRA COMÚN: el MISMO circuito del canal de Compras (fajo, lectura, preguntas, escritura de fila y
+    // respaldo del papel), sin tocar ninguna entrega. Una sola función para los dos motivos de abajo.
+    const comoCompraComun = async (aviso) => {
       const post = postId ?? actor?.root_post_id ?? null
       const r = await procesar({
         port, google, log, mattermost,
@@ -182,10 +184,13 @@ export const especialista = {
       }, {
         fileIds, texto, actor, channelId: actor?.channel_id, rootPostId: actor?.root_post_id ?? post, postId: post, ahora: new Date(),
       })
-      return { texto: [TEXTO_NO_RINDE.COMUN, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
+      return { texto: [aviso, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
     }
+    if (!rinde(yo.rol)) return comoCompraComun(TEXTO_NO_RINDE.COMUN)
     const { entrega, motivo } = elegirEntrega(yo.abiertas, texto)
-    if (motivo === 'ninguna') return { texto: rindePorOtro(yo.rol) ? TEXTO.SIN_ENTREGA_ADMIN : TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
+    // SIN ENTREGA (dueño, 02/10/2026: «no estás subiendo todos los comprobantes»): antes el archivo se descartaba
+    // y el gasto no existía en ningún lado. Ahora entra como compra común; no se imputa a ninguna entrega.
+    if (motivo === 'ninguna') return comoCompraComun(rindePorOtro(yo.rol) ? TEXTO.SIN_ENTREGA_ADMIN : TEXTO.SIN_ENTREGA)
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }
     // UNA ENTREGA DECLARADA PRUEBA NO ESCRIBE COMPRAS (dueño, 23/09/2026). Es la misma razón por la que
     // no escribe una persona de prueba: la fila iría a la pestaña real, con su espejo y su descuento de
