@@ -107,6 +107,8 @@ export interface CompraParaRecibo {
   concepto: string | null
   total: number | null
   obra: string | null
+  /** La obra del catálogo que el espejo de Compras resolvió para la fila. Con ella el panel elige la obra, no el texto. */
+  obraId?: string | null
   cuit: string | null
 }
 

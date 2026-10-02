@@ -43,7 +43,10 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
   // queda como referencia en el recibo. No cambia lo impreso: el papel dice lo que está escrito en el panel.
   const delPadron = opciones.padron.find((p) => norm(p.nombre) === norm(b.aNombreDe))
     ?? (b.documento ? opciones.padron.find((p) => p.documento && p.documento === b.documento.replace(/\D/g, '')) : undefined)
-  const obra = obras.find((o) => norm(o.nombre) === norm(b.obra)) ?? null
+  // LA OBRA SE ELIGE DEL CATÁLOGO (dueño, 02/10/2026: «si tenés una bd de obras»), no se tipea. Lo que trae una compra
+  // («OB-0011 · SF - PISOS INDUSTRIALES») se reconoce por el nombre con que termina.
+  const obra = obras.find((o) => norm(o.nombre) === norm(b.obra))
+    ?? (b.obra ? obras.find((o) => norm(b.obra).endsWith(norm(o.nombre))) : undefined) ?? null
   const v = validarReciboPago(b, opciones.hoy)
 
   const elegirNombre = (nombre: string) => {
@@ -54,7 +57,10 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
   const tomarDeCompra = (valor: string) => {
     const c = opciones.compras.find((x) => String(x.fila) === valor)
     setFila(c ? c.fila : null)
-    if (c) set(borradorDesdeCompra(c, opciones.hoy))
+    if (!c) return
+    // LA OBRA DE LA COMPRA ES LA DEL CATÁLOGO (`obra_id` del espejo), no el texto de la columna de cliente.
+    const deCatalogo = c.obraId ? obras.find((o) => o.id === c.obraId) : undefined
+    set({ ...borradorDesdeCompra(c, opciones.hoy), ...(deCatalogo ? { obra: deCatalogo.nombre } : {}) })
   }
   const emitir = () => {
     if (!v.ok) { setError(v.error); return }
@@ -134,10 +140,14 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
       </Campo>
 
       <Campo rotulo="Obra (opcional)">
-        <input value={b.obra} onChange={(e) => set({ obra: e.target.value })} list="recibo-obras" autoComplete="off" style={campo} data-testid="recibo-obra" aria-label="Obra" />
-        <datalist id="recibo-obras">
-          {obras.filter((o) => o.activa).map((o) => <option key={o.id} value={o.nombre} />)}
-        </datalist>
+        <select value={obra ? obra.nombre : b.obra} onChange={(e) => set({ obra: e.target.value })} style={campo} data-testid="recibo-obra" aria-label="Obra">
+          <option value="">Sin obra</option>
+          {/* Lo que vino de una compra y no está en el catálogo se muestra tal cual: es lo que va a salir impreso. */}
+          {b.obra && !obra && <option value={b.obra}>{b.obra}</option>}
+          {obras.filter((o) => o.activa || o.id === obra?.id).map((o) => (
+            <option key={o.id} value={o.nombre}>{o.nombre}{o.cliente ? ` · ${o.cliente}` : ''}</option>
+          ))}
+        </select>
       </Campo>
 
       <div style={cajaConfirmar} data-testid="recibo-al-emitir">

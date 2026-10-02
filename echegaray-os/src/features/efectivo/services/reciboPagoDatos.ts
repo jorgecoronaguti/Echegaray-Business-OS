@@ -88,7 +88,7 @@ export async function leerOpcionesReciboPago(): Promise<OpcionesReciboPago> {
     supabase.from('proveedores').select('id, nombre, razon_social, cuit').eq('activo', true).limit(3000),
     supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').eq('en_la_empresa', true).eq('es_prueba', false).limit(1000),
     supabase.from('persona_legajo').select('id, dni, cuil').limit(3000),
-    supabase.from('compra_sheet').select('fila, fecha, proveedor, concepto, total, obra_texto, cuit, tipo_pago, anulada')
+    supabase.from('compra_sheet').select('fila, fecha, proveedor, concepto, total, obra_texto, obra_id, cuit, tipo_pago, anulada')
       .gte('fecha', restarDias(hoy, DIAS_DE_COMPRAS)).ilike('tipo_pago', '%efectivo%')
       .order('fecha', { ascending: false }).order('fila', { ascending: false }).limit(200),
   ])
@@ -106,9 +106,9 @@ export async function leerOpcionesReciboPago(): Promise<OpcionesReciboPago> {
     .sort(compararPorApellido)
     // El papel lleva el nombre LEGAL: es un documento que se firma, no una pantalla.
     .map((p) => ({ tipo: 'persona' as const, id: p.id, nombre: nombreLegal(p.nombre_completo) ?? nombreDePersona(p), documento: docDe.get(p.id) ?? null }))
-  type FilaCompra = { fila: number; fecha: string | null; proveedor: string | null; concepto: string | null; total: number | string | null; obra_texto: string | null; cuit: string | null; tipo_pago: string | null; anulada: boolean | null }
+  type FilaCompra = { fila: number; fecha: string | null; proveedor: string | null; concepto: string | null; total: number | string | null; obra_texto: string | null; obra_id: string | null; cuit: string | null; tipo_pago: string | null; anulada: boolean | null }
   const filas = ((compras.data ?? []) as FilaCompra[])
     .filter((c) => pagadaEnEfectivo(c.tipo_pago) && !c.anulada)
-    .map((c) => ({ fila: c.fila, fecha: c.fecha, proveedor: c.proveedor, concepto: c.concepto, total: c.total == null ? null : Number(c.total), obra: c.obra_texto, cuit: c.cuit }))
+    .map((c) => ({ fila: c.fila, fecha: c.fecha, proveedor: c.proveedor, concepto: c.concepto, total: c.total == null ? null : Number(c.total), obra: c.obra_texto, obraId: c.obra_id, cuit: c.cuit }))
   return { padron: [...proveedores, ...personas], compras: filas, hoy }
 }
