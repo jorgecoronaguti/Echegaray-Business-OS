@@ -268,11 +268,12 @@ export function CeldaImporteNegro({ fila, edicion }: { fila: FilaDelEspejo; edic
   if (seEscribe(fila, 'negro', edicion)) {
     return (
       <div data-testid={`negro-${fila.personaId}`} data-importe={l.pago.negro ?? undefined}
+        title={textoDelArrastre(l, pesos) ?? undefined}
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', overflow: 'hidden' }}>
         <Escribible campo="negro" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={104} claseCampo="w-24" />
         {resta && (
           <div style={{ fontSize: '10.5px', lineHeight: '14px', color: V.apagado, fontVariantNumeric: 'tabular-nums' }}>
-            {resta.ajuste < 0 ? '−' : '+'} {pesos(Math.abs(resta.ajuste)).replace(/^\$\s?/, '')} <strong style={{ color: V.tinta }}>{resta.resultado_texto}</strong>
+            {resta.ajuste < 0 ? '−' : '+'} {pesos(Math.abs(resta.ajuste)).replace(/^\$\s?/, '')}{resta.ajuste < 0 ? ' (ya dado quinc. ant.)' : ''} <strong style={{ color: V.tinta }}>{resta.resultado_texto}</strong>
           </div>
         )}
       </div>
