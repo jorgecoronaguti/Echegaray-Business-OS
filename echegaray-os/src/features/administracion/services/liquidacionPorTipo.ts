@@ -64,6 +64,7 @@ export function separarPorTipo<T extends { grupo: GrupoLiquidacion; linea: { mod
 
 type LineaDelMensual = Pick<LineaConOverrides, 'cobra' | 'porBanco' | 'reciboNeto' | 'pagadoBanco' | 'pagadoEfectivo'>
   & { manual: Pick<LineaConOverrides['manual'], 'porBanco'>; sello?: { conLinea: boolean } | null; pagoSinRegistrar?: boolean }
+  & Pick<Partial<LineaConOverrides>, 'seLiquidaEnLa2da' | 'pagadoEnLa1ra'>
 
 export interface PagoDelMensual extends PagoDeLaLinea {
   /** El sueldo del mes (`cobra`: neto mensual, importe cargado o escrito a mano). `null` = no cargado. */
@@ -99,13 +100,22 @@ export function pagoDelMensual(l: LineaDelMensual): PagoDelMensual {
       sueldo: conLinea ? sueldo : null, origenBanco: conLinea ? 'sellado' : null }
   }
   const { banco, origen } = bancoDelMensual(l)
+  // LA 1ª QUINCENA NO LIQUIDA EL MES (dueño, 02/10/2026): su banco es el recibo del estudio de esa quincena, como dato,
+  // y no hay sueldo, efectivo, total ni saldo que afirmar. Lo pagado que consta se muestra; cuenta en la 2ª.
+  if (l.seLiquidaEnLa2da) {
+    const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
+    return { ...p, banco, sueldo: null, origenBanco: origen }
+  }
+  // LA 2ª LIQUIDA EL MES: lo pagado en la 1ª (un adelanto, el giro de su recibo) se descuenta acá, una vez.
+  const pagadoBanco = r2(l.pagadoBanco + (l.pagadoEnLa1ra?.banco ?? 0))
+  const pagadoEfectivo = r2(l.pagadoEfectivo + (l.pagadoEnLa1ra?.efectivo ?? 0))
   if (banco != null) {
     const negro = sueldo == null ? null : r2(sueldo - banco)
-    const p = pagoDeLaLinea({ banco, negro, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
+    const p = pagoDeLaLinea({ banco, negro, pagadoBanco, pagadoEfectivo })
     return { ...p, sueldo, origenBanco: origen }
   }
   // SIN RECIBO: los lados no se pueden afirmar; el total sí. Un pagado mayor al sueldo es un excedente igual.
-  const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
+  const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco, pagadoEfectivo })
   const saldoTotal = sueldo == null ? null : r2(sueldo - p.pagado)
   const excedente = saldoTotal != null && saldoTotal < 0
     ? { lado: p.pagadoBanco >= p.pagadoEfectivo ? 'banco' as const : 'efectivo' as const, importe: -saldoTotal }
@@ -183,16 +193,20 @@ export interface TotalesDeMensuales {
   /** Filas con sueldo y sin saldo que afirmar (quincena cerrada: se salda por mes), y cuánto suman sueldo − pagado. */
   sinSaldo: number
   sinSaldoImporte: number
+  /** Filas de la 1ª quincena de un mensual: no suman nada acá, su mes se liquida (y se suma) en la 2ª. */
+  enLa2da: number
 }
 
 export function totalesDeMensuales(filas: readonly FilaDelEspejo[]): TotalesDeMensuales {
+  // LA 1ª QUINCENA DEL MENSUAL NO ENTRA EN LOS TOTALES: ni su banco informativo, ni lo pagado (que cuenta en la 2ª).
+  const liquidan = filas.filter((f) => !f.linea.seLiquidaEnLa2da)
   const t: TotalesDeMensuales = {
     personas: filas.length, sueldo: 0, sinSueldo: 0, banco: 0, efectivo: 0, sinRecibo: 0,
-    pagadoBanco: 0, pagadoEfectivo: 0, pagado: 0, saldoTotal: 0, redondeo: redondeoDe(filas), saldoRedondeado: 0,
-    noCierran: 0, diferencia: 0, sinSaldo: 0, sinSaldoImporte: 0,
+    pagadoBanco: 0, pagadoEfectivo: 0, pagado: 0, saldoTotal: 0, redondeo: redondeoDe(liquidan), saldoRedondeado: 0,
+    noCierran: 0, diferencia: 0, sinSaldo: 0, sinSaldoImporte: 0, enLa2da: filas.length - liquidan.length,
   }
   const saldos: (number | null)[] = []
-  for (const f of filas) {
+  for (const f of liquidan) {
     const p = pagoDelMensual(f.linea)
     const cierre = cierreDeLaFila(f.linea)
     if (cierre && !cierre.cierra) { t.noCierran++; t.diferencia += cierre.diferencia }

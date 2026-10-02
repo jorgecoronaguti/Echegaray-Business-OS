@@ -229,7 +229,19 @@ export function ResumenMensuales({ t, sellada = false }: { t: TotalesDeMensuales
       </div>
     )
   }
-  const faltaRecibo = t.sinRecibo === t.personas - t.sinSueldo
+  // LA 1ª QUINCENA DE LOS MENSUALES NO LIQUIDA (`seLiquidaEnLa2da`): sus filas no suman, y si son todas, no hay cifra.
+  const liquidan = t.personas - t.enLa2da
+  if (!sellada && t.personas > 0 && liquidan === 0) {
+    return (
+      <Tira testid="pie-mensuales">
+        <Cifra rotulo="Sueldos del mes" valor={pesos(null)} testid="pie-mensuales-sueldo" tono="text-muted" />
+        <Cifra rotulo="Banco" valor={pesos(null)} testid="pie-mensuales-banco" tono="text-muted" />
+        <Cifra rotulo="Efectivo" valor={pesos(null)} testid="pie-mensuales-efectivo" tono="text-muted" />
+        <Cifra rotulo="Saldo" valor={pesos(null)} testid="pie-mensuales-saldo" tono="text-muted" />
+      </Tira>
+    )
+  }
+  const faltaRecibo = t.sinRecibo === liquidan - t.sinSueldo
   return (
     <div className="flex flex-col gap-2">
       <Tira testid="pie-mensuales">

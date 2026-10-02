@@ -38,7 +38,7 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
 import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 import { textoDelRecibo } from './FilasMensuales'
-import { quincenaDeOrigen } from '../../../services/reciboDeLaQuincena'
+import { renglonesDeLosRecibos } from '../../../services/reciboDeLaQuincena'
 import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
@@ -259,12 +259,14 @@ function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
   const a = asistenciaDeReferencia(fila)
   const recibo = textoDelRecibo(p, l.reciboSinGiro)
   const cierre = cierreDeLaFila(l)
-  const faltaRecibo = 'falta recibo: sin él no se sabe cuánto va por banco'
+  // LA 1ª QUINCENA DEL MENSUAL NO LIQUIDA EL MES (`seLiquidaEnLa2da`): las cifras del mes van vacías y sin notas.
+  const enLa2da = !fila.cerrada && l.seLiquidaEnLa2da === true
+  const faltaRecibo = enLa2da ? undefined : 'falta recibo: sin él no se sabe cuánto va por banco'
   return (
     <section data-testid="panel-cadena" data-tipo="mensual">
       <Rotulo>{`Sueldo mensual · ${l.esJefe ? 'jefe de obra' : 'mensual'}`}</Rotulo>
-      <Renglon rotulo="Sueldo del mes" nota={l.netoMensual != null ? (l.origenTarifa ?? undefined) : (l.cobra == null ? 'importe no cargado' : `importe ${l.origenTarifa ?? 'cargado'}`)}
-        alerta={l.cobra == null}>
+      <Renglon rotulo="Sueldo del mes" nota={enLa2da ? undefined : l.netoMensual != null ? (l.origenTarifa ?? undefined) : (l.cobra == null ? 'importe no cargado' : `importe ${l.origenTarifa ?? 'cargado'}`)}
+        alerta={!enLa2da && l.cobra == null}>
         <Leida valor={p.sueldo} medio />
       </Renglon>
       <Renglon rotulo="Asistencia" nota="referencia: un mensual no cobra por hora">
@@ -276,6 +278,7 @@ function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
       <Renglon rotulo="Banco" nota={recibo.titulo}>
         <span data-testid="panel-mensual-banco" style={{ fontSize: '12.5px', color: p.banco == null ? V.tenue : V.tinta }}>{recibo.texto}</span>
       </Renglon>
+      <RenglonesDeLosRecibos l={l} />
       <Renglon rotulo="Pagado banco">
         <Escribible campo="pagadoBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
@@ -292,11 +295,13 @@ function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
 
       <div style={{ height: 16 }} />
       <Renglon rotulo="Cobra total" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'el sueldo del mes'} alerta={cierre?.cierra === false}>
-        <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        nota={enLa2da ? undefined : cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'el sueldo del mes'} alerta={cierre?.cierra === false}>
+        {/* LO ESCRITO A MANO NO SE OCULTA: un Cobra total anotado en la 1ª se sigue viendo y editando. */}
+        {enLa2da && !l.manual.cobra ? <Leida valor={null} />
+          : <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />}
       </Renglon>
       <Renglon rotulo="Pagado" nota="banco + efectivo"><Leida valor={p.pagado} /></Renglon>
-      <Renglon rotulo="Saldo" fuerte nota={p.aPagarEfectivo == null ? 'sin recibo: sin reparto por canal' : `efectivo ${pesos(p.aPagarEfectivo)} · banco ${pesos(p.aPagarBanco)}`}>
+      <Renglon rotulo="Saldo" fuerte nota={enLa2da ? undefined : p.aPagarEfectivo == null ? 'sin recibo: sin reparto por canal' : `efectivo ${pesos(p.aPagarEfectivo)} · banco ${pesos(p.aPagarBanco)}`}>
         <Leida valor={p.saldoTotal} />
       </Renglon>
     </section>
@@ -338,20 +343,20 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
         </Renglon>
       )}
       {/* EL MENSUAL TIENE DOS RECIBOS Y SE PAGA POR MES: cada uno con su quincena, y el que falta se dice. */}
-      {(l.recibosDelEstudio?.length ?? 0) > 1 || ((l.recibosFaltantes?.length ?? 0) > 0 && (l.recibosDelEstudio?.length ?? 0) > 0)
-        ? (
-          <>
-            {l.recibosDelEstudio?.map((r) => (
-              <Renglon key={r.periodo} rotulo={`Recibo del estudio · ${quincenaDeOrigen(r.periodo)}`}><span>{pesos(r.neto)}</span></Renglon>
-            ))}
-            {l.recibosFaltantes?.map((p) => (
-              <Renglon key={p} rotulo={`Recibo del estudio · ${quincenaDeOrigen(p)}`} alerta><span>falta</span></Renglon>
-            ))}
-          </>
-        )
+      {renglonesDeLosRecibos(l).length > 0
+        ? <RenglonesDeLosRecibos l={l} />
         : l.reciboNeto != null && <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>}
     </section>
   )
+}
+
+/** Un renglón por recibo del estudio que compone el banco del mensual (`renglonesDeLosRecibos`); «falta» el que no llegó. */
+function RenglonesDeLosRecibos({ l }: { l: FilaDelEspejo['linea'] }) {
+  return renglonesDeLosRecibos(l).map((r) => (
+    <Renglon key={r.periodo} rotulo={r.rotulo} alerta={r.importe == null}>
+      <span data-testid={`panel-recibo-${r.periodo}`}>{r.importe == null ? 'falta' : pesos(r.importe)}</span>
+    </Renglon>
+  ))
 }
 
 function Rotulo({ children }: { children: ReactNode }) {

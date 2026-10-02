@@ -32,6 +32,7 @@ import { FilaMensual, TotalMensuales } from './cuadro/FilasMensuales'
 import { PieTotalGeneral, ResumenJornaleros, ResumenMensuales } from './cuadro/PieDeLaQuincena'
 import { BarraDeRecibos, CasillaDeRecibo } from './cuadro/BarraDeRecibos'
 import { MOTIVO_SIN_NADA, estadoDeSeccion, marcarSeccion, sinNadaQueCobrar, soloLosVisibles } from './cuadro/lotesDeRecibos'
+import { MOTIVO_SE_LIQUIDA_EN_LA_2DA } from '../../services/recibosDelEstudio'
 import { VistaPreviaDeRecibos } from './cuadro/VistaPreviaDeRecibos'
 import { rotuloCategoria } from './cuadro/CeldaTarifa'
 import { pesos } from './formato'
@@ -117,7 +118,8 @@ export function GrillaEspejoQuincena({
             fila, columnas, edicion, abrir: () => setAbierta(fila.personaId),
             marca: {
               marcada: marcados.has(fila.personaId), alternar: () => alternar(fila.personaId),
-              apagada: sinNada.has(fila.personaId) ? MOTIVO_SIN_NADA : undefined,
+              apagada: !sinNada.has(fila.personaId) ? undefined
+                : fila.linea.seLiquidaEnLa2da ? MOTIVO_SE_LIQUIDA_EN_LA_2DA : MOTIVO_SIN_NADA,
               impreso: impresos[fila.personaId],
             },
             pct: pctDeLaQuincena(historiales[fila.personaId], quincena.desde),

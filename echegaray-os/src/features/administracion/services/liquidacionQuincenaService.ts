@@ -49,6 +49,7 @@ import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposi
 import { leerRestituciones } from './presentismoRestitucionService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import { conArrastres, leerArrastres } from './liquidacionArrastre.ts'
+import { leerPagadosDeLa1ra } from './pagadoDeLa1raService.ts'
 import { estadoDelCuadro } from './estadoDelCuadro.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
@@ -381,6 +382,13 @@ export async function getLiquidacionDeLaQuincena(
   // LO QUE LA ADMINISTRACIÓN PERDONÓ A MANO (30/09/2026): entra al cálculo por `restitucion`, no se pinta encima.
   const lecturaRestituciones = await leerRestituciones(supabase, q.desde, q.hasta)
   anotar('las restituciones de presentismo', lecturaRestituciones.error)
+  // EL MES DEL MENSUAL SE LIQUIDA EN LA 2ª (dueño, 02/10/2026): lo pagado en la 1ª se descuenta acá (`pagoDelMensual`).
+  const pagadosDeLa1ra = await leerPagadosDeLa1ra(supabase, q, personas, (tarifas.data ?? []) as FilaTarifa[])
+  anotar('lo pagado en la 1ª quincena a los mensuales', pagadosDeLa1ra.error)
+  const conLaPrimera = (l: LineaConOverrides): LineaConOverrides => {
+    const p = pagadosDeLa1ra.porPersona.get(l.personaId)
+    return p ? { ...l, pagadoEnLa1ra: p } : l
+  }
   const restituciones = lecturaRestituciones.porPersona
   const presentismoDe = (grupo: string, l: { personaId: string; esJefe: boolean; modalidad: ModalidadDeLiquidacion }): EntradaDePresentismo | null =>
     grupo !== 'obreros' ? null : {
@@ -434,10 +442,10 @@ export async function getLiquidacionDeLaQuincena(
         )).map(conEscala)
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
-        : c.lineas.map((l) => conMarcaDePago(conArrastres(aplicarOverrides(
+        : c.lineas.map((l) => conLaPrimera(conMarcaDePago(conArrastres(aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
           blancoDe(c.grupo, l), presentismoDe(c.grupo, l), formulas.get(l.personaId) ?? {},
-        ), arrastres, true), pagadas)).map(conEscala),
+        ), arrastres, true), pagadas))).map(conEscala),
     })),
     camposEditables,
     espejo,

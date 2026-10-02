@@ -221,6 +221,8 @@ export interface EntradaDeLinea {
   recibosDelEstudio?: ReciboDelEstudio[]
   /** Períodos que corresponden a la persona y el estudio no cargó (`['Q2-09/2026']`). Vacío = ninguno. */
   recibosFaltantes?: string[]
+  /** 1ª quincena de quien cobra por mes (`recibosDelEstudio.seLiquidaEnLa2da`): no liquida, lo hace la 2ª. */
+  seLiquidaEnLa2da?: boolean
   /** ¿El extracto muestra el giro de ese recibo en el lote de haberes? */
   giroEnElLote: boolean
   /** Sólo liquidaciones finales: la mitad blanca que liquidó el estudio. El total es el doble. */
@@ -273,6 +275,8 @@ export interface LineaLiquidada {
   recibosDelEstudio?: ReciboDelEstudio[]
   /** Períodos del estudio que corresponden y todavía no llegaron. */
   recibosFaltantes?: string[]
+  /** 1ª quincena de quien cobra por mes: sin sueldo, sin efectivo ni saldo; su banco es sólo el recibo de esa quincena. */
+  seLiquidaEnLa2da?: boolean
   /**
    * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50
    * que publicar — hoy, Oficina y las finales sin recibo (ver `liquidacionAcuerdo.ts`).
@@ -310,7 +314,9 @@ export function liquidarLinea(
   const valorHora = e.tarifa?.valorHora ?? null
   const netoMensual = e.tarifa?.netoMensual ?? null
   const modalidad = modalidadDe(grupo)
-  const cobra = cobraDe(e, grupo, valorHora)
+  // LA 1ª QUINCENA DEL MENSUAL NO TIENE COBRA: el sueldo del mes es de la 2ª. Con el neto acá, cerrar la 1ª sellaba el
+  // mes entero en ella (cobra, efectivo, total) y la 2ª lo volvía a liquidar.
+  const cobra = e.seLiquidaEnLa2da ? null : cobraDe(e, grupo, valorHora)
   // EL RECIBO SIN GIRO NO ES «POR BANCO». Que el estudio haya liquidado $215.564 no dice que el
   // banco los haya movido: hasta que el lote aparece en el extracto, esa plata sigue por pagar y
   // tiene que salir en efectivo o esperar. Contarla como girada le paga de menos a la persona.
@@ -346,6 +352,7 @@ export function liquidarLinea(
     reciboNeto: e.reciboNeto,
     ...(e.recibosDelEstudio ? { recibosDelEstudio: e.recibosDelEstudio } : {}),
     ...(e.recibosFaltantes ? { recibosFaltantes: e.recibosFaltantes } : {}),
+    ...(e.seLiquidaEnLa2da ? { seLiquidaEnLa2da: true } : {}),
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? (grupo === 'oficina' && e.importeCargado != null ? 'importe cargado de la planilla' : null),
     esJefe: e.esJefe === true,

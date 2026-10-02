@@ -9,7 +9,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { arrastreYaIncluido, recibosDelEstudio } from './recibosDelEstudio.ts'
-import { leerModalidadDeCobro } from './recibosDelEstudioService.ts'
+import { leerModalidadesDeCobro } from './recibosDelEstudioService.ts'
 import { cuilNormalizado } from './cuil.ts'
 import { ROTULO, desglosarBancoSellado, limpiarMediosSellados } from './reciboDeLaQuincena.ts'
 import type { ReciboEnElLegajo } from './reciboEmitido.ts'
@@ -27,14 +27,15 @@ export async function conBancoDesglosado(supabase: SupabaseClient, personaId: st
     return medios.every((m, i) => m === r.renglones.medios[i]) ? r : { ...r, renglones: { ...r.renglones, medios } }
   })
   if (recibos.length === 0) return recibos
-  const ultimoHasta = recibos.reduce((m, r) => (r.quincenaHasta > m ? r.quincenaHasta : m), '')
-  const [arr, per, modalidad] = await Promise.all([
+  // LA MODALIDAD ES LA DE CADA RECIBO, NO LA DE HOY (dueño, 02/10/2026: «solamente desde sept»): con la del último,
+  // un recibo de agosto de un jefe se reimprimía con los dos recibos del mes, que en agosto no le correspondían.
+  const [arr, per, modalidadAl] = await Promise.all([
     supabase.from('liquidacion_arrastre').select('desde, importe, periodo_origen').eq('persona_id', personaId),
     supabase.from('persona_legajo').select('cuil').eq('id', personaId).maybeSingle(),
-    leerModalidadDeCobro(supabase, personaId, ultimoHasta),
+    leerModalidadesDeCobro(supabase, personaId),
   ])
-  if (arr.error || per.error || modalidad == null) return recibos
-  const mensual = modalidad === 'mensual'
+  if (arr.error || per.error || modalidadAl == null) return recibos
+  const algunoMensual = recibos.some((r) => modalidadAl(r.quincenaHasta) === 'mensual')
   const arrastres = new Map<string, { importe: number; periodoOrigen: string }>()
   for (const crudo of arr.data ?? []) {
     const f = FilaArrastre.safeParse(crudo)
@@ -46,12 +47,14 @@ export async function conBancoDesglosado(supabase: SupabaseClient, personaId: st
   }
   const cuil = typeof per.data?.cuil === 'string' ? per.data.cuil : null
   // El mensual se desglosa aunque no tenga arrastre: su banco son dos recibos.
-  if ((arrastres.size === 0 && !mensual) || !cuil) return recibos
+  if ((arrastres.size === 0 && !algunoMensual) || !cuil) return recibos
   const { data: netos, error } = await supabase.from('nomina_recibo_neto')
     .select('cuil, periodo, neto').in('cuil', [...new Set([cuil, cuilNormalizado(cuil) ?? cuil])])
   if (error) return recibos
   const filas = (netos ?? []).flatMap((x) => { const f = FilaNeto.safeParse(x); return f.success ? [f.data] : [] })
   return recibos.map((r) => {
+    const modalidad = modalidadAl(r.quincenaHasta)
+    const mensual = modalidad === 'mensual'
     const estudio = recibosDelEstudio({ cuil, modalidad, desde: r.quincenaDesde, filas })
     const crudaResta = arrastres.get(r.quincenaDesde) ?? null
     // El recibo de la 1ª quincena de un mensual ya está dentro de su banco: no es «saldo» (`arrastreYaIncluido`).

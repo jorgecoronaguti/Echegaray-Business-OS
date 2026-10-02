@@ -17,6 +17,7 @@ import { estadoDeCierre } from './liquidacionCierre.ts'
 //     caso que hay que resolver antes de pagar.
 
 const Q = quincenaDe('2026-09-05')
+const Q2 = quincenaDe('2026-09-20')
 
 const persona = (id: string, nombre: string, cuil: string | null): PersonaDeLiquidacion =>
   ({ id, nombre, nombreOrden: nombre, cuil, enLaEmpresa: true })
@@ -116,7 +117,9 @@ test('01–15/08: las finales que egresaron en la ventana no suman al pie sellad
 })
 
 test('oficina va a su cuadro por tener neto mensual, aunque tenga horas cargadas', () => {
+  // 2ª quincena: el mes del mensual se liquida ahí (dueño, 02/10/2026); en la 1ª su cobra es null por regla.
   const cuadros = armarCuadros(base({
+    quincena: Q2,
     personas: [persona('o1', 'MALDONADO BATISTA EMILIANO MIGUEL', '203592')],
     tarifas: [{
       persona_id: 'o1', desde: '2026-09-01', valor_hora: null, neto_mensual: 1800000,
@@ -186,6 +189,7 @@ const mensual = (persona_id: string, neto_mensual: number): FilaTarifa =>
 
 test('con una persona de Oficina (neto mensual) la quincena PUEDE cerrar', () => {
   const cuadros = armarCuadros(base({
+    quincena: Q2,
     personas: [persona('p1', 'Aguero Cristian', '20'), persona('o1', 'Maldonado Ana Laura', '27')],
     tarifas: [porHora('p1', 5250), mensual('o1', 1800000)],
     horas: new Map([['p1', { horas: 96, presentesSinHoras: 0 }]]),

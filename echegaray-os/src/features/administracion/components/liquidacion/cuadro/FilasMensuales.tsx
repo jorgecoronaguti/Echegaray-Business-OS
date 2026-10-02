@@ -38,6 +38,10 @@ const FALTA_RECIBO = {
 
 const DERECHA = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const, overflow: 'hidden' as const }
 
+/** El vacío de la 1ª quincena del mensual: «—» y nada más (dueño, 02/10: las aclaraciones de más «confunden»). */
+const VACIO = { texto: '—', titulo: '' }
+const Vacia = ({ testid }: { testid: string }) => <div data-testid={testid} style={{ ...DERECHA, color: V.tenue }}>—</div>
+
 /** «Recibo $663.141» / «sin recibo todavía», y de dónde sale. */
 export function textoDelRecibo(p: PagoDelMensual, reciboSinGiro: boolean): { texto: string; titulo: string } {
   if (p.banco == null) return { texto: 'sin recibo todavía', titulo: 'El estudio todavía no liquidó el recibo de esta quincena.' }
@@ -63,7 +67,9 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
   // ═══ LA CERRADA ES LA FOTO DE LA QUINCENA (auditor, 18/09/2026) ═══ Ni días vivos (no se sellan), ni «sueldo del mes»
   // (la foto es lo liquidado en la quincena), ni «falta recibo» (no hay nada pendiente de cargar en algo cerrado).
   const cerrada = fila.cerrada
-  const sinSaldoCerrada = cerrada
+  // LA 1ª QUINCENA DEL MENSUAL NO LIQUIDA EL MES (`seLiquidaEnLa2da`): sólo el banco de su recibo; lo demás, vacío.
+  const enLa2da = !cerrada && l.seLiquidaEnLa2da === true
+  const sinSaldoCerrada = enLa2da ? VACIO : cerrada
     ? (l.sello?.conLinea
       ? { texto: 'saldo del mes', titulo: 'Cobra por mes: el saldo es del mes, no de la quincena. Lo pagado que consta se muestra al lado.' }
       : { texto: 'sin línea sellada', titulo: 'La quincena está cerrada y esta persona no tiene línea sellada: nada de esta fila es dato sellado.' })
@@ -106,7 +112,7 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
             <span style={{ fontSize: '10.5px' }}>{`quincena · ${nHoras(l.horas)} h × ${pesos(l.valorHora)}`}</span>
           )}
         </div>
-      ) : (
+      ) : enLa2da ? <Vacia testid={`sueldo-${fila.personaId}`} /> : (
         <div data-testid={`sueldo-${fila.personaId}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <CeldaTarifa fila={fila} quincena={quincena} pct={pct} sinValor="cargar sueldo" />
           {l.netoMensual == null && (
@@ -123,10 +129,10 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
       <CeldaPagado campo="pagadoBanco" fila={fila} edicion={edicion} />
       <CeldaSaldo fila={fila} lado="banco" pago={p} sinDato={sinSaldoCerrada ?? FALTA_RECIBO} />
       {/* EFECTIVO: sueldo − recibo. */}
-      <div data-testid={`efectivo-mensual-${fila.personaId}`} title={p.negro == null ? (fila.cerrada ? recibo.titulo : FALTA_RECIBO.titulo) : `sueldo ${pesos(p.sueldo)} − recibo ${pesos(p.banco)}`}
+      {enLa2da ? <Vacia testid={`efectivo-mensual-${fila.personaId}`} /> : <div data-testid={`efectivo-mensual-${fila.personaId}`} title={p.negro == null ? (fila.cerrada ? recibo.titulo : FALTA_RECIBO.titulo) : `sueldo ${pesos(p.sueldo)} − recibo ${pesos(p.banco)}`}
         style={{ ...DERECHA, color: p.negro == null ? V.tenue : V.tinta, fontSize: p.negro == null ? '11px' : undefined }}>
         {p.negro == null ? (fila.cerrada ? recibo.texto : FALTA_RECIBO.texto) : pesos(p.negro)}
-      </div>
+      </div>}
       <CeldaPagado campo="pagadoEfectivo" fila={fila} edicion={edicion} />
       <CeldaSaldo fila={fila} lado="efectivo" pago={p} sinDato={sinSaldoCerrada ?? FALTA_RECIBO} />
       {/* RESTO DEL CÁLCULO. */}
@@ -135,7 +141,8 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={efectivoDelRedondeo(fila)}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
-      <CeldaTotal fila={fila} edicion={edicion} />
+      {/* LO ESCRITO A MANO NO SE OCULTA: un Cobra total anotado en la 1ª se sigue viendo y editando. */}
+      {enLa2da && !l.manual.cobra ? <Vacia testid={`total-${fila.personaId}`} /> : <CeldaTotal fila={fila} edicion={edicion} />}
       <CeldaPagadoTotal fila={fila} pago={p} />
       <CeldaSaldo fila={fila} lado="total" pago={p} sinDato={sinSaldoCerrada ?? { texto: 'sin sueldo', titulo: 'Sin sueldo cargado no hay saldo que afirmar.' }} />
       <CeldaSaldoRedondeado fila={fila} pago={p} />
@@ -147,9 +154,10 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir, marca }: {
 export function TotalMensuales({ columnas, t }: { columnas: string; t: TotalesDeMensuales }) {
   const vacia = <div />
   // NADIE CON SUELDO (una cerrada sin líneas selladas de mensuales): el subtotal no es $0, es que no hay cifra.
-  const sinNada = t.personas > 0 && t.sinSueldo === t.personas
+  // LAS FILAS DE LA 1ª QUINCENA DEL MENSUAL NO SUMAN (`enLa2da`): si son todas, tampoco hay cifra que dar.
+  const sinNada = t.personas > 0 && t.sinSueldo + t.enLa2da === t.personas
   // NADIE CON RECIBO: el subtotal de banco y efectivo no se afirma («—»), igual que en cada fila.
-  const sinReparto = t.sinRecibo === t.personas - t.sinSueldo
+  const sinReparto = t.sinRecibo === t.personas - t.sinSueldo - t.enLa2da
   return (
     <div data-testid="mensuales-total" style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
       <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} mensual${t.personas === 1 ? '' : 'es'}`}</div>

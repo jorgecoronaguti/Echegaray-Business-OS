@@ -34,6 +34,8 @@ export interface LineaParaCerrar {
   total: number | null
   sinTarifa: boolean
   reciboSinGiro: boolean
+  /** 1ª quincena de quien cobra por mes: su cobra `null` es la regla (el mes se liquida en la 2ª), no un faltante. */
+  seLiquidaEnLa2da?: boolean
   /** Horas de la quincena que ningún registro imputó a una obra. Van a Estructura. */
   horasSinObra?: number
   /** El presentismo de la línea, para que el sello lo congele (`escribirFoto`). Ausente en llamadores viejos. */
@@ -130,7 +132,8 @@ export function estadoDeCierre(
   const sinTarifa = lineas.filter(faltaLaTarifa)
   // «MENSUAL · IMPORTE NO CARGADO» NO TRABA EL SELLO (dueño, 15/09/2026: «no preguntes más»). La línea
   // queda sin importe —null, nunca $ 0— y no suma a `totalSellado`.
-  const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null && !(l.esJefe === true && l.modalidad === 'mensual'))
+  const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null && !l.seLiquidaEnLa2da
+    && !(l.esJefe === true && l.modalidad === 'mensual'))
   const noCierra = lineas.filter((l) => (
     l.cobra != null && l.enEfectivo != null && l.total != null
     && Math.abs(l.total - (l.porBanco + l.enEfectivo)) > 0.5

@@ -19,7 +19,7 @@
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { efectivoParaRedondear, pagoDelMensual } from './liquidacionPorTipo.ts'
 import { efectivoMostrado } from './efectivoRedondeado.ts'
-import type { ReciboDelEstudio } from './recibosDelEstudio.ts'
+import { MOTIVO_SE_LIQUIDA_EN_LA_2DA, type ReciboDelEstudio } from './recibosDelEstudio.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -87,6 +87,11 @@ export interface ReciboArmado {
  * tampoco trae `sueldo`— se le decía «cobra por mes», que es falso (auditoría 22/09/2026).
  */
 export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Record<ConceptoDelRecibo, string | null> {
+  // LA 1ª QUINCENA DEL MENSUAL NO TIENE RECIBO DE PAGO: el mes se paga una vez, con el de la 2ª.
+  if (l.seLiquidaEnLa2da) {
+    const m = MOTIVO_SE_LIQUIDA_EN_LA_2DA
+    return { horas: m, horasRecibo: m, horasFuera: m, banco: m, efectivo: m, pagado: m }
+  }
   const horas = horasDeLaQuincena(l)
   const sinHoras = mensual ? 'cobra por mes: no se liquida por hora' : 'sin horas cargadas en la quincena'
   // El reparto sólo existe cuando la línea trae el modelo de sueldo. Sin él no se reparte nada: se dice que
@@ -203,6 +208,24 @@ export function quincenaDeOrigen(periodo: string): string {
   const m = /^Q([12])-(\d{2})/.exec(periodo.trim())
   const mes = m ? MESES[Number(m[2]) - 1] : undefined
   return m && mes ? `${m[1]}ª quincena de ${mes}` : periodo.trim()
+}
+
+/**
+ * EL BANCO DEL MENSUAL, RECIBO POR RECIBO, como lo dice el papel («Recibo de sueldo 1ª quincena de septiembre»). Lo
+ * dibuja el panel de la persona: el 02/10 la lista vivía sólo en la cadena de finales y cerradas, y el panel del
+ * mensual —el único que tiene dos recibos— mostraba un solo «Banco». Vacío cuando el banco es un solo recibo.
+ */
+export function renglonesDeLosRecibos(
+  l: { recibosDelEstudio?: readonly ReciboDelEstudio[]; recibosFaltantes?: readonly string[] },
+): { periodo: string; rotulo: string; importe: number | null }[] {
+  const recibos = l.recibosDelEstudio ?? []
+  const faltan = l.recibosFaltantes ?? []
+  if (recibos.length === 0 || recibos.length + faltan.length < 2) return []
+  return [
+    ...recibos.map((r) => ({ periodo: r.periodo, importe: r.neto as number | null })),
+    ...faltan.map((periodo) => ({ periodo, importe: null })),
+  ].sort((a, b) => (a.periodo < b.periodo ? -1 : 1))
+    .map((r) => ({ ...r, rotulo: `${ROTULO_SUB.reciboDeSueldo} ${quincenaDeOrigen(r.periodo)}` }))
 }
 
 /** Varios orígenes se suman en una fila (`leerArrastres`): «Q1-09/2026, Q2-08/2026» → «… y …». */
@@ -326,6 +349,8 @@ export function desglosarBancoSellado(
 }
 
 export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n: number) => string, mensual = false): ReciboArmado {
+  // PAPEL VACÍO = NO SE EMITE, ni desde el panel ni en el lote (`reciboSinNada`). El servidor lo frena también.
+  if (l.seLiquidaEnLa2da) return { horas: [], medios: [], total: null, estimado: false }
   const d = conceptosDisponibles(l, mensual)
   const horas: RenglonDelRecibo[] = []
   if (e.horas && d.horas == null) {

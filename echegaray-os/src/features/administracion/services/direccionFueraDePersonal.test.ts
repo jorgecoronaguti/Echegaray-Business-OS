@@ -65,8 +65,6 @@ const FUERA_DEL_MODULO: Record<string, string> = {
     'escribe la jornada de una obra; no dibuja ninguna lista del módulo Personal',
   'features/administracion/services/presenciaService.ts':
     'exige `obra_actual_id not null`: sin asignación vigente Dirección no entra por definición',
-  'features/administracion/services/recibosDelEstudioService.ts':
-    'lee el puesto de UNA persona por su id para decidir si cobra por mes: no lista gente ni dibuja el padrón',
   'features/administracion/services/eslabonesLegajoService.ts':
     'mapa id → puesto para auditar el legajo: mirar a todos es lo que la auditoría tiene que hacer',
   'features/administracion/services/lecturasCompartidasDeQuincena.ts':

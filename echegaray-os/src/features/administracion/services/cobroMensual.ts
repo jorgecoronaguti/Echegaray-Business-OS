@@ -13,6 +13,12 @@
 
 import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 
+// ═══ ESTO DECIDE EL CUADRO, NO LA LIQUIDACIÓN DEL MES (dueño, 02/10/2026: «solamente desde sept») ═══
+//
+// El jefe sigue en Oficina por su puesto. Pero liquidar por mes —banco = los dos recibos del estudio, la 1ª quincena
+// sin pago— exige neto mensual VIGENTE a esa quincena: `recibosDelEstudio.modalidadDeCobroAl`, la misma para el
+// cuadro, el control del servidor y la reimpresión. Con el puesto, agosto mostraba dos recibos que no le tocaban.
+
 /** Jefe de obra, o neto mensual vigente. Es el criterio de Oficina en `armarCuadros`. */
 export const cobraPorMes = (p: { esJefe?: boolean; netoMensual?: number | null }): boolean =>
   p.esJefe === true || p.netoMensual != null

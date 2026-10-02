@@ -34,7 +34,7 @@ import {
   type TarifaVigente,
 } from './liquidacionQuincena.ts'
 import { cobraPorMes } from './cobroMensual.ts'
-import { recibosDelEstudio } from './recibosDelEstudio.ts'
+import { modalidadDeCobro, recibosDelEstudio, seLiquidaEnLa2da } from './recibosDelEstudio.ts'
 import type { Quincena } from './quincena.ts'
 import { ORDEN_DE_CUADROS, ordenarComoPersonal } from './ordenDePersonal.ts'
 
@@ -197,9 +197,13 @@ function entradaDe(
   const h = ctx.horas.get(p.id) ?? null
   // QUÉ RECIBOS CORRESPONDEN LO DECIDE `recibosDelEstudio` (dueño, 02/10/2026): quien está en Oficina cobra por mes y
   // el estudio le emite dos recibos, uno por quincena; su banco es la suma. Elegir acá sólo el de esta quincena le
-  // dejaba la mitad del mes.
+  // dejaba la mitad del mes. MENSUAL ES LA TARIFA VIGENTE, NO EL CUADRO (`modalidadDeCobro`): un jefe de agosto está en
+  // Oficina por su puesto y cobraba por hora. En la 1ª quincena del mensual va sólo el recibo de esa quincena: el mes
+  // se liquida en la 2ª (`seLiquidaEnLa2da`).
+  const modalidad = modalidadDeCobro(tarifa?.netoMensual)
+  const enLa2da = seLiquidaEnLa2da(modalidad, ctx.quincena.desde)
   const delEstudio = recibosDelEstudio({
-    cuil: p.cuil, modalidad: grupo === 'oficina' ? 'mensual' : 'quincenal', desde: ctx.quincena.desde, filas: ctx.recibos,
+    cuil: p.cuil, modalidad: enLa2da ? 'quincenal' : modalidad, desde: ctx.quincena.desde, filas: ctx.recibos,
   })
   const neto = delEstudio.total
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
@@ -218,6 +222,7 @@ function entradaDe(
     reciboNeto: neto,
     recibosDelEstudio: delEstudio.recibos,
     recibosFaltantes: delEstudio.faltan,
+    ...(enLa2da && grupo === 'oficina' ? { seLiquidaEnLa2da: true } : {}),
     giroEnElLote,
     importeCargado: grupo === 'oficina' ? ctx.importesCargados?.get(p.id) ?? null : null,
   }

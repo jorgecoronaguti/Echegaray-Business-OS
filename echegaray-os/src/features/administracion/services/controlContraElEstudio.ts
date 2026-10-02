@@ -7,7 +7,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { arrastreYaIncluido, type RecibosDelEstudio } from './recibosDelEstudio.ts'
+import {
+  arrastreYaIncluido, MOTIVO_SE_LIQUIDA_EN_LA_2DA, seLiquidaEnLa2da, type ModalidadDeCobro, type RecibosDelEstudio,
+} from './recibosDelEstudio.ts'
 import { leerModalidadDeCobro, leerRecibosDelEstudio } from './recibosDelEstudioService.ts'
 import { quincenaDeOrigen } from './reciboDeLaQuincena.ts'
 import type { ReciboSellado } from './reciboEmitido.ts'
@@ -18,19 +20,21 @@ const pesos = (n: number) => `$ ${n.toLocaleString('es-AR', { minimumFractionDig
 /**
  * Función pura: por qué NO se puede emitir, o `null`. `banco` es el depósito que dice el papel; `null` = el papel no lo
  * lleva. `netoDelEstudio` es el de la quincena (quincenal) o la SUMA de los dos recibos del mes (mensual, dueño
- * 02/10/2026). Si al mensual le falta uno de los dos recibos y el otro ya llegó, no se emite aunque el papel no lleve
- * banco: se dice cuál falta (`faltan`) y no se asume cero.
+ * 02/10/2026). Si al mensual le falta uno de los dos recibos, se dice cuál (`faltan`) y no se asume cero.
+ *
+ * BANCO 0 O NULL EMITE LIBRE, TAMBIÉN AL MENSUAL (auditor, 02/10/2026): el freno por el recibo que falta corría antes
+ * de esa regla y bloqueaba un papel sin depósito, que no tiene nada que cotejar con el estudio.
  */
 export function motivoContraElEstudio(d: {
   nombre: string; estimado: boolean; banco: number | null; netoDelEstudio: number | null; arrastre: number
   mensual?: boolean; faltan?: readonly string[]; cargados?: number
 }): string | null {
   const faltan = d.faltan ?? []
+  // SIN DEPÓSITO EN BANCO NO HAY RECIBO DEL ESTUDIO QUE COTEJAR (todo en efectivo, finales, subcontratados).
+  if (d.banco == null || Math.abs(d.banco) < 0.005) return null
   if (d.mensual && faltan.length > 0 && (d.cargados ?? 0) > 0) {
     return `A ${d.nombre} se le paga por mes con los dos recibos del estudio y falta el de la ${faltan.map(quincenaDeOrigen).join(' y el de la ')}: no se emite hasta que llegue.`
   }
-  // SIN DEPÓSITO EN BANCO NO HAY RECIBO DEL ESTUDIO QUE COTEJAR (todo en efectivo, finales, subcontratados).
-  if (d.banco == null || Math.abs(d.banco) < 0.005) return null
   if (d.estimado || d.netoDelEstudio == null) {
     const cual = d.mensual && faltan.length > 0 ? `${faltan.length > 1 ? 'los recibos' : 'el recibo'} de la ${faltan.map(quincenaDeOrigen).join(' y la ')}` : 'el recibo del estudio de esta quincena'
     return `Todavía no llegó ${cual} para ${d.nombre}: el recibo se puede ver como estimado, pero no se emite.`
@@ -52,20 +56,33 @@ function arrastreReal(filas: unknown[], estudio: RecibosDelEstudio): number {
   }, 0))
 }
 
+/**
+ * LA 1ª QUINCENA DE QUIEN COBRA POR MES NO TIENE RECIBO DE PAGO (dueño, 02/10/2026): el mes se paga una vez, desde la
+ * 2ª. La pantalla ya no lo ofrece; esto es para quien llame a la acción sin pasar por ella. Puro.
+ */
+export const motivoDeLaQuincena = (modalidad: ModalidadDeCobro, desde: string): string | null =>
+  seLiquidaEnLa2da(modalidad, desde) ? MOTIVO_SE_LIQUIDA_EN_LA_2DA : null
+
 /** Lee del estudio y de los arrastres, y decide. Si no puede leer, NO deja emitir: un control que no mira no aprueba. */
 export async function verificarContraElEstudio(supabase: SupabaseClient, r: ReciboSellado): Promise<string | null> {
   const sinBanco = r.banco == null || Math.abs(r.banco) < 0.005
   if (!sinBanco && r.estimado) return motivoContraElEstudio({ nombre: r.nombre, estimado: true, banco: r.banco, netoDelEstudio: null, arrastre: 0 })
   const noPude = `No pude verificar el recibo de ${r.nombre} contra el del estudio. No lo emití.`
-  // SIN BANCO el único freno posible es el del mensual con un recibo del mes sin llegar; para el resto, como siempre:
-  // quien cobra todo en efectivo emite, aunque la lectura de la modalidad falle.
-  if (sinBanco && (await leerModalidadDeCobro(supabase, r.personaId, r.quincenaHasta)) !== 'mensual') return null
-  const [per, arr, modalidad] = await Promise.all([
+  const modalidad = await leerModalidadDeCobro(supabase, r.personaId, r.quincenaHasta)
+  // SIN BANCO EMITE LIBRE, salvo la 1ª quincena del mensual. Sin poder leer la modalidad, la 2ª emite como siempre
+  // (quien cobra todo en efectivo); la 1ª no, porque ahí la modalidad ES el control y uno que no mira no aprueba.
+  if (sinBanco) {
+    if (modalidad != null) return motivoDeLaQuincena(modalidad, r.quincenaDesde)
+    return Number(r.quincenaDesde.slice(8, 10)) === 1 ? noPude : null
+  }
+  if (modalidad == null) return noPude
+  const enLa1ra = motivoDeLaQuincena(modalidad, r.quincenaDesde)
+  if (enLa1ra) return enLa1ra
+  const [per, arr] = await Promise.all([
     supabase.from('persona_legajo').select('cuil').eq('id', r.personaId).maybeSingle(),
     supabase.from('liquidacion_arrastre').select('importe, periodo_origen').eq('persona_id', r.personaId).eq('desde', r.quincenaDesde),
-    leerModalidadDeCobro(supabase, r.personaId, r.quincenaHasta),
   ])
-  if (per.error || arr.error || modalidad == null) return noPude
+  if (per.error || arr.error) return noPude
   const cuil = typeof per.data?.cuil === 'string' ? per.data.cuil : null
   const estudio = await leerRecibosDelEstudio(supabase, { cuil, modalidad, desde: r.quincenaDesde })
   if (!estudio) return noPude

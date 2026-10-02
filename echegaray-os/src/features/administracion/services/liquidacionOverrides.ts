@@ -36,6 +36,7 @@ import { cobraConPresentismo, presentismoDeLinea, presentismoNoAplica, type Entr
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
 import { pagoDeLaLinea, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { ArrastreAplicado, ArrastreDeLinea, ArrastreSaliente } from './liquidacionArrastre.ts'
+import type { PagadoDeLa1ra } from './recibosDelEstudio.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -217,6 +218,11 @@ export interface LineaConOverrides extends LineaLiquidada {
   arrastreIncluido?: ArrastreDeLinea | null
   /** Del lado del origen: la parte de su recibo que otra quincena paga por banco. */
   arrastradoA?: ArrastreSaliente | null
+  /**
+   * 2ª quincena de quien cobra por mes: lo pagado en la 1ª, que cuenta contra el mes (`pagoDelMensual`). No está en
+   * `pagadoBanco` / `pagadoEfectivo`, que son lo registrado en ESTA quincena (el legajo suma las dos).
+   */
+  pagadoEnLa1ra?: PagadoDeLa1ra | null
   /**
    * LA CUENTA QUE ESCRIBIÓ UNA PERSONA EN CADA CELDA, por campo: `{ pagadoEfectivo: '=100000+40000' }`.
    *

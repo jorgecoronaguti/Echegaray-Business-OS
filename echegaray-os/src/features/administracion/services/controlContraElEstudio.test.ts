@@ -89,13 +89,43 @@ test('mensual con los dos recibos: el banco de la suma se emite; el de la 2ª so
   assert.match(m ?? '', /no coincide con los dos recibos del estudio \(\$ 1\.391\.446,92\)/)
 })
 
-test('mensual con un recibo faltante: no se emite, nombra cuál falta, aunque el papel no lleve banco', async () => {
+test('mensual con un recibo faltante y banco en el papel: no se emite, nombra cuál falta', async () => {
   const m = await verificarContraElEstudio(mensual([Q1M]), sellado(705532.04))
   assert.match(m ?? '', /falta el de la 2ª quincena de septiembre/)
-  const sinBanco = await verificarContraElEstudio(mensual([Q2M]), sellado(null))
-  assert.match(sinBanco ?? '', /falta el de la 1ª quincena de septiembre/)
-  // Ninguno cargado y sin banco: todo en efectivo, se emite como siempre.
+})
+
+// BANCO 0 O NULL EMITE LIBRE, TAMBIÉN AL MENSUAL (02/10/2026). Antes el freno del recibo faltante corría primero y
+// bloqueaba un papel sin depósito. MUTACIÓN: devolver ese freno antes de la regla del banco → rojo.
+test('mensual con un recibo faltante y banco 0/null: emite libre', async () => {
+  assert.equal(await verificarContraElEstudio(mensual([Q2M]), sellado(null)), null)
+  assert.equal(await verificarContraElEstudio(mensual([Q2M]), sellado(0)), null)
+  assert.equal(motivoContraElEstudio({
+    nombre: 'M', estimado: false, banco: null, netoDelEstudio: null, arrastre: 0, mensual: true, faltan: ['Q1-09/2026'], cargados: 1,
+  }), null)
   assert.equal(await verificarContraElEstudio(mensual([]), sellado(null)), null)
+})
+
+// LA 1ª QUINCENA DEL MENSUAL NO TIENE RECIBO DE PAGO, y lo frena el SERVIDOR aunque el papel llegue armado.
+const enLa1ra = (banco: number | null) => sellado(banco, { quincenaDesde: '2026-09-01', quincenaHasta: '2026-09-15' })
+
+test('1ª quincena de un mensual (tarifa vigente): el servidor no emite, con o sin banco', async () => {
+  assert.equal(await verificarContraElEstudio(mensual([Q1M]), enLa1ra(705532.04)), 'Se liquida en la 2ª quincena.')
+  assert.equal(await verificarContraElEstudio(mensual([Q1M]), enLa1ra(null)), 'Se liquida en la 2ª quincena.')
+  // Sin poder leer la tarifa en la 1ª, no se aprueba a ciegas.
+  const ciego = falso({ persona_tarifa: { error: { message: 'x' } } })
+  assert.match(await verificarContraElEstudio(ciego, enLa1ra(null)) ?? '', /No pude verificar/)
+})
+
+// «SÓLO DESDE SEPT»: un jefe de obra sin tarifa mensual vigente (agosto) es quincenal a estos efectos.
+test('1ª quincena de agosto del mismo jefe: tarifa mensual desde 01/09 no rige, se coteja su recibo de la quincena', async () => {
+  const sb = falso({
+    persona_legajo: { data: { cuil: '20-35923266-8' } }, persona_directorio: { data: { puesto: 'Jefe de obra' } },
+    persona_tarifa: { data: [{ desde: '2026-09-01', neto_mensual: 2500000 }] }, liquidacion_arrastre: { data: [] },
+    nomina_recibo_neto: { data: [{ cuil: '20359232668', periodo: 'Q1-08/2026', neto: 650000 }, { cuil: '20359232668', periodo: 'Q2-08/2026', neto: 676667.64 }] },
+  })
+  const ago = (banco: number | null) => sellado(banco, { quincenaDesde: '2026-08-01', quincenaHasta: '2026-08-15' })
+  assert.equal(await verificarContraElEstudio(sb, ago(650000)), null)
+  assert.equal(await verificarContraElEstudio(sb, ago(null)), null)
 })
 
 test('mensual con arrastre de su propio recibo Q1: no se cuenta dos veces', async () => {
