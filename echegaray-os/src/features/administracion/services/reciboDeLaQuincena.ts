@@ -18,7 +18,6 @@
 
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { pagoDelMensual } from './liquidacionPorTipo.ts'
-import { arrastreAplicado } from './liquidacionArrastre.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -211,11 +210,29 @@ const origenesDichos = (periodoOrigen: string): string => periodoOrigen.split(',
  * debajo van las dos partes: el neto del recibo de sueldo, que es el del estudio, y el saldo del recibo de otra
  * quincena que se paga por este banco. Los importes pagados no cambian; sólo se dice de dónde sale cada uno.
  */
-function desgloseDelBanco(neto: number, arrastre: number, periodoOrigen: string): RenglonDelRecibo[] {
+function desgloseDelBanco(neto: number, arrastre: number, periodoOrigen: string, residuo = 0): RenglonDelRecibo[] {
   return [
     { rotulo: `${ROTULO.banco} · recibo de sueldo`, importe: neto, sub: true },
-    { rotulo: `${ROTULO.banco} · saldo del recibo de la ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true },
+    ...(arrastre > 0 ? [{ rotulo: `${ROTULO.banco} · saldo del recibo de la ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true }] : []),
+    // LO QUE NO CIERRA SE DICE: el neto del estudio manda y la diferencia queda a la vista, no repartida en silencio.
+    ...(residuo !== 0 ? [{ rotulo: `${ROTULO.banco} · diferencia a revisar`, importe: residuo, sub: true }] : []),
   ]
+}
+
+/** La resta de otro recibo que este banco paga: la aplicada (quincena abierta) o la ya incluida en el banco sellado (cerrada). */
+function restaDelBanco(l: LineaConOverrides): { importe: number; periodoOrigen: string } | null {
+  const a = l.arrastre?.estado === 'aplicado' ? l.arrastre : l.arrastreIncluido
+  return a && a.importe > 0 ? { importe: r2(a.importe), periodoOrigen: a.periodoOrigen } : null
+}
+
+/**
+ * EL NETO DEL RECIBO DEL ESTUDIO, LEÍDO DE ÉL (no restado del banco): el de la línea cuando viene del recibo o de
+ * la nómina, o el que la línea cerrada conserva (`reciboNeto`). `null` = no hay recibo del estudio.
+ */
+function netoDelEstudio(l: LineaConOverrides): number | null {
+  const o = l.sueldo?.origenNeto
+  if (l.sueldo && (o === 'recibo' || o === 'nomina') && l.sueldo.neto != null) return l.sueldo.neto
+  return l.reciboNeto ?? null
 }
 
 /** La cuenta del efectivo a la vista: lo que cobra menos lo que sale por banco. */
@@ -243,12 +260,15 @@ export function desglosarBancoSellado(
 ): RenglonDelRecibo[] {
   const i = medios.findIndex((m) => !m.sub && m.rotulo === ROTULO.banco)
   const banco = i >= 0 ? medios[i].importe : null
-  if (i < 0 || banco == null || d.netoDelEstudio == null || !d.arrastre || !(d.arrastre.importe > 0)) return medios
+  if (i < 0 || banco == null || d.netoDelEstudio == null) return medios
   if (medios.some((m) => m.sub && m.rotulo.startsWith(`${ROTULO.banco} ·`))) return medios
-  if (r2(d.netoDelEstudio + d.arrastre.importe) !== r2(banco)) return medios
-  const sal = medios.map((m) => (!m.sub && m.rotulo === ROTULO.efectivo && m.importe != null && !m.detalle
+  const resta = d.arrastre && d.arrastre.importe > 0 ? r2(d.arrastre.importe) : 0
+  const neto = r2(d.netoDelEstudio)
+  const residuo = r2(banco - resta - neto)
+  if (resta === 0 && residuo === 0) return medios
+  const sal = medios.map((m) => (!m.sub && m.rotulo === ROTULO.efectivo && m.importe != null && !m.detalle && resta > 0
     ? { ...m, detalle: cuentaDelEfectivo(banco, m.importe, fmt) } : m))
-  sal.splice(i + 1, 0, ...desgloseDelBanco(r2(d.netoDelEstudio), r2(d.arrastre.importe), d.arrastre.periodoOrigen))
+  sal.splice(i + 1, 0, ...desgloseDelBanco(neto, resta, d.arrastre?.periodoOrigen ?? '', residuo))
   return sal
 }
 
@@ -278,18 +298,22 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
   for (const [clave, rotulo] of [['banco', ROTULO.banco], ['efectivo', ROTULO.efectivo]] as const) {
     if (!e[clave]) continue
     const x = m[clave]
-    const resta = clave === 'banco' ? arrastreAplicado(l) : 0
+    const restaDe = clave === 'banco' ? restaDelBanco(l) : null
+    const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && bancoEstimado(l)
     if (estimadoAca) estimado = true
-    const efectivoAbierto = clave === 'efectivo' && e.banco && arrastreAplicado(l) > 0 && m.banco.total != null && x.total != null
+    const efectivoAbierto = clave === 'efectivo' && e.banco && restaDelBanco(l) != null && m.banco.total != null && x.total != null
     renglones.push({
       rotulo, importe: x.total,
       ...(estimadoAca ? { detalle: 'ESTIMADO: todavía no hay recibo del estudio' } : {}),
       ...(efectivoAbierto ? { detalle: cuentaDelEfectivo(m.banco.total as number, x.total as number, fmt) } : {}),
     })
     elegidos.push(x.total)
-    if (resta > 0 && x.total != null && l.arrastre) {
-      renglones.push(...desgloseDelBanco(r2(x.total - resta), resta, l.arrastre.periodoOrigen))
+    if (clave === 'banco' && x.total != null) {
+      const estudio = netoDelEstudio(l)
+      const neto = estudio ?? r2(x.total - resta)
+      const residuo = r2(x.total - resta - neto)
+      if (resta > 0 || residuo !== 0) renglones.push(...desgloseDelBanco(r2(neto), resta, restaDe?.periodoOrigen ?? '', residuo))
     }
     if (e.pagado && x.pagado != null) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })

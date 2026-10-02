@@ -217,12 +217,43 @@ test('sin el recibo del estudio el banco va rotulado ESTIMADO y el recibo no es 
   assert.equal(sellarRecibo({ personaId: 'p1', nombre: 'A', categoria: null, desde: '2026-09-16', hasta: '2026-09-30' }, r).estimado, true)
 })
 
+test('la quincena CERRADA desglosa igual que la abierta: mismos renglones, mismos importes, mismo total', () => {
+  const abierta = lineaDelEstudio('recibo', ARRASTRE)
+  // Cerrada: el banco sellado ya trae el arrastre adentro, la línea no tiene modelo de sueldo y conserva el neto del
+  // estudio en `reciboNeto`; el arrastre viaja sólo como dato (`arrastreIncluido`), nunca como suma.
+  const cerrada = {
+    ...abierta, sueldo: null, reciboNeto: NETO_DEL_ESTUDIO, arrastre: undefined,
+    arrastreIncluido: { importe: ARRASTRE, motivo: 'Resta recibo Q1-09', periodoOrigen: 'Q1-09/2026' },
+  } as unknown as LineaConOverrides
+  const a = armarRecibo(abierta, eleccion, pesosAR)
+  const c = armarRecibo(cerrada, eleccion, pesosAR)
+  assert.deepEqual(c.medios.map((m) => [m.rotulo, m.importe]), a.medios.map((m) => [m.rotulo, m.importe]))
+  assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380257.52])
+  assert.equal(c.total, TOTAL)
+  assert.equal(a.total, c.total)
+})
+
+test('si el banco no cierra con el neto del estudio, el papel lo dice: neto del estudio + «diferencia a revisar»', () => {
+  // Caso real (RP-000001): sellado 258.066,48 contra neto 243.158,36 + saldo 16.558,72 → residuo −1.650,60.
+  const base = {
+    personaId: 'p2', porBanco: 241507.76, enEfectivo: 300000,
+    sueldo: { horasBlanco: 45, horasNegro: 51, origenNeto: 'recibo', estado: 'recibo', neto: 243158.36 },
+    pago: pagoDeLaLinea({ banco: 241507.76, negro: 300000 }),
+  } as unknown as LineaConOverrides
+  const l = conArrastre(base, { importe: 16558.72, motivo: 'Resta recibo Q1-09', periodoOrigen: 'Q1-09/2026' })
+  const r = armarRecibo(l, eleccion, pesosAR)
+  assert.deepEqual(r.medios.slice(0, 4).map((m) => m.importe), [258066.48, 243158.36, 16558.72, -1650.6])
+  assert.match(r.medios[3].rotulo, /diferencia a revisar/)
+})
+
 test('reimprimir un recibo sellado con el banco junto lo desglosa, sin tocar importes ni total', () => {
   const sellado = [{ rotulo: ROTULO.banco, importe: 289543.8 }, { rotulo: ROTULO.efectivo, importe: 380257.52 }]
   const arrastre = { importe: ARRASTRE, periodoOrigen: 'Q1-09/2026' }
   const d = desglosarBancoSellado(sellado, { netoDelEstudio: NETO_DEL_ESTUDIO, arrastre }, pesosAR)
   assert.deepEqual(d.map((m) => m.importe), [289543.8, NETO_DEL_ESTUDIO, ARRASTRE, 380257.52])
-  // Si el neto del estudio no cierra con el banco sellado, no se inventa un desglose: el papel sale como se selló.
-  assert.deepEqual(desglosarBancoSellado(sellado, { netoDelEstudio: 1, arrastre }, pesosAR), sellado)
+  // Si el neto del estudio no cierra con el banco sellado, el residuo se dice, no se disimula.
+  const raro = desglosarBancoSellado(sellado, { netoDelEstudio: 234000, arrastre }, pesosAR)
+  assert.equal(raro[3].importe, 963.32)
+  assert.match(raro[3].rotulo, /diferencia a revisar/)
   assert.deepEqual(desglosarBancoSellado(sellado, { netoDelEstudio: null, arrastre }, pesosAR), sellado)
 })

@@ -35,7 +35,7 @@ import { sueldoBlancoNegro, valorHoraDelBlanco, type EntradaDeBlanco, type Sueld
 import { cobraConPresentismo, presentismoDeLinea, presentismoNoAplica, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
 import { pagoDeLaLinea, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
-import type { ArrastreAplicado, ArrastreSaliente } from './liquidacionArrastre.ts'
+import type { ArrastreAplicado, ArrastreDeLinea, ArrastreSaliente } from './liquidacionArrastre.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -210,6 +210,11 @@ export interface LineaConOverrides extends LineaLiquidada {
   pago: PagoDeLaLinea
   /** La resta de un recibo anterior que esta quincena paga por banco (`liquidacionArrastre.ts`). */
   arrastre?: ArrastreAplicado | null
+  /**
+   * Quincena CERRADA: la resta que su banco sellado YA trae adentro. Es sólo un dato para decirlo en el recibo; no se
+   * suma ni se resta en ninguna cuenta (por eso no es `arrastre`, que los totales sí suman).
+   */
+  arrastreIncluido?: ArrastreDeLinea | null
   /** Del lado del origen: la parte de su recibo que otra quincena paga por banco. */
   arrastradoA?: ArrastreSaliente | null
   /**

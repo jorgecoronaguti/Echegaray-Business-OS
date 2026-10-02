@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { liquidaSueldos } from '@/features/auth/types/areas'
+import { verificarContraElEstudio } from './controlContraElEstudio.ts'
 import {
   mismoPapel, motivoParaNoEmitir, type PapelDelRecibo, type ReciboDelLoteGuardado, type ReciboSellado,
 } from './reciboEmitido.ts'
@@ -52,6 +53,8 @@ const selladoSchema = z.object({
   efectivo: z.number().finite().nullable(),
   total: z.number().finite().nullable(),
   renglones: z.object({ horas: z.array(renglon).max(20), medios: z.array(renglon).max(40) }),
+  // Se declara para que el esquema no la descarte; igual NO se le cree: el servidor mira el estudio (`verificarContraElEstudio`).
+  estimado: z.boolean().optional(),
 })
 
 /**
@@ -95,11 +98,10 @@ async function puedeEmitir(supabase: Cliente): Promise<string | null> {
 }
 
 async function registrar(supabase: Cliente, r: ReciboSellado): Promise<ReciboAceptado> {
-  // UN ESTIMADO NO SE NUMERA COMO DEFINITIVO: el RP quedaría en el legajo con un banco que el estudio todavía no
-  // confirmó, y después habría que anularlo (pasó con RP-000001, 30/09). Se imprime la vista, no se sella.
-  if (r.estimado) {
-    return { ok: false, error: `El depósito en banco de ${r.nombre} es estimado: todavía no hay recibo del estudio para esta quincena.` }
-  }
+  // UN ESTIMADO, O UN BANCO QUE NO CIERRA CON EL ESTUDIO, NO SE NUMERA COMO DEFINITIVO: el RP quedaría en el legajo y
+  // después habría que anularlo (pasó con RP-000001, 30/09). Lo decide el servidor mirando el estudio, no la pantalla.
+  const motivo = await verificarContraElEstudio(supabase, r)
+  if (motivo) return { ok: false, error: motivo }
   const { data: id, error } = await supabase.rpc('registrar_recibo_liquidacion', {
     p_persona: r.personaId,
     p_desde: r.quincenaDesde,

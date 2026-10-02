@@ -115,7 +115,9 @@ export async function leerArrastres(supabase: SupabaseClient, desde: string, per
  * siempre.
  */
 export function conArrastres(l: LineaConOverrides, a: ArrastresDeLaQuincena, abierta: boolean): LineaConOverrides {
-  const conEntrante = abierta ? conArrastre(l, a.entrantes.get(l.personaId)) : l
+  const entrante = a.entrantes.get(l.personaId)
+  // La cerrada no suma: su banco sellado ya lo trae. Pero el recibo tiene que poder decir cuánto de ese banco es resta.
+  const conEntrante = abierta ? conArrastre(l, entrante) : entrante && entrante.importe > 0 ? { ...l, arrastreIncluido: entrante } : l
   const saliente = a.salientes.get(l.personaId) ?? null
   return saliente ? { ...conEntrante, arrastradoA: saliente } : conEntrante
 }
