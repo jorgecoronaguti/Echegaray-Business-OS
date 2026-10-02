@@ -18,7 +18,8 @@ import { afuera, hoyIso } from '../logica/arreglo'
 import { ArreglosAfuera } from './ArreglosAfuera'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
-import { FichaRevision } from './FichaRevision'
+import { PanelRodado } from './PanelRodado'
+import { seRevisa } from '../logica/revision'
 import { RevisionesMantenimiento } from './RevisionesMantenimiento'
 import { SUPERFICIE, V, bajadaPagina, botonSecundario, eyebrow, tituloPagina } from './estilo'
 
@@ -41,6 +42,7 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
   // `?revision=<código>` abre la ficha de revisión (RTO, service, seguro, inspección) en vez de la del activo.
   const revisado = revision ? parque.activos.find((a) => a.codigo === revision) ?? null : null
 
+  const panelDe = (elegido ?? revisado)!
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 640 }}>
       <div style={{ flex: 1, minWidth: 0, padding: '22px 26px 30px', display: 'flex', flexDirection: 'column', gap: 26 }} data-testid="mantenimiento">
@@ -85,11 +87,12 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
         <SeOperanConGente parque={parque} />
       </div>
       <div style={{ width: 2, background: V.linea }} />
-      {!conPanel && (elegido || revisado) && (
+      {!conPanel && (elegido ?? revisado) && (
       <div style={{ width: 430, maxWidth: '100%', flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
-        {elegido
-          ? <Ficha id={elegido.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
-          : <FichaRevision id={revisado!.id} onCerrar={() => router.replace(ruta, { scroll: false })} />}
+        {/* Un rodado o una máquina abre SIEMPRE el mismo panel, venga de la tabla que venga. */}
+        {seRevisa(panelDe)
+          ? <PanelRodado key={panelDe.id} id={panelDe.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
+          : <Ficha id={panelDe.id} onCerrar={() => router.replace(ruta, { scroll: false })} />}
       </div>
       )}
     </div>

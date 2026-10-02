@@ -12,19 +12,22 @@ import { useRef, useState } from 'react'
 import { registrarRevisionAction, type EntradaRevision } from '../services/acciones-revision'
 import { subirFotoDeActivo } from '../services/subida-foto'
 import {
-  CON_RESULTADO, NOMBRE_RESULTADO, NOMBRE_REVISION, TIPOS_POR_CLASE, UNIDAD_LECTURA, type ClaseRevisable, type ResultadoRevision, type TipoRevision,
+  NOMBRE_RESULTADO, NOMBRE_REVISION, TIPOS_POR_CLASE, type ClaseRevisable, type ResultadoRevision, type TipoRevision,
 } from '../logica/revision'
+import { camposDe, faltaParaGuardar, valoresParaEnviar } from '../logica/revision-campos'
 import { V, campo, eyebrow } from './estilo'
 
 const ZONA = 'America/Argentina/San_Juan'
 /** Hoy en San Juan como yyyy-mm-dd: el servidor corre en UTC y a las 22 h ya sería mañana. */
 const hoyIso = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA })
 
-export function FormularioRevision({ activo, clase, variante = 'escritorio', tipoInicial, onHecho, onCancelar }: {
+export function FormularioRevision({ activo, clase, variante = 'escritorio', tipoInicial, tipoFijo = false, onHecho, onCancelar }: {
   activo: string
   clase: ClaseRevisable
   variante?: 'escritorio' | 'telefono'
   tipoInicial?: TipoRevision
+  /** El tipo ya lo eligió quien llegó (la fila «cargar» de la ficha): no se vuelve a preguntar. */
+  tipoFijo?: boolean
   onHecho: (texto: string) => void
   onCancelar?: () => void
 }) {
@@ -43,8 +46,8 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const input = useRef<HTMLInputElement>(null)
-  const conResultado = CON_RESULTADO.includes(tipo)
-  const unidad = UNIDAD_LECTURA[clase]
+  const c = camposDe(tipo, clase)
+  const conResultado = c.resultado
 
   const alto = tel ? 48 : 34
   const fuente = tel ? '16px' : '13.5px'
@@ -52,6 +55,9 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
   const rotulo = { ...eyebrow, marginBottom: tel ? 6 : 4, display: 'block' as const }
 
   async function enviar() {
+    const valores = valoresParaEnviar(tipo, clase, { fecha, vencimiento, lectura, resultado, lugar, numero, costo, observaciones })
+    const falta = faltaParaGuardar(tipo, clase, valores)
+    if (falta) return setError(falta)
     setEnviando(true)
     setError(null)
     let adjunto: string | undefined
@@ -61,7 +67,7 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
       adjunto = s.ruta
     }
     const entrada: EntradaRevision = {
-      activo, tipo, fecha, vencimiento, lectura, resultado: conResultado ? resultado : '', lugar, numero, costo, observaciones, adjunto,
+      activo, tipo, ...valores, adjunto,
     }
     const r = await registrarRevisionAction(entrada).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : 'No se pudo registrar' }))
     setEnviando(false)
@@ -71,7 +77,7 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
 
   return (
     <div data-testid="formulario-revision" style={{ display: 'flex', flexDirection: 'column', gap: tel ? 16 : 12 }}>
-      <div>
+      {!tipoFijo && <div>
         <span style={rotulo}>Qué revisión</span>
         <div role="radiogroup" style={{ display: 'flex', gap: tel ? 8 : 6, flexWrap: 'wrap' }}>
           {tipos.map((t) => (
@@ -84,33 +90,41 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
             </label>
           ))}
         </div>
-      </div>
+      </div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: tel ? '1fr' : '1fr 1fr', gap: tel ? 14 : 12 }}>
         <label>
-          <span style={rotulo}>Fecha de la revisión</span>
+          <span style={rotulo}>{c.fecha}</span>
           <input type="date" value={fecha} max={hoyIso()} onChange={(e) => setFecha(e.target.value)} style={estiloCampo} data-testid="revision-fecha" required />
         </label>
         <label>
-          <span style={rotulo}>{tipo === 'service' ? 'Próximo service (fecha)' : 'Vence'}</span>
+          <span style={rotulo}>{c.vence}{c.venceObligatorio ? '' : ' · opcional'}</span>
           <input type="date" value={vencimiento} min={fecha} onChange={(e) => setVencimiento(e.target.value)} style={estiloCampo} data-testid="revision-vencimiento" />
         </label>
-        <label>
-          <span style={rotulo}>{unidad === 'km' ? 'Kilometraje' : 'Horómetro (horas)'}</span>
-          <input type="number" inputMode="decimal" min={0} step="0.1" value={lectura} onChange={(e) => setLectura(e.target.value)} placeholder={unidad === 'km' ? 'km' : 'h'} style={estiloCampo} data-testid="revision-lectura" />
-        </label>
-        <label>
-          <span style={rotulo}>{tipo === 'rto' ? 'N° de certificado / oblea' : tipo === 'seguro' ? 'N° de póliza' : 'N° de orden o remito'}</span>
-          <input type="text" value={numero} maxLength={80} onChange={(e) => setNumero(e.target.value)} style={estiloCampo} data-testid="revision-numero" />
-        </label>
-        <label style={{ gridColumn: tel ? undefined : '1 / -1' }}>
-          <span style={rotulo}>{tipo === 'rto' ? 'Planta de RTO' : tipo === 'seguro' ? 'Compañía' : tipo === 'service' ? 'Taller' : 'Quién inspeccionó'}</span>
-          <input type="text" value={lugar} maxLength={160} onChange={(e) => setLugar(e.target.value)} style={estiloCampo} data-testid="revision-lugar" />
-        </label>
-        <label>
-          <span style={rotulo}>Costo (opcional)</span>
-          <input type="number" inputMode="decimal" min={0} step="0.01" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="$" style={estiloCampo} data-testid="revision-costo" />
-        </label>
+        {c.lectura && (
+          <label>
+            <span style={rotulo}>{c.lectura}</span>
+            <input type="number" inputMode="decimal" min={0} step="0.1" value={lectura} onChange={(e) => setLectura(e.target.value)} placeholder={clase === 'rodado' ? 'km' : 'h'} style={estiloCampo} data-testid="revision-lectura" />
+          </label>
+        )}
+        {c.numero && (
+          <label>
+            <span style={rotulo}>{c.numero}</span>
+            <input type="text" value={numero} maxLength={80} onChange={(e) => setNumero(e.target.value)} style={estiloCampo} data-testid="revision-numero" />
+          </label>
+        )}
+        {c.lugar && (
+          <label style={{ gridColumn: tel ? undefined : '1 / -1' }}>
+            <span style={rotulo}>{c.lugar}</span>
+            <input type="text" value={lugar} maxLength={160} onChange={(e) => setLugar(e.target.value)} style={estiloCampo} data-testid="revision-lugar" />
+          </label>
+        )}
+        {c.costo && (
+          <label>
+            <span style={rotulo}>Costo (opcional)</span>
+            <input type="number" inputMode="decimal" min={0} step="0.01" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="$" style={estiloCampo} data-testid="revision-costo" />
+          </label>
+        )}
       </div>
 
       {conResultado && (
@@ -142,16 +156,16 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
 
       <button type="button" onClick={() => input.current?.click()} data-testid="revision-foto"
         style={{ height: alto, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: tel ? '14px' : '13px', color: foto ? V.pos : V.tinta }}>
-        {foto ? 'Foto lista · cambiar' : 'Foto del certificado o ticket (opcional)'}
+        {foto ? 'Foto lista · cambiar' : `${c.foto} (opcional)`}
       </button>
       <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { setFoto(e.target.files?.[0] ?? null); e.target.value = '' }} />
 
       {error && <div role="alert" style={{ fontSize: tel ? '13.5px' : '12.5px', color: V.neg, lineHeight: 1.5 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', ...(tel ? { position: 'sticky', bottom: 0, margin: 'auto -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: V.fondo } : {}) }}>
-        <button type="button" onClick={enviar} disabled={enviando || !fecha} data-testid="guardar-revision"
-          style={{ height: tel ? 52 : 38, flex: tel ? 1 : undefined, padding: '0 18px', borderRadius: 6, border: 0, background: V.marca, color: V.grafito, fontSize: tel ? '15px' : '13.5px', fontWeight: 600, cursor: 'pointer', opacity: fecha ? 1 : 0.45 }}>
-          {enviando ? 'Guardando…' : 'Guardar revisión'}
+        <button type="button" onClick={enviar} disabled={enviando} data-testid="guardar-revision"
+          style={{ height: tel ? 52 : 38, flex: tel ? 1 : undefined, padding: '0 18px', borderRadius: 6, border: 0, background: V.marca, color: V.grafito, fontSize: tel ? '15px' : '13.5px', fontWeight: 600, cursor: 'pointer' }}>
+          {enviando ? 'Guardando…' : c.guardar}
         </button>
         {onCancelar && <button type="button" onClick={onCancelar} style={{ fontSize: tel ? '14px' : '13px', color: V.apagado, padding: '0 10px' }}>Cancelar</button>}
       </div>

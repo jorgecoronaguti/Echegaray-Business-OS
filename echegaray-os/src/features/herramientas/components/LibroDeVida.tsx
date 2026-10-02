@@ -27,7 +27,7 @@ const COLOR = { pos: V.pos, warn: V.warn, neg: V.neg } as const
 /** Qué formulario está abierto: uno nuevo, o el de un evento (pasa al mecánico, vuelve, o se resolvió sin mecánico). */
 type Abierto = { nuevo: 'arreglo' | 'novedad' } | { evento: string; modo: 'mecanico' | 'volvio' | 'hecho' } | null
 
-export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, variante = 'escritorio', onCargado }: {
+export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, variante = 'escritorio', onCargado, alReportar, sinHistorial = false }: {
   activo: Pick<Activo, 'id' | 'estado' | 'nombre' | 'clase' | 'cantidad'>
   /** `null` = la migración todavía no está aplicada. */
   eventos: Evento[] | null
@@ -36,6 +36,10 @@ export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, varian
   nombres?: Record<string, string>
   variante?: 'escritorio' | 'telefono'
   onCargado?: () => void
+  /** Si viene, el primer botón es «Reportar una falla»: el panel del rodado reporta y arregla desde el mismo lugar. */
+  alReportar?: () => void
+  /** El panel del rodado junta fallas, arreglos y revisiones en su propio historial: acá no se repite. */
+  sinHistorial?: boolean
 }) {
   const router = useRouter()
   const tel = variante === 'telefono'
@@ -112,16 +116,22 @@ export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, varian
           : <FormularioEvento activo={activo.id} clase={activo.clase} proveedores={proveedores} variante={variante} onHecho={cerrar} onCancelar={() => setFormulario(null)} />
       ) : !formulario && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {alReportar && (
+            <button type="button" onClick={() => { setAviso(null); alReportar() }} data-testid="reportar-falla"
+              style={abiertosA.length ? { ...botonSecundario, minHeight: alto } : { ...botonPrimarioGrande, minHeight: alto, height: alto }}>
+              Reportar una falla
+            </button>
+          )}
           <button type="button" onClick={() => { setAviso(null); setFormulario({ nuevo: 'arreglo' }) }} style={{ ...botonSecundario, minHeight: alto }} data-testid="cargar-arreglo">
             Lo llevé al mecánico
           </button>
           <button type="button" onClick={() => { setAviso(null); setFormulario({ nuevo: 'novedad' }) }} style={{ ...botonSecundario, minHeight: alto }} data-testid="cargar-novedad">
-            Otra novedad
+            Anotar un trabajo o service
           </button>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${V.linea}`, paddingTop: 10 }}>
+      {!sinHistorial && <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${V.linea}`, paddingTop: 10 }}>
         <div style={{ ...eyebrow, display: 'flex', justifyContent: 'space-between' }}>
           <span>Arreglos y trabajos</span>
           <span style={{ textTransform: 'none', letterSpacing: 0 }} data-testid="costo-acumulado">
@@ -141,7 +151,7 @@ export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, varian
             </span>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   )
 }
