@@ -95,6 +95,11 @@ async function puedeEmitir(supabase: Cliente): Promise<string | null> {
 }
 
 async function registrar(supabase: Cliente, r: ReciboSellado): Promise<ReciboAceptado> {
+  // UN ESTIMADO NO SE NUMERA COMO DEFINITIVO: el RP quedaría en el legajo con un banco que el estudio todavía no
+  // confirmó, y después habría que anularlo (pasó con RP-000001, 30/09). Se imprime la vista, no se sella.
+  if (r.estimado) {
+    return { ok: false, error: `El depósito en banco de ${r.nombre} es estimado: todavía no hay recibo del estudio para esta quincena.` }
+  }
   const { data: id, error } = await supabase.rpc('registrar_recibo_liquidacion', {
     p_persona: r.personaId,
     p_desde: r.quincenaDesde,

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarRecibo, conceptosDisponibles, eleccionInicial, ROTULO } from './reciboDeLaQuincena.ts'
+import { armarRecibo, conceptosDisponibles, desglosarBancoSellado, eleccionInicial, ROTULO } from './reciboDeLaQuincena.ts'
+import { conArrastre } from './liquidacionArrastre.ts'
+import { sellarRecibo } from './reciboEmitido.ts'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 
@@ -153,4 +155,74 @@ test('sin reparto cargado no se ofrece la opción, y se dice por qué — nunca 
   assert.equal(d.horasRecibo, 'cobra por mes: no se liquida por hora')
   const r = armarRecibo(mensual, { ...eleccionInicial(mensual, true), horasRecibo: true, horasFuera: true }, fmt, true)
   assert.deepEqual(r.horas, [], 'tildada a la fuerza, tampoco imprime un cero inventado')
+})
+
+// ═══ EL PAPEL DEBE COINCIDIR CON EL RECIBO DEL ESTUDIO (dueño, 02/10/2026) ═══
+//
+// *«no me coinciden con lo que envían por recibo de liquidación los contadores»*. Caso real anonimizado (Q2-09): el
+// recibo del estudio dice $234.963,32; la quincena arrastra $54.580,48 del recibo de la Q1; la persona cobra $669.801,32.
+// El papel decía «Depósito en banco $289.543,80»: el arrastre venía metido dentro del renglón del banco y no
+// coincidía con el recibo. El neto del estudio entra acá COMO DATO APARTE (`NETO_DEL_ESTUDIO`, tal como lo carga
+// `nomina_recibo_neto`), no se lee del mismo campo que el papel imprime.
+const NETO_DEL_ESTUDIO = 234963.32
+const ARRASTRE = 54580.48
+const TOTAL = 669801.32
+const EFECTIVO_SIN_ARRASTRE = 434838
+
+const lineaDelEstudio = (origenNeto: 'recibo' | 'estimado', arrastre: number | null) => {
+  const base = {
+    personaId: 'p1', porBanco: NETO_DEL_ESTUDIO, enEfectivo: EFECTIVO_SIN_ARRASTRE,
+    sueldo: { horasBlanco: 45, horasNegro: 51, origenNeto, estado: origenNeto, neto: NETO_DEL_ESTUDIO },
+    pago: pagoDeLaLinea({ banco: NETO_DEL_ESTUDIO, negro: EFECTIVO_SIN_ARRASTRE }),
+  } as unknown as LineaConOverrides
+  return arrastre == null ? base : conArrastre(base, { importe: arrastre, motivo: 'Resta recibo Q1-09', periodoOrigen: 'Q1-09/2026' })
+}
+const pesosAR = (n: number) => n.toFixed(2)
+const eleccion = { ...eleccionInicial(lineaDelEstudio('recibo', null)), horas: false }
+
+test('con arrastre: un renglón con el neto del recibo del estudio y OTRO con el saldo de la quincena anterior', () => {
+  const r = armarRecibo(lineaDelEstudio('recibo', ARRASTRE), eleccion, pesosAR)
+  const [banco, delRecibo, delSaldo, efectivo] = r.medios
+  assert.equal(banco.rotulo, ROTULO.banco)
+  assert.equal(banco.importe, 289543.8)
+  assert.equal(delRecibo.importe, NETO_DEL_ESTUDIO, 'el renglón del recibo de sueldo es el neto del estudio, al centavo')
+  assert.match(delRecibo.rotulo, /recibo de sueldo/)
+  assert.equal(delSaldo.importe, ARRASTRE)
+  assert.match(delSaldo.rotulo, /saldo del recibo de la 1ª quincena de septiembre/)
+  assert.equal(delRecibo.importe! + delSaldo.importe!, banco.importe, 'el subtotal del banco es la suma de los dos')
+  assert.equal(efectivo.rotulo, ROTULO.efectivo)
+  assert.equal(efectivo.importe, 380257.52)
+  assert.match(efectivo.detalle ?? '', /669801\.32/)
+  assert.match(efectivo.detalle ?? '', /289543\.80/)
+  assert.equal(r.total, TOTAL, 'lo pagado no cambia: sólo cómo se muestra')
+  assert.equal(r.estimado, false)
+})
+
+test('el papel nunca dice blanco ni negro, ni siquiera en el desglose', () => {
+  const r = armarRecibo(lineaDelEstudio('recibo', ARRASTRE), eleccion, pesosAR)
+  for (const m of r.medios) assert.doesNotMatch(`${m.rotulo} ${m.detalle ?? ''}`, /blanc|negr/i)
+})
+
+test('sin arrastre: el depósito en banco ES el neto del estudio y no se agrega ningún renglón', () => {
+  const r = armarRecibo(lineaDelEstudio('recibo', null), eleccion, pesosAR)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [[ROTULO.banco, NETO_DEL_ESTUDIO], [ROTULO.efectivo, EFECTIVO_SIN_ARRASTRE]])
+  assert.equal(r.total, TOTAL)
+})
+
+test('sin el recibo del estudio el banco va rotulado ESTIMADO y el recibo no es sellable', () => {
+  const r = armarRecibo(lineaDelEstudio('estimado', null), eleccion, pesosAR)
+  assert.equal(r.estimado, true)
+  assert.match(r.medios[0].detalle ?? '', /ESTIMADO/)
+  assert.equal(r.medios[0].rotulo, ROTULO.banco, 'el rótulo no cambia: el sello busca el renglón por él')
+  assert.equal(sellarRecibo({ personaId: 'p1', nombre: 'A', categoria: null, desde: '2026-09-16', hasta: '2026-09-30' }, r).estimado, true)
+})
+
+test('reimprimir un recibo sellado con el banco junto lo desglosa, sin tocar importes ni total', () => {
+  const sellado = [{ rotulo: ROTULO.banco, importe: 289543.8 }, { rotulo: ROTULO.efectivo, importe: 380257.52 }]
+  const arrastre = { importe: ARRASTRE, periodoOrigen: 'Q1-09/2026' }
+  const d = desglosarBancoSellado(sellado, { netoDelEstudio: NETO_DEL_ESTUDIO, arrastre }, pesosAR)
+  assert.deepEqual(d.map((m) => m.importe), [289543.8, NETO_DEL_ESTUDIO, ARRASTRE, 380257.52])
+  // Si el neto del estudio no cierra con el banco sellado, no se inventa un desglose: el papel sale como se selló.
+  assert.deepEqual(desglosarBancoSellado(sellado, { netoDelEstudio: 1, arrastre }, pesosAR), sellado)
+  assert.deepEqual(desglosarBancoSellado(sellado, { netoDelEstudio: null, arrastre }, pesosAR), sellado)
 })

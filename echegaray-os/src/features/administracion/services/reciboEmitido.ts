@@ -45,6 +45,11 @@ export interface ReciboSellado {
   efectivo: number | null
   total: number | null
   renglones: RenglonesSellados
+  /**
+   * El banco del papel es una estimación (no hay recibo del estudio todavía). Un papel así NO se sella ni se numera:
+   * `registrar` lo rechaza. No viaja a la base; es sólo el freno.
+   */
+  estimado?: boolean
 }
 
 /** El renglón principal (no `sub`) de un medio, que es el que lleva la cifra del papel. */
@@ -77,6 +82,7 @@ export function sellarRecibo(
     total: recibo.total,
     // Copia de los arrays: el estado de la pantalla sigue vivo y no puede mutar lo que se selló.
     renglones: { horas: [...recibo.horas], medios: [...recibo.medios] },
+    estimado: recibo.estimado === true,
   }
 }
 

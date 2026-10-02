@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { esEstado } from '@/shared/recibo/ciclo'
 import type { ReciboEnElLegajo, RenglonesSellados } from './reciboEmitido.ts'
+import { conBancoDesglosado } from './reimpresionDesglosada.ts'
 import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 const numero = (v: unknown): number | null =>
@@ -103,5 +104,5 @@ export async function getRecibosEmitidos(
       .from('comprobantes').createSignedUrl(r.papelPath, SEGUNDOS_DEL_ENLACE)
     r.papelUrl = firmado?.signedUrl ?? null
   }
-  return { puedeVer: true, recibos, error: null }
+  return { puedeVer: true, recibos: await conBancoDesglosado(supabase, p.personaId, recibos), error: null }
 }

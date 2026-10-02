@@ -18,6 +18,7 @@
 
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { pagoDelMensual } from './liquidacionPorTipo.ts'
+import { arrastreAplicado } from './liquidacionArrastre.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -71,6 +72,11 @@ export interface ReciboArmado {
   medios: RenglonDelRecibo[]
   /** Suma de los medios elegidos. `null` si ninguno, o si alguno no tiene número. */
   total: number | null
+  /**
+   * El depósito en banco que imprime es una ESTIMACIÓN: todavía no hay recibo del estudio para esta persona y
+   * quincena. Un papel así se puede mirar e imprimir, pero no se sella ni se numera como definitivo.
+   */
+  estimado?: boolean
 }
 
 /**
@@ -185,6 +191,67 @@ function absorbidoPor(a: { lado: 'banco' | 'efectivo'; importe: number } | null,
   return { rotulo: `menos lo pagado de más en ${a.lado === 'banco' ? 'banco' : 'efectivo'}`, importe: -a.importe, sub: true }
 }
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/** «Q1-09/2026» → «1ª quincena de septiembre». Lo que no se reconoce se dice tal cual: no se inventa una fecha. */
+export function quincenaDeOrigen(periodo: string): string {
+  const m = /^Q([12])-(\d{2})/.exec(periodo.trim())
+  const mes = m ? MESES[Number(m[2]) - 1] : undefined
+  return m && mes ? `${m[1]}ª quincena de ${mes}` : periodo.trim()
+}
+
+/** Varios orígenes se suman en una fila (`leerArrastres`): «Q1-09/2026, Q2-08/2026» → «… y …». */
+const origenesDichos = (periodoOrigen: string): string => periodoOrigen.split(',').map(quincenaDeOrigen).join(' y ')
+
+/**
+ * EL DEPÓSITO EN BANCO, ABIERTO (dueño, 02/10/2026: *«no me coinciden con lo que envían por recibo de liquidación
+ * los contadores»*). El renglón principal sigue siendo el subtotal —el sello y la ficha lo buscan por su rótulo— y
+ * debajo van las dos partes: el neto del recibo de sueldo, que es el del estudio, y el saldo del recibo de otra
+ * quincena que se paga por este banco. Los importes pagados no cambian; sólo se dice de dónde sale cada uno.
+ */
+function desgloseDelBanco(neto: number, arrastre: number, periodoOrigen: string): RenglonDelRecibo[] {
+  return [
+    { rotulo: `${ROTULO.banco} · recibo de sueldo`, importe: neto, sub: true },
+    { rotulo: `${ROTULO.banco} · saldo del recibo de la ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true },
+  ]
+}
+
+/** La cuenta del efectivo a la vista: lo que cobra menos lo que sale por banco. */
+const cuentaDelEfectivo = (banco: number, efectivo: number, fmt: (n: number) => string): string =>
+  `total ${fmt(r2(banco + efectivo))} − depósito en banco ${fmt(banco)}`
+
+/**
+ * ¿El neto del banco es estimado? Sólo lo es cuando la línea lo dice (`origenNeto` conceptos/estimado): un neto
+ * escrito a mano o el del recibo del estudio no se marcan. Sin modelo de sueldo (mensual, cerrada) no hay estimación
+ * que declarar: el banco viene sellado o liquidado por otro camino.
+ */
+const bancoEstimado = (l: LineaConOverrides): boolean =>
+  l.sueldo?.origenNeto === 'estimado' || l.sueldo?.origenNeto === 'conceptos'
+
+/**
+ * REIMPRIMIR UN RECIBO YA SELLADO con el banco junto (los RP de la Q2-09 salieron antes de esta regla). Parte el
+ * renglón del banco sellado en neto del estudio + saldo, SIN tocar ningún importe. Sólo lo hace si las cuentas cierran
+ * al centavo (`banco = neto + saldo`): si el neto del estudio no está o no cierra, el papel sale como se selló, porque
+ * inventar un desglose sobre un papel que la persona ya firmó sería peor que dejarlo.
+ */
+export function desglosarBancoSellado(
+  medios: RenglonDelRecibo[],
+  d: { netoDelEstudio: number | null; arrastre: { importe: number; periodoOrigen: string } | null },
+  fmt: (n: number) => string,
+): RenglonDelRecibo[] {
+  const i = medios.findIndex((m) => !m.sub && m.rotulo === ROTULO.banco)
+  const banco = i >= 0 ? medios[i].importe : null
+  if (i < 0 || banco == null || d.netoDelEstudio == null || !d.arrastre || !(d.arrastre.importe > 0)) return medios
+  if (medios.some((m) => m.sub && m.rotulo.startsWith(`${ROTULO.banco} ·`))) return medios
+  if (r2(d.netoDelEstudio + d.arrastre.importe) !== r2(banco)) return medios
+  const sal = medios.map((m) => (!m.sub && m.rotulo === ROTULO.efectivo && m.importe != null && !m.detalle
+    ? { ...m, detalle: cuentaDelEfectivo(banco, m.importe, fmt) } : m))
+  sal.splice(i + 1, 0, ...desgloseDelBanco(r2(d.netoDelEstudio), r2(d.arrastre.importe), d.arrastre.periodoOrigen))
+  return sal
+}
+
 export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string, mensual = false): ReciboArmado {
   const d = conceptosDisponibles(l, mensual)
   const horas: RenglonDelRecibo[] = []
@@ -207,11 +274,23 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
   // Lo ya cobrado de esta quincena, cuando la línea no tiene modelo blanco + negro: va entero y arriba.
   if (e.pagado && m.previos.length > 1) renglones.push(...m.previos)
   const elegidos: (number | null)[] = []
+  let estimado = false
   for (const [clave, rotulo] of [['banco', ROTULO.banco], ['efectivo', ROTULO.efectivo]] as const) {
     if (!e[clave]) continue
     const x = m[clave]
-    renglones.push({ rotulo, importe: x.total })
+    const resta = clave === 'banco' ? arrastreAplicado(l) : 0
+    const estimadoAca = clave === 'banco' && x.total != null && bancoEstimado(l)
+    if (estimadoAca) estimado = true
+    const efectivoAbierto = clave === 'efectivo' && e.banco && arrastreAplicado(l) > 0 && m.banco.total != null && x.total != null
+    renglones.push({
+      rotulo, importe: x.total,
+      ...(estimadoAca ? { detalle: 'ESTIMADO: todavía no hay recibo del estudio' } : {}),
+      ...(efectivoAbierto ? { detalle: cuentaDelEfectivo(m.banco.total as number, x.total as number, fmt) } : {}),
+    })
     elegidos.push(x.total)
+    if (resta > 0 && x.total != null && l.arrastre) {
+      renglones.push(...desgloseDelBanco(r2(x.total - resta), resta, l.arrastre.periodoOrigen))
+    }
     if (e.pagado && x.pagado != null) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })
       const absorbido = absorbidoPor(m.absorbido, clave)
@@ -226,5 +305,5 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
   const total = elegidos.length === 0 || elegidos.some((v) => v == null)
     ? null
     : Math.round(elegidos.reduce<number>((a, v) => a + (v as number), 0) * 100) / 100
-  return { horas, medios: renglones, total }
+  return { horas, medios: renglones, total, estimado }
 }

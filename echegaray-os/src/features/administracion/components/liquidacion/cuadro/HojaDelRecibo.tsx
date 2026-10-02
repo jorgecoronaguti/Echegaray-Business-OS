@@ -125,7 +125,7 @@ export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, codig
       {recibo.medios.length > 0 && (
         <Bloque titulo="Cómo se paga">
           {recibo.medios.map((r, i) => (
-            <Linea key={`${r.rotulo}-${i}`} rotulo={r.rotulo} importe={plata(r.importe)} sub={r.sub} />
+            <Linea key={`${r.rotulo}-${i}`} rotulo={r.rotulo} detalle={r.detalle ?? undefined} importe={plata(r.importe)} sub={r.sub} />
           ))}
         </Bloque>
       )}
