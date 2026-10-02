@@ -126,20 +126,16 @@ export function personaQueCorresponde(datos, plantel) {
 }
 
 /**
- * Las finales de la corrida que coinciden con un «Recibo sin-periodo · X.pdf» ya subido.
+ * ¿ESTA FINAL QUEDA «A DECIDIR» POR UN «Recibo sin-periodo» HISTÓRICO DE LA MISMA PERSONA?
  *
- * Ese nombre cubre COMO MÁXIMO UNA final por persona. Con una sola, es la vieja (se lista para
- * renombrar). Con más de una no se puede saber cuál es: no se sube ninguna y se avisan todas por
- * nombre. Saltearlas en silencio como «ya estaba» perdería la que no estaba.
- *
- * @param porPersona Map<id, { persona, viejo, nombres: Set<string> }>
+ * Sí cuando la carpeta ya tiene ese histórico y todavía no tiene el nombre nuevo. El histórico no dice
+ * de qué mes es, así que NUNCA se puede dar por «ya estaba» una final contra él (una final de
+ * septiembre contra un histórico de julio se perdería en silencio) ni subirla a ciegas (podría
+ * duplicar la vieja). Se avisa y decide una persona. `previos` es el Set/Map de nombres de la carpeta.
  */
-export function clasificarFinalesContraHistorico(porPersona) {
-  const aRenombrar = []
-  const ambiguas = []
-  for (const { persona, viejo, nombres } of porPersona.values()) {
-    if (nombres.size === 1) aRenombrar.push(`${persona}: ${viejo} → ${[...nombres][0]}`)
-    else for (const n of nombres) ambiguas.push(`${persona}: ${n} (final ambigua contra histórico sin-periodo)`)
-  }
-  return { aRenombrar, ambiguas }
+export function finalADecidir(datos, previos) {
+  if (!datos?.final) return false
+  const nuevo = nombreDelRecibo(datos)
+  const viejo = nombreHistoricoSinPeriodo(datos)
+  return viejo !== nuevo && previos.has(viejo) && !previos.has(nuevo)
 }

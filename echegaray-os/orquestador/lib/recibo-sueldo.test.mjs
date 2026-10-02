@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CUIT_EMPRESA, clasificarFinalesContraHistorico, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
+import { CUIT_EMPRESA, finalADecidir, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
 
 // Una página real del recibo de la 2da quincena de julio de 2026, tal como la extrae pdf-parse.
 const PAGINA = `Q MES AÑO APELLIDO Y NOMBRE N° LEGAJO SUELDO BRUTO
@@ -102,15 +102,16 @@ test('una quincena sigue siendo quincena y el nombre viejo de la final se recono
   assert.equal(nombreHistoricoSinPeriodo({ nombre: 'CARRIZO PEDRO' }), 'Recibo sin-periodo · CARRIZO PEDRO.pdf')
 })
 
-test('dos finales de una persona contra UN solo «sin-periodo» histórico: ninguna se saltea en silencio', () => {
-  // EL DEFECTO QUE ATRAPA: `previos.has(viejo)` daba «ya estaba» a las dos y la segunda nunca se subía.
-  const r = clasificarFinalesContraHistorico(new Map([
-    ['p1', { persona: 'CARRIZO', viejo: 'Recibo sin-periodo · CARRIZO.pdf', nombres: new Set(['Liquidación final 2026-08 · CARRIZO.pdf', 'Liquidación final 2026-09 · CARRIZO.pdf']) }],
-    ['p2', { persona: 'TELLO', viejo: 'Recibo sin-periodo · TELLO.pdf', nombres: new Set(['Liquidación final 2026-09 · TELLO.pdf']) }],
-  ]))
-  assert.equal(r.aRenombrar.length, 1)
-  assert.match(r.aRenombrar[0], /TELLO/)
-  assert.equal(r.ambiguas.length, 2)
-  assert.match(r.ambiguas.join('\n'), /final ambigua contra histórico sin-periodo/)
-  assert.match(r.ambiguas.join('\n'), /2026-08/)
+test('una final contra un «sin-periodo» histórico queda A DECIDIR: ni «ya estaba» ni subida', () => {
+  // EL DEFECTO QUE ATRAPA: histórico (de julio, el nombre no lo dice) + UNA final de septiembre se daba
+  // por «ya estaba» y la de septiembre se perdía en silencio.
+  const septiembre = personaDelRecibo(FINAL)
+  const carpeta = new Set([nombreHistoricoSinPeriodo(septiembre)])
+  assert.equal(finalADecidir(septiembre, carpeta), true)
+  // Sin histórico en la carpeta: se sube normal.
+  assert.equal(finalADecidir(septiembre, new Set()), false)
+  // Si el nombre nuevo ya está, es el caso «ya estaba» de siempre.
+  assert.equal(finalADecidir(septiembre, new Set([nombreDelRecibo(septiembre), nombreHistoricoSinPeriodo(septiembre)])), false)
+  // Una quincena nunca queda a decidir.
+  assert.equal(finalADecidir(personaDelRecibo(PAGINA), carpeta), false)
 })
