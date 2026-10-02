@@ -23,15 +23,39 @@
 // (pila): el de la quincena equivocada desaparece, el bueno queda. Un negativo sin pago web abierto corrige
 // lo cargado antes de la web: no es un pago y no genera fila — se declara como aviso.
 //
-// ═══ LA MIGRACIÓN PUEDE ESTAR O NO ═══
+// ═══ EL EFECTIVO SALE DE `liquidacion_pago_efectivo` (02/10/2026, desde el enganche con CAJA) ═══
 //
-// Con `liquidacion_pago_efectivo` aplicada, el efectivo trae el DÍA en que salió el billete (la fecha que
-// anota la app) y si salió de la caja o de una entrega a rendir. Se usa SÓLO para enriquecer el delta del
-// historial que le corresponde — nunca como segunda fuente de importes, porque su siembra contiene la carga
-// histórica entera y duplicaría. Sin la migración, la fecha es la del cambio y el efectivo «sale de» la caja.
+// Con la migración 20261002T1800 aplicada, el efectivo NO se arma con el historial: cada renglón de esa tabla
+// ya es un movimiento del cajón con el DÍA en que salió el billete y si salió de la caja o de una entrega a
+// rendir. Es la misma tabla que lee `efectivo_caja_saldo`: una sola definición del pago en efectivo para la
+// web y para el Sheet. Y es la que el dueño corrigió a mano el 02/10 (lo pagado ese día, que la siembra había
+// fechado 16/09): armarlo desde el historial publicaba otra fecha y otro importe para el mismo billete.
+//
+// Su siembra trae la carga histórica entera; por eso entran sólo los renglones de quincenas ≥ `CORTE_QUINCENA`
+// (las anteriores siguen saliendo de la planilla) y los que no son siembra. Sin la migración (42P01) se vuelve
+// al historial, con la fecha del cambio.
+//
+// ═══ EL ORIGEN DEL CAMBIO: LO QUE ESCRIBE UN CARGADOR NO ES UN PAGO (objeción de la auditoría, 02/10/2026) ═══
+//
+// `liquidacion-cargar-jornales.mjs` y `liquidacion-medio-de-pago.mjs` escriben `pagado_*` sin sesión: el
+// trigger los registra con origen `sin_sello`. Tomarlos como pagos publicaba la carga histórica como pagada HOY
+// por banco. Por banco no hay otro camino `sin_sello` (el chat sólo paga en efectivo), así que se descartan.
+// En efectivo el chat SÍ paga sin sesión (`pago_efectivo_de_sueldo`), por eso el efectivo no filtra el historial
+// sino que sale de la tabla, donde el cargador deja SU fecha (fin de la quincena, `fecha_pago_efectivo`) y el
+// chat la suya (`p_fecha`).
 
 /** El medio de pago y la columna de `liquidacion_linea` que lo acumula. */
 export const MEDIOS = { banco: 'pagado_banco', efectivo: 'pagado_efectivo' }
+
+/**
+ * LA QUINCENA DESDE LA QUE CAJA LEE LOS HABERES DE LA WEB (decisión del dueño, 02/10/2026: «el corte propuesto
+ * y aceptado es la 2ª quincena de septiembre»). Las anteriores siguen saliendo de la planilla Nómina. El
+ * generador de la réplica lo escribe en `_HABERES_PAGADOS_RAW!B2`, que es lo que citan las fórmulas.
+ */
+export const CORTE_QUINCENA = '2026-09-16'
+
+/** Los caminos que NO son un pago: un cargador o una sincronización sin sesión (ver arriba). */
+export const ORIGENES_QUE_NO_SON_PAGO = Object.freeze(['sin_sello'])
 
 const CENTAVO = 0.005
 /** Ventana para emparejar un delta del historial con el renglón que escribió el trigger de la migración. */
@@ -133,12 +157,15 @@ export function armarPagos({ lineas, cambios, anotaciones = null, nombres = new 
     if (c.tipo === 'base') continue
     const medio = Object.keys(MEDIOS).find((m) => MEDIOS[m] === c.columna)
     if (!medio) continue
+    // Con la tabla de la caja, el efectivo sale de ella (`pagosEfectivoDeLaCaja`), no del historial.
+    if (medio === 'efectivo' && anotaciones) continue
+    if (medio === 'banco' && ORIGENES_QUE_NO_SON_PAGO.includes(c.origen)) continue
     const k = `${clave(c.liquidacion_id, c.persona_id)}|${medio}`
     if (!porLinea.has(k)) porLinea.set(k, [])
     porLinea.get(k).push(c)
   }
   const ctx = { anotaciones, usados: new Set(), nombres, avisos: [] }
-  const pagos = []
+  const pagos = anotaciones ? pagosEfectivoDeLaCaja(anotaciones, nombres) : []
   for (const l of lineas ?? []) {
     for (const medio of Object.keys(MEDIOS)) {
       const cs = porLinea.get(`${clave(l.liquidacion_id, l.persona_id)}|${medio}`)
@@ -148,6 +175,32 @@ export function armarPagos({ lineas, cambios, anotaciones = null, nombres = new 
   pagos.sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.desde).localeCompare(String(b.desde))
     || String(a.grupo).localeCompare(String(b.grupo)) || String(a.persona).localeCompare(String(b.persona), 'es'))
   return { pagos, avisos: ctx.avisos }
+}
+
+/** ¿De dónde sale la fecha de este renglón de la caja? Lo dice para quien audite la réplica. */
+function fechaSegunDeLaCaja(a) {
+  if (!String(a.clave ?? '').startsWith('siembra:')) return 'anotada en la web'
+  return String(a.nota ?? '').startsWith('siembra') ? 'siembra (fecha dicha por el dueño)' : 'corregida por el dueño'
+}
+
+/**
+ * NÚCLEO PURO: los pagos en efectivo, uno por renglón de `liquidacion_pago_efectivo` (quincena ≥ corte o
+ * anotado fuera de la siembra). El importe conserva su signo: un renglón negativo es una corrección que
+ * devuelve el billete el día del movimiento que corrige (así lo fecha el trigger).
+ * @param {object[]} anotaciones renglones con fecha, importe, origen, clave, nota, quincena_desde/hasta, grupo,
+ *   persona, registrado_por, registrado_en, id
+ */
+export function pagosEfectivoDeLaCaja(anotaciones, nombres = new Map(), corte = CORTE_QUINCENA) {
+  return (anotaciones ?? [])
+    .filter((a) => String(a.quincena_desde ?? '').slice(0, 10) >= corte || !String(a.clave ?? '').startsWith('siembra:'))
+    .filter((a) => Math.abs(num(a.importe)) > CENTAVO)
+    .map((a) => ({
+      id: `pe:${a.id}`, fecha: String(a.fecha ?? '').slice(0, 10), fechaSegun: fechaSegunDeLaCaja(a),
+      saleDe: saleDe('efectivo', a), importe: Math.round(num(a.importe) * 100) / 100, medio: 'efectivo',
+      anoto: nombres.get(a.registrado_por) ?? (a.registrado_por ? String(a.registrado_por).slice(0, 8) : 'sin autor'),
+      instante: a.registrado_en, desde: String(a.quincena_desde ?? '').slice(0, 10),
+      hasta: String(a.quincena_hasta ?? '').slice(0, 10), grupo: a.grupo, persona: a.persona,
+    }))
 }
 
 /** NÚCLEO PURO: lo que el ensayo imprime — filas, total por medio y por quincena. */

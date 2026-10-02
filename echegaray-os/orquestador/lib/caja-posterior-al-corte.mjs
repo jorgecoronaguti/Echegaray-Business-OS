@@ -63,6 +63,7 @@ import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
 // y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
 import { ventanaDelConteo, anclaDeSalida } from './caja-ancla-por-instante.mjs'
+import { antesDelCorte, formulaHaberesWebEfectivo, formulaHaberesWebBanco, maxHaberesWebEfectivo } from './caja-haberes-web.mjs'
 
 // ═══ LOS RANGOS SON ABIERTOS. NINGUNA FILA FINAL. (31/07) ═══
 //
@@ -700,6 +701,8 @@ export function formulaFrescuraCaja({ bancoRaw = '_BANCO_RAW', cob, cmp } = {}) 
 
 /** Los rangos con nombre que publica `jornales-pestana.mjs`. Se citan por nombre, nunca por fila. */
 export const JOR = {
+  // La quincena: decide si la fila se lee de la planilla o de la web (ver lib/caja-haberes-web.mjs).
+  desde: 'JORNALES_REAL_DESDE',
   pagado: 'JORNALES_REAL_PAGADO',
   banco: 'JORNALES_REAL_BANCO',
   adelanto: 'JORNALES_REAL_ADELANTO',
@@ -717,7 +720,7 @@ export const JOR = {
  */
 const ventanaPagada = (corte, j, esConteo = false) => (esConteo
   ? `ISNUMBER(${j.pagado})*${ventanaDelConteo(j.pagado, corte, false)}`
-  : `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`)
+  : `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`) + `*${antesDelCorte(j.desde)}`
 
 /**
  * NÚCLEO PURO: la nómina pagada en EFECTIVO después del arqueo. DESCARGA de la caja física.
@@ -728,7 +731,9 @@ const ventanaPagada = (corte, j, esConteo = false) => (esConteo
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
-  return `SUMPRODUCT(${ventanaPagada(arqueo, j, true)}*(N(${j.adelanto})+N(${j.recibo})))`
+  // Planilla para las quincenas anteriores al corte + web desde el corte: una fuente por quincena.
+  return `(SUMPRODUCT(${ventanaPagada(arqueo, j, true)}*(N(${j.adelanto})+N(${j.recibo})))`
+    + `+${formulaHaberesWebEfectivo(arqueo, 'obreros')})`
 }
 
 /**
@@ -739,7 +744,7 @@ export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
  * @returns {string} fórmula
  */
 export function formulaJornalesBancoPosteriores(corte, j = JOR) {
-  return `SUMPRODUCT(${ventanaPagada(corte, j)}*N(${j.banco}))`
+  return `(SUMPRODUCT(${ventanaPagada(corte, j)}*N(${j.banco}))+${formulaHaberesWebBanco(corte, 'obreros')})`
 }
 
 /**
@@ -776,14 +781,14 @@ export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFI
 /** La ventana común de la oficina. `esConteo` cambia el criterio del borde — ver `ventanaPagada`. */
 const ventanaOfi = (corte, o, esConteo = false) => (esConteo
   ? `ISNUMBER(${o.pago})*${ventanaDelConteo(o.pago, corte, false)}`
-  : `ISNUMBER(${o.pago})*(${o.pago}>${corte})`)
+  : `ISNUMBER(${o.pago})*(${o.pago}>${corte})`) + `*${antesDelCorte(o.pago)}`
 
 /**
  * NÚCLEO PURO: los sueldos de administración pagados por BANCO después del corte del extracto.
  * @param {string} corte referencia a la celda con la fecha de corte
  */
 export function formulaOficinaBancoPosteriores(corte, o = OFI) {
-  return `SUMPRODUCT(${ventanaOfi(corte, o)}*N(${o.banco}))`
+  return `(SUMPRODUCT(${ventanaOfi(corte, o)}*N(${o.banco}))+${formulaHaberesWebBanco(corte, 'oficina')})`
 }
 
 /**
@@ -794,7 +799,8 @@ export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
   // POR DIFERENCIA, no por una segunda columna: lo que no salió por transferencia salió en billetes.
   // Así los dos canales suman SIEMPRE lo pagado y no puede existir un mes donde las partes no cierren.
   // ISNUMBER exige que el canal esté DECLARADO: con la celda vacía no se asume "todo efectivo".
-  return `SUMPRODUCT(${ventanaOfi(arqueo, o, true)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
+  return `(SUMPRODUCT(${ventanaOfi(arqueo, o, true)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
+    + `+${formulaHaberesWebEfectivo(arqueo, 'oficina')})`
 }
 
 /**
@@ -996,16 +1002,16 @@ function maxComprasEfectivo(arqueo, c) {
 /** 3/6 · la última QUINCENA pagada en efectivo. Granularidad quincenal: es la fecha del lote. */
 function maxJornalesEfectivo(arqueo, j = JOR) {
   const f = fechaNumerica(j.pagado)
-  return maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
-    + `*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)
+  return `MAX(${maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
+    + `*${antesDelCorte(j.desde)}*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)};${maxHaberesWebEfectivo(arqueo, 'obreros')})`
 }
 
 /** 4/6 · el último MES de OFICINA pagado en efectivo. `ISNUMBER(banco)` es el mismo requisito que el
  *  importe: sin el canal declarado no se resta de ningún lado, así que tampoco fecha nada. */
 function maxOficinaEfectivo(arqueo, o = OFI) {
   const f = fechaNumerica(o.pago)
-  return maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
-    + `*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)
+  return `MAX(${maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
+    + `*${antesDelCorte(o.pago)}*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)};${maxHaberesWebEfectivo(arqueo, 'oficina')})`
 }
 
 /** 5/6 · la última EXTRACCIÓN del banco (entra al cajón: ventana exclusiva, igual que su importe). */

@@ -11,6 +11,7 @@ import {
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
 import { MAPAS_HOY } from './columnas-caja.fixture.mjs'
+import { corteQuincena } from './caja-haberes-web.mjs'
 const COB = MAPAS_HOY.cob
 const CMP = MAPAS_HOY.cmp
 
@@ -147,9 +148,10 @@ test('la línea del banco: 2 SUMIFS (cobros, cheques) + 2 SUMPRODUCT (compras y 
   // Compras pasó a un SOLO SUMPRODUCT (transferencia+débito juntos), no dos SUMIFS.
   // El segundo SUMPRODUCT es la NÓMINA pagada por transferencia (01/08): antes no estaba en ningún
   // lado y el lote de haberes salía del banco sin bajar la disponibilidad.
+  // Y desde el 02/10/2026 dos más: los haberes por banco marcados en la web (obreros y oficina), quincenas ≥ corte.
   const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 5)
   assert.match(f, /JORNALES_REAL_BANCO/)
   assert.match(f, /OFICINA_BANCO/, 'los sueldos de administración por transferencia también salen del banco')
 })
@@ -221,9 +223,10 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
   assert.ok(f.startsWith('='))
   // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
-  // 1 SUMIFS (cobros) + 5 SUMPRODUCT (pagos, depósitos, nómina de obra, oficina, extracciones).
+  // 1 SUMIFS (cobros) + 7 SUMPRODUCT (pagos, depósitos, nómina de obra, oficina, extracciones, y los haberes
+  // en efectivo marcados en la web —obreros y oficina— desde el 02/10/2026).
   assert.equal(f.split('SUMIFS').length - 1, 1)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 5)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 7)
   assert.match(f, /JORNALES_REAL_ADELANTO/)
   assert.match(f, /OFICINA_PAGADO/)
   assert.match(f, /extraccion/, 'la extracción del banco CARGA el cajón: es el espejo del depósito')
@@ -237,7 +240,7 @@ test('sin réplica del extracto, la caja física no resta depósitos (no restar 
   // Siguen pago en efectivo, nómina de obra y oficina (3 SUMPRODUCT) pero YA NO el depósito NI la
   // extracción: los dos salen de la réplica y se omiten juntos. Dejar uno solo inflaría o vaciaría el
   // cajón. La nómina no depende de la réplica, así que no se cae con ella.
-  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 5) // + los haberes de la web (obreros, oficina)
   assert.doesNotMatch(f, /deposito de efectivo/)
   assert.doesNotMatch(f, /extraccion/)
   assert.equal(f.split('SUMIFS').length - 1, 1) // sólo cobros (efectivo)
@@ -265,7 +268,8 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
   // rama del parcial Pendiente—, depósitos, nómina en efectivo): al registrar un arqueo nuevo, la
   // ventana de todos se corre junta y lo viejo colapsa. Si un canal quedara anclado a otra celda,
   // este número lo delata.
-  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 8)
+  // + 2 desde el 02/10/2026: los haberes en efectivo de la web (obreros y oficina) miran el MISMO ancla.
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 10)
 })
 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
@@ -295,9 +299,9 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
   const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
-  // 2 SUMIFS (cobros, cheques) + 3 SUMPRODUCT (compras, nómina de obra y oficina, todo por banco).
+  // 2 SUMIFS (cobros, cheques) + 5 SUMPRODUCT (compras, nómina de obra y oficina por banco, planilla y web).
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 5)
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {
@@ -439,7 +443,9 @@ test('la ventana del CORTE DEL EXTRACTO sigue siendo exclusiva: no es el mismo a
   // cubre el resto. Confundir los dos anclas fue lo que dejó el pago del día del arqueo sin descontar.
   const f = formulaJornalesBancoPosteriores('$F$19')
   assert.match(f, /JORNALES_REAL_PAGADO>\$F\$19/)
-  assert.doesNotMatch(f, />=/)
+  assert.match(f, /'_HABERES_PAGADOS_RAW'!\$A\$4:\$A>\$F\$19/, 'la web, con la misma ventana exclusiva')
+  // El único `>=` legítimo es el de la QUINCENA contra el corte de la web, que no es una ventana de fechas de pago.
+  assert.doesNotMatch(f.replaceAll(`>=${corteQuincena()}`, ''), />=/)
 })
 
 test('nómina por banco: SÓLO la columna Banco — el efectivo no puede salir dos veces', () => {
@@ -511,7 +517,9 @@ test('la fecha del último efectivo mira LAS OCHO FUENTES que mueven el saldo, n
   // Efectivo a rendir (22/09/2026): la entrega y la devolución también mueven el cajón.
   assert.match(ULTIMA, /_EFECTIVO_RAW!\$E\$4:\$E\)?="Entrega"/, '7/8 entregas a rendir')
   assert.match(ULTIMA, /_EFECTIVO_RAW!\$E\$4:\$E\)?="Devolución"/, '8/8 devoluciones')
-  assert.equal(ULTIMA.match(/SUMPRODUCT\(MAX\(/g)?.length, 8, 'ocho fuentes, ocho MAX: ni uno de más ni uno de menos')
+  // + 2 desde el 02/10/2026: los haberes en efectivo de la web (obreros y oficina) van dentro de los renglones 3 y 4.
+  assert.match(ULTIMA, /'_HABERES_PAGADOS_RAW'!\$G\$4:\$G="efectivo"/, '3/6 y 4/6 también desde la web')
+  assert.equal(ULTIMA.match(/SUMPRODUCT\(MAX\(/g)?.length, 10, 'ocho fuentes (dos con su parte web), diez MAX')
 })
 
 test('EL DEFECTO: cada fuente usa EXACTAMENTE la misma ventana con la que su importe entra al saldo', () => {
@@ -603,6 +611,7 @@ test('la fórmula de la fecha va en es-AR y usa el idioma de la casa para el arr
   // decía que un pago programado «entra al saldo por el criterio conservador del piso»: entraba, y
   // por eso el conteo de $18.000.000 del dueño se publicaba como $14.795.500.
   // DIECISIETE desde el 22/09/2026: las dos fuentes de efectivo a rendir traen las dos puertas cada una.
-  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 17,
+  // DIECINUEVE desde el 02/10/2026: los haberes de la web (obreros y oficina) traen la suya.
+  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 19,
     'cada fuente filtra el futuro, en la fecha Y en el importe')
 })

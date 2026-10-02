@@ -8,12 +8,12 @@
 // total calculado acá y pegado. Cómo se arma cada pago (deltas, correcciones, migración) está en
 // lib/haberes-pagados.mjs.
 //
-// ═══ NADIE LA LEE TODAVÍA, Y ES A PROPÓSITO ═══
+// ═══ QUIÉN LA LEE (02/10/2026) ═══
 //
-// CAJA y los Cash Flow siguen descargando la nómina por la pestaña Nómina («Pagado el», columnas Banco,
-// Adelanto y Total recibo). Leer ESTA réplica además de aquélla restaría dos veces la misma quincena. El
-// enganche (qué fórmula pasa a leer esto y qué quincenas deja de leer de Nómina) cambia el número de caja y
-// lo aprueba el dueño: hasta entonces la réplica es visible y no mueve ningún número.
+// CAJA y su anexo: los haberes pagados en efectivo desde el conteo y por banco después del corte del extracto,
+// de las quincenas ≥ B2 (el corte, `CORTE_QUINCENA`, aprobado por el dueño). Las quincenas anteriores siguen
+// saliendo de Nómina. Una quincena se lee de un lado o del otro, nunca de los dos: lib/caja-haberes-web.mjs.
+// Los Cash Flow NO la leen: proyectan la quincena por Nómina (ver ese archivo).
 //
 // ENSAYO POR DEFECTO: imprime filas y totales y no toca el Sheet. Escribe sólo con `--aplicar` (el
 // pipeline lo pasa); `--dry` gana sobre `--aplicar`.
@@ -28,7 +28,7 @@ import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query } from '../lib/db.mjs'
 import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
-import { armarPagos, resumen } from '../lib/haberes-pagados.mjs'
+import { armarPagos, resumen, CORTE_QUINCENA } from '../lib/haberes-pagados.mjs'
 
 const ID_REAL = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const ID = process.env.ORQ_CASHFLOW_ID || ID_REAL
@@ -59,16 +59,16 @@ export function fila(p) {
 }
 
 /** NÚCLEO PURO: la grilla completa — título con el corte, nota, encabezados y datos. */
-export function grilla(pagos, corte) {
+export function grilla(pagos, corte, desdeQuincena = CORTE_QUINCENA) {
   const r = resumen(pagos)
   const $ = (v) => v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return [
     [`${PESTAÑA} — pagos de haberes marcados en la web (Liquidación de horas) · réplica del ${corte}`],
-    [`${r.filas} pago(s) · banco ${$(r.banco)} · efectivo ${$(r.efectivo)}. NO se carga a mano: la reescribe el agente `
-      + 'desde la base (liquidacion_cambio, deltas de pagado_banco / pagado_efectivo; la carga previa a la web no está). '
-      + '«Fecha según»: anotada en la web (efectivo, con la migración de la caja) o día del cambio. «Sale de»: banco, caja '
-      + 'o entrega a rendir (ésa ya bajó la caja al entregarse). TODAVÍA NO LA LEE NINGUNA FÓRMULA: CAJA y los Cash Flow '
-      + 'descargan la nómina por Nómina («Pagado el»).'],
+    // B2 ES EL PARÁMETRO QUE CITAN LAS FÓRMULAS DE CAJA (`HAB.corte`): fecha ISO que el Sheet guarda como fecha.
+    ['CAJA lee desde la quincena', desdeQuincena,
+      `${r.filas} pago(s) · banco ${$(r.banco)} · efectivo ${$(r.efectivo)}. La reescribe el agente desde la base: `
+      + 'banco = deltas de pagado_banco (sin los cargadores); efectivo = liquidacion_pago_efectivo. Las quincenas '
+      + 'anteriores a B2 CAJA las sigue leyendo de Nómina.'],
     COLUMNAS.map(([n]) => n),
     ...pagos.map(fila),
   ]
@@ -87,7 +87,7 @@ export async function leerInsumos(q = query) {
                     where c.liquidacion_id = l.liquidacion_id and c.persona_id = l.persona_id
                       and c.tipo <> 'base' and c.columna in ('pagado_banco', 'pagado_efectivo'))`)).rows
   const cambios = (await q(`
-    select c.id, c.liquidacion_id, c.persona_id, c.columna, c.tipo, c.antes, c.despues, c.autor, c.en,
+    select c.id, c.liquidacion_id, c.persona_id, c.columna, c.tipo, c.origen, c.antes, c.despues, c.autor, c.en,
            (c.en at time zone 'America/Argentina/San_Juan')::date::text fecha_cambio
       from public.liquidacion_cambio c
      where c.tipo <> 'base' and c.columna in ('pagado_banco', 'pagado_efectivo')
@@ -96,8 +96,15 @@ export async function leerInsumos(q = query) {
   let anotaciones = null
   try {
     anotaciones = (await q(`
-      select liquidacion_id, persona_id, fecha::text fecha, importe, origen, registrado_en, clave
-        from public.liquidacion_pago_efectivo where clave not like 'siembra:%'`)).rows
+      select x.id, x.liquidacion_id, x.persona_id, x.fecha::text fecha, x.importe, x.origen, x.registrado_en,
+             x.registrado_por, x.clave, x.nota, x.quincena_desde::text quincena_desde, q.hasta::text quincena_hasta,
+             x.grupo, coalesce(nullif(p.nombre_para_mostrar, ''), p.nombre_completo, x.persona_id::text) persona
+        from public.liquidacion_pago_efectivo x
+        join public.liquidacion_quincena q on q.id = x.liquidacion_id
+        left join public.personas p on p.id = x.persona_id
+       where (x.quincena_desde >= $1::date or x.clave not like 'siembra:%')
+         and not coalesce(p.es_prueba, false)
+       order by x.fecha, x.id`, [CORTE_QUINCENA])).rows
   } catch (e) {
     if (e?.code !== '42P01') throw e
   }
@@ -128,6 +135,8 @@ async function escribir(google, gridRaw, n) {
     E.reset(hoja.sheetId, alto, COLUMNAS.length + 1),
     { repeatCell: { range: rg(0, 1, 0, COLUMNAS.length), cell: { userEnteredFormat: E.titulo() }, fields: 'userEnteredFormat' } },
     { repeatCell: { range: rg(1, 2, 0, COLUMNAS.length), cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
+    // El parámetro del corte es una FECHA: con formato de texto la fórmula lo vería como texto y caería al 31/12/9999.
+    { repeatCell: { range: rg(1, 2, 1, 2), cell: { userEnteredFormat: E.celda('fecha', { bold: true }) }, fields: 'userEnteredFormat' } },
     { repeatCell: { range: rg(2, 3, 0, COLUMNAS.length), cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
   ]
   COLUMNAS.forEach(([, unidad], j) => {
@@ -156,6 +165,10 @@ async function main() {
   const base = r.banco + r.efectivo
   console.log(`${PESTAÑA}: total leído del Sheet ${leido.toFixed(2)} · total de la base ${base.toFixed(2)}`)
   if (Math.abs(leido - base) > 0.005) { console.log('  ⚠ NO COINCIDEN'); process.exitCode = 1 }
+  // EL CORTE TIENE QUE QUEDAR COMO FECHA: como texto, CAJA vuelve en silencio a leer todo de Nómina.
+  const [[b2] = []] = await google.readSheetValues(ID, `${PESTAÑA}!B2`, { render: 'UNFORMATTED_VALUE' })
+  console.log(`${PESTAÑA}!B2 (corte de quincena): ${b2} ${typeof b2 === 'number' ? '· fecha' : '⚠ NO ES FECHA'}`)
+  if (typeof b2 !== 'number') process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -4,7 +4,7 @@
 // previa a la web, y pruebas de $1 que se deshacen.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarPagos, resumen, emparejarAnotacion, saleDe } from './haberes-pagados.mjs'
+import { armarPagos, resumen, emparejarAnotacion, saleDe, CORTE_QUINCENA } from './haberes-pagados.mjs'
 import { fila, grilla, modoAplicar, leerInsumos, COLUMNAS, COL } from '../scripts/haberes-pagados-raw-pestana.mjs'
 
 const Q1 = 'q-0901', Q2 = 'q-0916'
@@ -148,7 +148,7 @@ test('fila y grilla: el orden de columnas es contrato, el importe va positivo y 
   assert.equal(f[COL.importe.charCodeAt(0) - 65], 1000)
   assert.equal(f[COL.medio.charCodeAt(0) - 65], 'banco')
   assert.equal(typeof f[COL.instante.charCodeAt(0) - 65], 'number', 'el instante va como serial de Sheets')
-  assert.match(grilla(pagos, 'c')[1][0], /banco 1\.000,00/)
+  assert.match(grilla(pagos, 'c')[1][2], /banco 1\.000,00/)
   assert.deepEqual(resumen(pagos).porQuincena, [{ quincena: '2026-09-16–2026-09-30 obreros', filas: 1, banco: 1000, efectivo: 0 }])
 })
 
@@ -156,4 +156,64 @@ test('ensayo por defecto: escribe sólo con --aplicar, y --dry gana', () => {
   assert.equal(modoAplicar(['node', 'x']), false)
   assert.equal(modoAplicar(['node', 'x', '--aplicar']), true)
   assert.equal(modoAplicar(['node', 'x', '--aplicar', '--dry']), false)
+})
+
+// ═══ EL ENGANCHE CON CAJA (02/10/2026) ═══
+
+test('objeción del origen: lo que escribe un cargador sin sesión (sin_sello) NO es un pago por banco', () => {
+  // Si alguien corre liquidacion-cargar-jornales.mjs, el trigger registra la carga histórica como `sin_sello`
+  // con la fecha de HOY: tomarla como pago bajaba el banco por plata que salió hace meses.
+  const { pagos } = armarPagos({
+    lineas: [linea(Q1, 'ana', 300000, 0), linea(Q2, 'beto', 200000, 0)],
+    cambios: [
+      cambio(Q1, 'ana', 'pagado_banco', null, 300000, '2026-10-02T12:00:00Z', { origen: 'sin_sello' }),
+      cambio(Q2, 'beto', 'pagado_banco', null, 200000, '2026-10-02T16:00:00Z', { origen: 'celda' }),
+    ],
+  })
+  assert.deepEqual(pagos.map((p) => [p.persona, p.importe]), [['BETO', 200000]])
+})
+
+const renglon = (extra) => ({
+  id: 1, liquidacion_id: Q2, persona_id: 'ana', persona: 'ANA', fecha: '2026-10-02', importe: '235000.00',
+  origen: 'caja', registrado_en: '2026-10-02T17:00:00Z', registrado_por: 'u1', clave: 'linea:a:1:1', nota: null,
+  quincena_desde: '2026-09-16', quincena_hasta: '2026-09-30', grupo: 'obreros', ...extra,
+})
+
+test('efectivo con la tabla de la caja: un pago por renglón, con SU fecha, aunque el historial diga otra cosa', () => {
+  // El historial dice 122.200→357.200 (delta 235.000); la tabla, corregida por el dueño, dice 357.200 el 02/10.
+  // Manda la tabla: es la misma que lee `efectivo_caja_saldo`, y la fecha del billete la tiene ella.
+  const { pagos } = armarPagos({
+    lineas: [linea(Q2, 'ana', 0, 357200)],
+    cambios: [cambio(Q2, 'ana', 'pagado_efectivo', 122200, 357200, '2026-10-02T16:48:00Z')],
+    anotaciones: [renglon({ importe: '357200.00', clave: 'siembra:a', nota: 'pagado en efectivo marcado en la web el 02/10' })],
+    nombres,
+  })
+  assert.equal(pagos.length, 1, 'el delta del historial no se suma al renglón de la tabla')
+  assert.deepEqual([pagos[0].fecha, pagos[0].importe, pagos[0].fechaSegun, pagos[0].saleDe, pagos[0].hasta],
+    ['2026-10-02', 357200, 'corregida por el dueño', 'caja', '2026-09-30'])
+})
+
+test('efectivo con la tabla: la siembra anterior al corte queda afuera (la planilla la tiene); un cargador fecha su renglón', () => {
+  const { pagos } = armarPagos({
+    lineas: [], cambios: [],
+    anotaciones: [
+      renglon({ id: 1, clave: 'siembra:x', nota: 'siembra 02/10', quincena_desde: '2026-09-01', fecha: '2026-09-17' }),
+      renglon({ id: 2, clave: 'siembra:y', nota: 'siembra 02/10', fecha: '2026-09-16', importe: '1460200.00' }),
+      // liquidacion-cargar-jornales.mjs manda fecha_pago_efectivo = fin de la quincena: el renglón NO es de hoy.
+      renglon({ id: 3, clave: 'linea:z:9:1', quincena_desde: '2026-08-16', quincena_hasta: '2026-08-31', fecha: '2026-08-31', registrado_por: null }),
+      renglon({ id: 4, clave: 'linea:a:7:1', importe: '-35000.00', origen: 'entrega' }),
+    ],
+  })
+  assert.deepEqual(pagos.map((p) => [p.id, p.fecha, p.importe, p.saleDe]), [
+    ['pe:3', '2026-08-31', 235000, 'caja'],
+    ['pe:2', '2026-09-16', 1460200, 'caja'],
+    ['pe:4', '2026-10-02', -35000, 'entrega a rendir'],
+  ])
+})
+
+test('la réplica publica el corte en B2 como fecha ISO (la convierte el Sheet), con su rótulo en A2', () => {
+  const g = grilla([], 'c')
+  assert.deepEqual(g[1].slice(0, 2), ['CAJA lee desde la quincena', CORTE_QUINCENA])
+  assert.equal(CORTE_QUINCENA, '2026-09-16', 'el corte aprobado por el dueño: 2ª quincena de septiembre')
+  assert.equal(g[2][2], 'Quincena desde')
 })
