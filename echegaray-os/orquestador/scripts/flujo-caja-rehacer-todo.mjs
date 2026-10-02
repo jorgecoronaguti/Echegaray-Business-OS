@@ -111,6 +111,9 @@ const T0 = Date.now()
 const MARCA_VEREDICTO = /[⛔⏭✗]/
 /** Una línea de DETALLE cuelga de su titular: empieza con un glifo de viñeta o viene sangrada. */
 const ES_DETALLE = (cruda) => /^\s{4,}/.test(cruda) || /^\s*[○·•]/.test(cruda)
+const SOLO_CIERRE = /^[\s{}[\]();,]*$/
+const CAMPO_DE_OBJETO = /^\s+[\w'"[\]]+:\s/
+const TITULAR_DE_ERROR = /^\s{0,3}(Uncaught\s+)?[A-Za-z]*Error\b[^:]*:\s*\S/
 
 // ═══ LO QUE SE RESPETÓ TIENE QUE VERSE AL CIERRE, NO SÓLO ADENTRO DE UN PASO (03/09) ═══
 //
@@ -292,7 +295,15 @@ export function motivoDeFalla(e = {}) {
   }
   const crudas = String(e?.stderr ?? '').split('\n').filter((l) => l.trim())
   const lineas = crudas.map((l) => l.trim())
-  const causa = [...crudas].reverse().find((l) => !MARCA_ALERTA.test(l) && !ES_DETALLE(l))
+  // ═══ EL «}» NO ES UNA CAUSA (02/10/2026) ═══
+  // Un error que Node imprime con sus campos (el de la API de Google: `GaxiosError: … { config, code,
+  // errors }`) termina en una llave suelta, y esa llave fue «el motivo» de OBRAS, Calendario y Tarjeta
+  // durante dos corridas: tres pasos caídos y la causa en ningún lado. Las líneas de puro cierre y los
+  // campos del objeto se saltean; manda el titular del error (`AlgoError: texto`).
+  const candidatas = [...crudas].reverse().filter((l) => !MARCA_ALERTA.test(l) && !ES_DETALLE(l) && !SOLO_CIERRE.test(l))
+  const causa = candidatas.find((l) => TITULAR_DE_ERROR.test(l))
+    ?? (crudas.some((l) => SOLO_CIERRE.test(l)) ? candidatas.find((l) => !CAMPO_DE_OBJETO.test(l)) : null)
+    ?? candidatas[0]
   if (causa) return causa.trim().slice(0, 220)
   const veredicto = String(e?.stdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
     .reverse().find((l) => MARCA_VEREDICTO.test(l) || MARCA_ALERTA.test(l))

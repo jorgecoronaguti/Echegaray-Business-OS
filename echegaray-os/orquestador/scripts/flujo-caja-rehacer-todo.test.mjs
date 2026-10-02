@@ -37,6 +37,32 @@ test('las líneas marcadas como aviso se saltean aunque sean las últimas', () =
   assert.match(m, /la frontera cae dentro de una dinámica/)
 })
 
+test('un error impreso con sus campos no deja «}» como motivo: manda el titular del error', () => {
+  const stderr = [
+    'file:///x/orquestador/lib/google.mjs:120',
+    '      throw e',
+    '      ^',
+    '',
+    'GaxiosError: Invalid field selection underline',
+    '    at Gaxios._request (/x/node_modules/gaxios/build/src/gaxios.js:142:19)',
+    '  {',
+    '  config: {',
+    '    url: \'https://sheets.googleapis.com/v4/spreadsheets/abc\'',
+    '  },',
+    '  code: 400,',
+    '  errors: [',
+    '    { message: \'Invalid field selection underline\' }',
+    '  ]',
+    '}',
+  ].join('\n')
+  const m = motivoDeFalla({ stderr, code: 1 })
+  assert.match(m, /GaxiosError: Invalid field selection underline/)
+  assert.doesNotMatch(m, /^[\s{}[\]();,]*$/)
+  // sin titular reconocible, tampoco gana la llave ni un campo del objeto
+  const sinTitular = motivoDeFalla({ stderr: 'no pude leer la pestaña OBRAS\n  {\n  code: 429,\n}', code: 1 })
+  assert.match(sinTitular, /no pude leer la pestaña OBRAS/)
+})
+
 test('si en stderr SÓLO hay avisos, se dice eso — no se cae a la primera y se la disfraza de causa', () => {
   const m = motivoDeFalla({ stderr: '  ▲ VENTAS: 6 facturas, $129.499.724\n  ▲ 5 notas cortadas', code: 1 })
   assert.match(m, /sólo hay avisos/)
