@@ -1,8 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { borradorDeLaDiferencia, conceptoDeLaDiferencia, loteDeDiferencias, restaDeEfectivo } from './reciboPorLaDiferencia.ts'
-import { armarRecibo } from './reciboDeLaQuincena.ts'
+import {
+  borradorDeLaDiferencia, conceptoDeLaDiferencia, loteDeDiferencias, marcaDeLaQuincena, reciboDeLaDiferencia, restaDeEfectivo, ROTULO_DIFERENCIA,
+} from './reciboPorLaDiferencia.ts'
+import { armarRecibo, eleccionInicial } from './reciboDeLaQuincena.ts'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import { validarReciboPago, fraseDelReciboPago } from '../../efectivo/logica/reciboPago.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
@@ -101,4 +103,42 @@ test('el lote emite por la acción de lote, con ids del navegador, sin nombre de
   assert.match(accion, /p_persona_id: r\.personaId/)
   assert.match(accion, /leerPersonasParaRecibo/, 'nombre y DNI salen del legajo, en el servidor')
   assert.doesNotMatch(accion, /aNombreDe: z\./, 'el esquema no acepta un nombre del navegador')
+})
+
+// ═══ EL PAPEL DE LA DIFERENCIA = EL DE LA QUINCENA (dueño 02/10: «como los demás recibos de liq de hs») ═══
+test('papel de Alaniz (RP-000022): horas como el recibo de la quincena, Efectivo 259.000 · ya pagado 243.000 · diferencia 16.000, sin banco', () => {
+  const l = linea(243000, 259000)
+  const r = reciboDeLaDiferencia(l, false, 16000, String)
+  assert.ok(r)
+  assert.ok(r.horas.length >= 3, 'total, por recibo y fuera de recibo')
+  assert.deepEqual(r.horas, armarRecibo(l, eleccionInicial(l), String).horas)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe, !!m.sub]), [
+    ['Efectivo', 259000, false], ['ya pagado', 243000, true], [ROTULO_DIFERENCIA, 16000, true],
+  ])
+  assert.equal(r.total, 16000, 'el total es la diferencia, no el efectivo de la quincena')
+  const textos = [...r.horas, ...r.medios].map((m) => `${m.rotulo} ${m.detalle ?? ''}`).join(' ')
+  assert.doesNotMatch(textos, /blanco|negro|banco/i)
+})
+
+test('la diferencia es el importe del RP, no la resta de hoy; y si el dueño ya sumó el pago, «ya pagado» sigue siendo el de antes', () => {
+  // El RP dice 15.000 aunque la resta sea 16.000: manda lo emitido.
+  assert.equal(reciboDeLaDiferencia(linea(243000, 259000), false, 15000, String)?.total, 15000)
+  // Pagado ya incluye los 16.000: el papel no puede decir «ya pagado 259.000» al lado de «diferencia 16.000».
+  const despues = reciboDeLaDiferencia(linea(259000, 259000), false, 16000, String)
+  assert.equal(despues?.medios.find((m) => m.rotulo === 'ya pagado')?.importe, 243000)
+})
+
+test('un RP ya emitido se reconoce por la quincena que nombra su concepto', () => {
+  assert.equal(marcaDeLaQuincena(Q2_SEPT), 'de la 2ª quincena de septiembre de 2026')
+  assert.ok(conceptoDeLaDiferencia(Q2_SEPT).includes(marcaDeLaQuincena(Q2_SEPT)))
+  assert.ok(!conceptoDeLaDiferencia({ desde: '2026-09-01', hasta: '2026-09-15' }).includes(marcaDeLaQuincena(Q2_SEPT)))
+})
+
+test('el lote imprime el papel de la quincena y no emite a quien ya tiene RP', () => {
+  const panel = readFileSync(new URL('../components/liquidacion/cuadro/RecibosPorLaDiferencia.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /HojasDeRecibosA4/)
+  assert.match(panel, /reciboDeLaDiferencia\(/)
+  assert.doesNotMatch(panel, /recibo-pago\/lote/, 'no el PDF genérico de Efectivo')
+  assert.match(panel, /diferenciasYaEmitidasAction/)
+  assert.match(panel, /porEmitir = conocidos \? lote\.con\.filter\(\(c\) => !rpDe\(c\.personaId\)\)/)
 })

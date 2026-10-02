@@ -88,6 +88,31 @@ export async function leerPersonasParaRecibo(ids: readonly string[]): Promise<Ma
   return sal
 }
 
+/** Un RP a nombre de una persona, como lo necesita el papel de la diferencia de Liquidación. */
+export interface DiferenciaEmitida { personaId: string; id: string; codigo: string; fecha: string; importe: number; concepto: string }
+
+/**
+ * LOS RP NO ANULADOS DE ESTAS PERSONAS CUYO CONCEPTO NOMBRA LA QUINCENA (`marca`, p. ej. «de la 2ª quincena de
+ * septiembre de 2026»). Si una persona tiene más de uno, vale el primero emitido. Una lectura que falla se lanza:
+ * quien llama no puede tomar «no encontré» por «no hay» y volver a emitir.
+ */
+export async function leerDiferenciasEmitidas(personaIds: readonly string[], marca: string): Promise<DiferenciaEmitida[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('recibo_pago_efectivo')
+    .select('id, codigo, fecha, importe, concepto, persona_id')
+    .in('persona_id', personaIds).is('anulado_en', null).ilike('concepto', `%${marca}%`)
+    .order('serie_numero', { ascending: true })
+  if (error) throw new Error(error.message)
+  const vistos = new Set<string>()
+  const sal: DiferenciaEmitida[] = []
+  for (const f of (data ?? []) as { id: string; codigo: string; fecha: string; importe: number | string; concepto: string; persona_id: string }[]) {
+    if (vistos.has(f.persona_id)) continue
+    vistos.add(f.persona_id)
+    sal.push({ personaId: f.persona_id, id: f.id, codigo: f.codigo, fecha: f.fecha, importe: Number(f.importe), concepto: f.concepto })
+  }
+  return sal
+}
+
 /** Varios recibos para un solo PDF, en el orden de su número. Los que la sesión no ve no vienen (RLS). */
 export async function leerRecibosParaImprimir(supabase: SupabaseClient, ids: readonly string[]): Promise<ReciboEmitido[] | 'falta_migracion'> {
   const { data, error } = await supabase.from('recibo_pago_efectivo').select(COLUMNAS).in('id', ids)

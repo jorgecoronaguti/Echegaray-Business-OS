@@ -22,7 +22,9 @@ import { createClient } from '@/lib/supabase/server'
 import { faltaMigracion, mensajeDeError } from '../logica/formularios'
 import { diaAR } from '../logica/entregas'
 import { validarReciboPago } from '../logica/reciboPago'
-import { MIGRACION_RECIBO_PAGO, leerPersonasParaRecibo } from './reciboPagoDatos'
+import {
+  MIGRACION_RECIBO_PAGO, leerDiferenciasEmitidas, leerPersonasParaRecibo, type DiferenciaEmitida,
+} from './reciboPagoDatos'
 
 const loteSchema = z.object({
   fecha: z.string().max(10),
@@ -68,6 +70,24 @@ export async function emitirRecibosPorLaDiferenciaAction(
     }
     revalidatePath('/administracion/compras')
     return { ok: true, resultados }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
+  }
+}
+
+const yaEmitidosSchema = z.object({ personaIds: z.array(z.string().uuid()).min(1).max(300), marca: z.string().min(10).max(80) })
+
+/**
+ * LOS QUE YA TIENEN SU RP DE LA DIFERENCIA DE ESTA QUINCENA — para no emitirles otro y para imprimirles el papel.
+ * Sólo lectura. Un error se devuelve como error: el panel no deja emitir sin saber quién ya tiene recibo.
+ */
+export async function diferenciasYaEmitidasAction(
+  e: z.input<typeof yaEmitidosSchema>,
+): Promise<{ ok: true; recibos: DiferenciaEmitida[] } | { ok: false; error: string }> {
+  const p = yaEmitidosSchema.safeParse(e)
+  if (!p.success) return { ok: false, error: 'La consulta llegó incompleta.' }
+  try {
+    return { ok: true, recibos: await leerDiferenciasEmitidas(p.data.personaIds, p.data.marca) }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
   }

@@ -26,6 +26,10 @@ export interface ReciboParaLaHoja {
    * guardó— y el papel dice «N° al guardar»: nunca un número previsto, que otro recibo puede ganar antes.
    */
   codigo?: string | null
+  /** La fecha del recibo, al lado del número. Sólo la trae el recibo por la diferencia (su RP tiene fecha propia). */
+  fecha?: string | null
+  /** Una línea debajo del total: el concepto guardado en el RP de la diferencia (dueño, 02/10/2026). */
+  leyenda?: string | null
 }
 
 const CORTE = '1px dashed #B5B4AF'
@@ -81,7 +85,7 @@ function ReciboCompacto({ r, quincena }: { r: ReciboParaLaHoja; quincena: { desd
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '12px', fontWeight: 600 }}>Recibo de pago</div>
           <div style={{ color: GRIS }}>{`Quincena ${fechaCorta(quincena.desde)} al ${fechaCorta(quincena.hasta)}`}</div>
-          <div style={{ color: GRIS, fontFamily: MONO, fontSize: '9.5px' }} data-recibo-numero>{rotuloDelNumero(r.codigo)}</div>
+          <div style={{ color: GRIS, fontFamily: MONO, fontSize: '9.5px' }} data-recibo-numero>{`${rotuloDelNumero(r.codigo)}${r.fecha ? ` · ${fechaCorta(r.fecha)}` : ''}`}</div>
         </div>
       </header>
       <div>
@@ -102,6 +106,7 @@ function ReciboCompacto({ r, quincena }: { r: ReciboParaLaHoja; quincena: { desd
           <span style={{ fontFamily: MONO }}>{plata(recibo.total)}</span>
         </div>
       )}
+      {r.leyenda && <div style={{ color: GRIS, fontSize: '9.5px' }} data-recibo-leyenda>{r.leyenda}</div>}
       {/* LAS FIRMAS AL PIE DEL RECUADRO: `marginTop: auto` las deja siempre en el mismo lugar del papel. */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1.3fr 1fr', gap: 10, marginTop: 'auto', paddingTop: '7mm', color: GRIS, fontSize: '9.5px' }}>
         <div style={{ borderTop: '1px solid #1F1F1E', paddingTop: 2 }}>Firma</div>

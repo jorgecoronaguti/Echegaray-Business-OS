@@ -12,7 +12,7 @@
 //
 // No anota el pago: el dueño suma el importe al «Pagado» a mano. Esto sólo arma lo que el formulario precarga.
 
-import { armarRecibo, type EleccionDelRecibo } from './reciboDeLaQuincena.ts'
+import { armarRecibo, eleccionInicial, type EleccionDelRecibo, type ReciboArmado } from './reciboDeLaQuincena.ts'
 import { cabeceraQuincena, type Quincena } from './quincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides'
 import type { BorradorReciboPago } from '../../efectivo/logica/reciboPago.ts'
@@ -69,9 +69,51 @@ export function loteDeDiferencias(filas: readonly FilaParaLaDiferencia[], marcad
 /** El importe como se tipea en el formulario (55.000): lo lee `validarReciboPago` igual que si lo escribiera alguien. */
 export const importeParaEscribir = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
+export const ROTULO_DIFERENCIA = 'Diferencia que se paga con este recibo'
+
+/**
+ * EL PAPEL DE LA DIFERENCIA, CON LA FORMA DEL RECIBO DE LA QUINCENA (dueño, 02/10/2026: «necesito que sea como los
+ * demás recibos de liq de hs»). Las horas, las mismas que el recibo de la quincena por defecto; el efectivo de la
+ * quincena, lo ya pagado y la diferencia; sin banco. El total es la diferencia, y la diferencia es el importe del RP
+ * EMITIDO (`importe`), no una cuenta nueva: el papel dice lo que la base registró.
+ *
+ * «Ya pagado» es lo pagado ANTES de este recibo. Si el dueño ya sumó la diferencia al Pagado de la liquidación, lo
+ * pagado la incluye y supera lo que correspondía: se le descuenta, para que reimprimir después no diga otra cosa.
+ * `null` = la línea no trae el efectivo con lo pagado: no hay papel que se pueda afirmar.
+ */
+export function reciboDeLaDiferencia(l: LineaConOverrides, mensual: boolean, importe: number, fmt: (n: number) => string): ReciboArmado | null {
+  const medios = armarRecibo(l, SOLO_EFECTIVO, fmt, mensual).medios
+  const i = medios.findIndex((m) => !m.sub && m.rotulo === 'Efectivo')
+  const efectivo = i < 0 ? null : medios[i].importe
+  let pagado: number | null = null
+  for (let j = i + 1; i >= 0 && j < medios.length && medios[j].sub; j++) {
+    if (medios[j].rotulo === 'ya pagado') { pagado = medios[j].importe; break }
+  }
+  if (efectivo == null || pagado == null) return null
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const antes = pagado + importe > efectivo + 0.005 ? r2(pagado - importe) : pagado
+  return {
+    horas: armarRecibo(l, eleccionInicial(l, mensual), fmt, mensual).horas,
+    medios: [
+      { rotulo: 'Efectivo', importe: efectivo },
+      { rotulo: 'ya pagado', importe: antes, sub: true },
+      { rotulo: ROTULO_DIFERENCIA, importe, sub: true },
+    ],
+    total: importe,
+    estimado: false,
+  }
+}
+
+/**
+ * ¿ESTE RP YA ES LA DIFERENCIA DE ESTA QUINCENA? El criterio más simple que no confunde quincenas: el concepto nombra
+ * la quincena («de la 2ª quincena de septiembre de 2026»), como lo escribe `conceptoDeLaDiferencia`. Con eso un
+ * recibo ya emitido no se vuelve a emitir aunque la liquidación todavía no tenga sumado el pago.
+ */
+export const marcaDeLaQuincena = (q: Quincena): string => `de la ${cabeceraQuincena(q)} de ${q.desde.slice(0, 4)}`
+
 /** «Diferencia de pago en efectivo de la 2ª quincena de septiembre de 2026. Con este importe …» — texto del dueño. */
 export function conceptoDeLaDiferencia(q: Quincena): string {
-  return `Diferencia de pago en efectivo de la ${cabeceraQuincena(q)} de ${q.desde.slice(0, 4)}. `
+  return `Diferencia de pago en efectivo ${marcaDeLaQuincena(q)}. `
     + 'Con este importe queda cubierto lo que no se había pagado en efectivo de esa quincena.'
 }
 
