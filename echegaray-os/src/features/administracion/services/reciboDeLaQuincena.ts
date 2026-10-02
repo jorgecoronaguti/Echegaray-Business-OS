@@ -300,7 +300,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     const x = m[clave]
     const restaDe = clave === 'banco' ? restaDelBanco(l) : null
     const resta = restaDe?.importe ?? 0
-    const estimadoAca = clave === 'banco' && x.total != null && bancoEstimado(l)
+    const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)
     if (estimadoAca) estimado = true
     const efectivoAbierto = clave === 'efectivo' && e.banco && restaDelBanco(l) != null && m.banco.total != null && x.total != null
     renglones.push({

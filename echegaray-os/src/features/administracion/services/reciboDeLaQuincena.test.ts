@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarRecibo, conceptosDisponibles, desglosarBancoSellado, eleccionInicial, ROTULO } from './reciboDeLaQuincena.ts'
-import { conArrastre } from './liquidacionArrastre.ts'
+import { conArrastre, conArrastres } from './liquidacionArrastre.ts'
 import { sellarRecibo } from './reciboEmitido.ts'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
@@ -231,6 +231,34 @@ test('la quincena CERRADA desglosa igual que la abierta: mismos renglones, mismo
   assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380257.52])
   assert.equal(c.total, TOTAL)
   assert.equal(a.total, c.total)
+})
+
+test('de punta a punta: `conArrastres` en la cerrada carga `arrastreIncluido`, no mueve ninguna suma y el recibo desglosa', () => {
+  // La línea cerrada tal como sale del cierre: el banco sellado YA trae el arrastre; sin modelo de sueldo.
+  const cerradaOriginal = {
+    personaId: 'p1', porBanco: 289543.8, enEfectivo: 380257.52, reciboNeto: NETO_DEL_ESTUDIO, sueldo: null,
+    pago: pagoDeLaLinea({ banco: 289543.8, negro: 380257.52 }),
+  } as unknown as LineaConOverrides
+  const arrastres = {
+    entrantes: new Map([['p1', { importe: ARRASTRE, motivo: 'Resta recibo Q1-09', periodoOrigen: 'Q1-09/2026' }]]),
+    salientes: new Map(), error: null,
+  }
+  const l = conArrastres(cerradaOriginal, arrastres, false)
+  assert.equal(l.arrastreIncluido?.importe, ARRASTRE)
+  assert.equal(l.arrastre, undefined, 'no es `arrastre`: los totales sí suman ése')
+  assert.equal(l.porBanco, cerradaOriginal.porBanco)
+  assert.equal(l.enEfectivo, cerradaOriginal.enEfectivo)
+  assert.deepEqual(l.pago, cerradaOriginal.pago)
+  const r = armarRecibo(l, eleccion, pesosAR)
+  assert.deepEqual(r.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380257.52])
+  assert.equal(r.total, TOTAL)
+})
+
+test('con banco 0 nada se rotula ESTIMADO', () => {
+  const l = { ...lineaDelEstudio('estimado', null), porBanco: 0, pago: pagoDeLaLinea({ banco: 0, negro: 100 }) } as unknown as LineaConOverrides
+  const r = armarRecibo(l, eleccion, pesosAR)
+  assert.equal(r.estimado, false)
+  assert.equal(r.medios[0].detalle, undefined)
 })
 
 test('si el banco no cierra con el neto del estudio, el papel lo dice: neto del estudio + «diferencia a revisar»', () => {

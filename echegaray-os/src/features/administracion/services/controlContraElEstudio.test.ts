@@ -52,8 +52,15 @@ test('si no puede leer el estudio, no emite', async () => {
   assert.match(await verificarContraElEstudio(sb, sellado(1)) ?? '', /No pude verificar/)
 })
 
-test('un papel sin depósito en banco no depende del estudio', () => {
-  assert.equal(motivoContraElEstudio({ nombre: 'A', estimado: false, banco: null, netoDelEstudio: null, arrastre: 0 }), null)
+test('un papel sin depósito en banco (null o 0) no depende del estudio: quien cobra todo en efectivo emite', async () => {
+  const sin = { nombre: 'A', estimado: false, netoDelEstudio: null, arrastre: 0 }
+  assert.equal(motivoContraElEstudio({ ...sin, banco: null }), null)
+  assert.equal(motivoContraElEstudio({ ...sin, banco: 0 }), null)
+  assert.equal(motivoContraElEstudio({ ...sin, banco: 0, estimado: true }), null, 'con banco 0 nada se rotula estimado')
+  assert.match(motivoContraElEstudio({ ...sin, banco: 100 }) ?? '', /Todavía no llegó/)
+  const sb = falso({ persona_legajo: { data: { cuil: CUIL } }, liquidacion_arrastre: { data: [] }, nomina_recibo_neto: { data: [] } })
+  assert.equal(await verificarContraElEstudio(sb, sellado(0)), null)
+  assert.equal(await verificarContraElEstudio(sb, sellado(null)), null)
 })
 
 test('el esquema de entrada declara `estimado` y `registrar` consulta al estudio (si no, zod descarta la bandera)', () => {

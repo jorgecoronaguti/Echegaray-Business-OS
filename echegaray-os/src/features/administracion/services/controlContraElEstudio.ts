@@ -20,7 +20,9 @@ export const periodoDelEstudio = (desde: string) => `Q${Number(desde.slice(8, 10
 export function motivoContraElEstudio(d: {
   nombre: string; estimado: boolean; banco: number | null; netoDelEstudio: number | null; arrastre: number
 }): string | null {
-  if (d.estimado || (d.banco != null && d.netoDelEstudio == null)) {
+  // SIN DEPÓSITO EN BANCO NO HAY RECIBO DEL ESTUDIO QUE COTEJAR (todo en efectivo, finales, mensuales, subcontratados).
+  if (d.banco == null || Math.abs(d.banco) < 0.005) return null
+  if (d.estimado || d.netoDelEstudio == null) {
     return `Todavía no llegó el recibo del estudio de esta quincena para ${d.nombre}: el recibo se puede ver como estimado, pero no se emite.`
   }
   if (d.banco == null || d.netoDelEstudio == null) return null
@@ -35,8 +37,8 @@ const FilaArrastre = z.object({ importe: z.coerce.number().finite().positive() }
 
 /** Lee del estudio y de los arrastres, y decide. Si no puede leer, NO deja emitir: un control que no mira no aprueba. */
 export async function verificarContraElEstudio(supabase: SupabaseClient, r: ReciboSellado): Promise<string | null> {
+  if (r.banco == null || Math.abs(r.banco) < 0.005) return null
   if (r.estimado) return motivoContraElEstudio({ nombre: r.nombre, estimado: true, banco: r.banco, netoDelEstudio: null, arrastre: 0 })
-  if (r.banco == null) return null
   const noPude = `No pude verificar el recibo de ${r.nombre} contra el del estudio. No lo emití.`
   const [per, arr] = await Promise.all([
     supabase.from('persona_legajo').select('cuil').eq('id', r.personaId).maybeSingle(),
