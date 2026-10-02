@@ -27,7 +27,6 @@ import { liquidaSueldos } from '@/features/auth/types/areas'
 import {
   mismoPapel, motivoParaNoEmitir, type PapelDelRecibo, type ReciboDelLoteGuardado, type ReciboSellado,
 } from './reciboEmitido.ts'
-import type { Resultado } from './personasActions'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const FECHA = /^\d{4}-\d{2}-\d{2}$/
@@ -55,7 +54,13 @@ const selladoSchema = z.object({
   renglones: z.object({ horas: z.array(renglon).max(20), medios: z.array(renglon).max(40) }),
 })
 
-export async function aceptarRecibo(sellado: ReciboSellado): Promise<Resultado> {
+/**
+ * Lo que vuelve de aceptar: además del id, el NÚMERO que le dio la base (RP-000123), leído de la fila. El papel
+ * se imprime con ese número; la pantalla no lo calcula ni lo prevé.
+ */
+export type ReciboAceptado = { ok: true; id: string; codigo: string | null; mensaje: string } | { ok: false; error: string }
+
+export async function aceptarRecibo(sellado: ReciboSellado): Promise<ReciboAceptado> {
   const leido = leerSellado(sellado)
   if (!leido.ok) return leido
   const r = leido.recibo
@@ -89,7 +94,7 @@ async function puedeEmitir(supabase: Cliente): Promise<string | null> {
   return null
 }
 
-async function registrar(supabase: Cliente, r: ReciboSellado): Promise<Resultado> {
+async function registrar(supabase: Cliente, r: ReciboSellado): Promise<ReciboAceptado> {
   const { data: id, error } = await supabase.rpc('registrar_recibo_liquidacion', {
     p_persona: r.personaId,
     p_desde: r.quincenaDesde,
@@ -113,16 +118,17 @@ async function registrar(supabase: Cliente, r: ReciboSellado): Promise<Resultado
 
   // LA FILA, LEÍDA DE VUELTA CON EL PERMISO DEL QUE LLAMA. Es la evidencia del efecto.
   const { data: fila, error: errLeer } = await supabase
-    .from('recibo_liquidacion').select('id, emitido_en').eq('id', id).maybeSingle()
+    .from('recibo_liquidacion').select('id, emitido_en, codigo').eq('id', id).maybeSingle()
   if (errLeer || !fila?.id) {
     return { ok: false, error: 'Guardé el recibo pero no pude leerlo de vuelta. No lo doy por emitido: revisá el legajo antes de entregar el papel.' }
   }
 
   revalidatePath(`/administracion/personas/${r.personaId}`)
-  return { ok: true, id: fila.id, mensaje: 'Recibo registrado en el legajo.' }
+  const codigo = typeof fila.codigo === 'string' ? fila.codigo : null
+  return { ok: true, id: fila.id, codigo, mensaje: codigo ? `Recibo ${codigo} registrado en el legajo.` : 'Recibo registrado en el legajo.' }
 }
 
-type UltimoGuardado = { id: string; emitido_en: string } & PapelDelRecibo
+type UltimoGuardado = { id: string; emitido_en: string; codigo: string | null } & PapelDelRecibo
 
 /**
  * LOS YA GUARDADOS de la quincena del lote, una lectura para todos: el último de cada persona, sin los
@@ -135,7 +141,7 @@ async function ultimosGuardados(
   if (validos.length === 0) return { ok: true, ultimos }
   const { data, error } = await supabase
     .from('recibo_liquidacion')
-    .select('id, persona_id, nombre, categoria, total, renglones, emitido_en')
+    .select('id, persona_id, nombre, categoria, total, renglones, emitido_en, codigo')
     .eq('quincena_desde', validos[0].quincenaDesde).eq('quincena_hasta', validos[0].quincenaHasta)
     .in('persona_id', validos.map((r) => r.personaId))
     .is('archivado_en', null)
@@ -144,7 +150,8 @@ async function ultimosGuardados(
     const ya = ultimos.get(f.persona_id)
     if (ya && f.emitido_en <= ya.emitido_en) continue
     ultimos.set(f.persona_id, {
-      id: f.id, emitido_en: f.emitido_en, nombre: f.nombre ?? '', categoria: f.categoria ?? null,
+      id: f.id, emitido_en: f.emitido_en, codigo: typeof f.codigo === 'string' ? f.codigo : null,
+      nombre: f.nombre ?? '', categoria: f.categoria ?? null,
       total: f.total == null ? null : Number(f.total),
       renglones: (f.renglones ?? { horas: [], medios: [] }) as PapelDelRecibo['renglones'],
     })
@@ -190,9 +197,10 @@ export async function guardarRecibosDelLote(
     if (!leido.ok) { recibos.push({ personaId, ok: false, error: leido.error }); continue }
     const r = leido.recibo
     const ya = ultimos.get(r.personaId)
-    if (ya && mismoPapel(ya, r)) { recibos.push({ personaId: r.personaId, ok: true, id: ya.id, yaEstaba: true }); continue }
+    // EL MISMO PAPEL CONSERVA SU NÚMERO: reimprimirlo no consume otro de la serie.
+    if (ya && mismoPapel(ya, r)) { recibos.push({ personaId: r.personaId, ok: true, id: ya.id, codigo: ya.codigo, yaEstaba: true }); continue }
     const x = await registrar(supabase, r)
-    recibos.push(x.ok ? { personaId: r.personaId, ok: true, id: x.id, yaEstaba: false } : { personaId: r.personaId, ok: false, error: x.error })
+    recibos.push(x.ok ? { personaId: r.personaId, ok: true, id: x.id, codigo: x.codigo, yaEstaba: false } : { personaId: r.personaId, ok: false, error: x.error })
   }
   // La marca «impreso» del cuadro sale de estos recibos: la pantalla de Liquidación se vuelve a leer.
   if (recibos.some((x) => x.ok && !x.yaEstaba)) revalidatePath('/administracion/personas')

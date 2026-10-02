@@ -19,6 +19,7 @@
 // cifras. Subir el PDF al legajo de Drive es una etapa siguiente y está declarado en la migración.
 
 import { useRef, useState, useTransition } from 'react'
+import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
@@ -48,7 +49,11 @@ export function ArmarRecibo({ fila, quincena }: {
   // detalle de blanco y negro, y sin esto el panel le decía «cobra por mes» a un jornalero.
   const mensual = tipoDeLiquidacion(fila) === 'mensual'
   const disponibles = conceptosDisponibles(fila.linea, mensual)
-  const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionPorDefecto(fila))
+  const [eleccion, setEleccionViva] = useState<EleccionDelRecibo>(() => eleccionPorDefecto(fila))
+  // EL NÚMERO QUE DIO LA BASE al guardar (RP-000123). Mientras no se guardó, el papel dice «N° al guardar».
+  const [codigo, setCodigo] = useState<string | null>(null)
+  // Otro tilde es otro papel: el número del recién guardado ya no es el de lo que se ve.
+  const setEleccion = (e: EleccionDelRecibo) => { setCodigo(null); setEleccionViva(e) }
   const recibo = armarRecibo(fila.linea, eleccion, pesos, mensual)
   const hoja = useRef<HTMLDivElement>(null)
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null)
@@ -84,6 +89,7 @@ export function ArmarRecibo({ fila, quincena }: {
         setAviso({ tono: 'mal', texto: `${emitido.ok ? 'La base no devolvió el recibo.' : emitido.error} No lo mandé a firmar.` })
         return
       }
+      setCodigo(emitido.codigo)
       const enviado = await enviarReciboAFirmar(emitido.id)
       setGuardando(false)
       setAviso(enviado.ok
@@ -104,6 +110,9 @@ export function ArmarRecibo({ fila, quincena }: {
       const r = await aceptarRecibo(sellado)
       setGuardando(false)
       if (!r.ok) { setAviso({ tono: 'mal', texto: `${r.error} No se imprimió.` }); return }
+      // `imprimirHoja` copia el HTML del papel YA: `flushSync` lo redibuja con el número antes de copiarlo, o
+      // el papel saldría diciendo «N° al guardar» con el recibo guardado.
+      flushSync(() => setCodigo(r.codigo))
       const salio = imprimir()
       setAviso({
         tono: 'ok',
@@ -135,7 +144,7 @@ export function ArmarRecibo({ fila, quincena }: {
       </fieldset>
 
       {/* EL PAPEL, tal como sale. El mismo componente que reimprime la ficha. */}
-      <HojaDelRecibo hoja={hoja} nombre={fila.nombre} categoria={categoria} quincena={quincena} recibo={recibo} />
+      <HojaDelRecibo hoja={hoja} nombre={fila.nombre} categoria={categoria} quincena={quincena} recibo={recibo} codigo={codigo} />
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {/* DOS ACCIONES, NO CUATRO (dueño, 30/09): «sólo quiero guardar e imprimir». Las dos variantes que

@@ -47,7 +47,9 @@ export default async function FirmarReciboPage({ searchParams }: Props) {
         {leida && firmado && (
           <Caja gap={7} relleno="16px 18px" testid="recibo-ya-firmado">
             <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>El recibo de este gasto ya está firmado</div>
-            <div style={{ fontSize: 13, color: C.muted }}>Lo firmó {firmado.aclaracion} el {diaHora(firmado.firmado_en)}.</div>
+            <div style={{ fontSize: 13, color: C.muted }}>
+              {firmado.codigo ? `Recibo ${firmado.codigo}. ` : ''}Lo firmó {firmado.aclaracion} el {diaHora(firmado.firmado_en)}.
+            </div>
           </Caja>
         )}
         {leida && !firmado && !porFirmar && <AvisoError testid="recibo-sin-importe">Este gasto no tiene un importe válido para un recibo.</AvisoError>}

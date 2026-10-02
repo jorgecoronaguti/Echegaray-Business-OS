@@ -14,6 +14,7 @@ import { aWinAnsi } from '../../obras/services/cierreObra.ts'
 import { dibujarLogoPdf } from '../../../shared/exportar/logoPdf.ts'
 import { pesos } from '../components/liquidacion/formato.ts'
 import type { RenglonesSellados } from './reciboEmitido.ts'
+import { rotuloDelNumero } from '../../../shared/recibo/codigoDeRecibo.ts'
 
 export interface ReciboParaElPdf {
   nombre: string
@@ -22,6 +23,8 @@ export interface ReciboParaElPdf {
   quincenaHasta: string
   total: number | null
   renglones: RenglonesSellados
+  /** El número que le dio la base (RP-000123). El PDF sale de lo guardado, así que siempre lo trae. */
+  codigo: string | null
 }
 
 export const RECIBOS_POR_HOJA_PDF = 4
@@ -73,6 +76,7 @@ async function dibujarRecibo(doc: PDFDocument, l: Lapiz, r: ReciboParaElPdf, x0:
   await dibujarLogoPdf(doc, l.page, x - 4, y + 2, 34)
   texto(l, 'Recibo de pago', x, y - 12, { f: l.negrita, tam: 9, ancho, derecha: true })
   texto(l, `Quincena ${fecha(r.quincenaDesde)} al ${fecha(r.quincenaHasta)}`, x, y - 23, { color: GRIS, ancho, derecha: true })
+  texto(l, rotuloDelNumero(r.codigo), x, y - 33, { color: GRIS, tam: 7.5, ancho, derecha: true })
   y -= 46
   const rotuloNombre = 'Nombre '
   texto(l, rotuloNombre, x, y, { color: GRIS })

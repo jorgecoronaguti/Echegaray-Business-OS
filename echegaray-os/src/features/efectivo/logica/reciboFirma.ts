@@ -40,6 +40,8 @@ export interface FirmaDelRecibo {
   aclaracion: string
   dni: string | null
   firmado_en: string
+  /** RP-000123: el número de la serie de pago que le dio la base al firmar. `null` antes de 20261002T1200. */
+  codigo?: string | null
 }
 
 export interface TrazoParaPdf { d: string; ancho: number; alto: number }

@@ -109,6 +109,8 @@ export interface ReciboDelLoteGuardado {
   id?: string
   /** Ya había un recibo idéntico de esta quincena: no se registró otro. */
   yaEstaba?: boolean
+  /** El número que le dio la base (RP-000123): el del recién creado, o el del que ya estaba, que no cambia. */
+  codigo?: string | null
   error?: string
 }
 
@@ -140,7 +142,7 @@ export function motivoParaNoEmitir(r: ReciboSellado): string | null {
 /** Una fila de `recibo_liquidacion_emitido`, tal como la devuelve la base. */
 export interface ReciboEnElLegajo extends ReciboSellado, CicloDelRecibo {
   id: string
-  /** «REC-2026-0004». Es como se nombra un recibo entre personas; un uuid no le dice nada a nadie. */
+  /** «RP-000004», de la serie de pago (20261002T1200). Es como se nombra un recibo entre personas. */
   codigo: string | null
   /** Dónde está la foto del papel firmado, en el bucket. */
   papelPath: string | null

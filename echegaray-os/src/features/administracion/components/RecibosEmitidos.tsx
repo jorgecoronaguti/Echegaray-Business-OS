@@ -114,6 +114,7 @@ export function Fila({ r, abierto, alternar }: { r: ReciboEnElLegajo; abierto: b
           hoja={hoja} nombre={r.nombre} categoria={r.categoria}
           quincena={{ desde: r.quincenaDesde, hasta: r.quincenaHasta }}
           recibo={{ horas: r.renglones.horas, medios: r.renglones.medios, total: r.total }}
+          codigo={r.codigo}
           pie={`Copia del recibo emitido el ${momento(r.emitidoEn)}${r.emitidoPor ? ` por ${r.emitidoPor}` : ''}.`}
         />
       </div>

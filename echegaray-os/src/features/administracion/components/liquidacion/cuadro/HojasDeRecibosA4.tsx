@@ -12,6 +12,7 @@
 // margen) menos 2 mm de holgura, para que el navegador no empuje una página en blanco al final.
 
 import type { ReciboArmado } from '../../../services/reciboDeLaQuincena'
+import { rotuloDelNumero } from '@/shared/recibo/codigoDeRecibo'
 import { fechaCorta, MONO, plata } from './HojaDelRecibo'
 import { enHojas, RECIBOS_POR_HOJA } from './lotesDeRecibos'
 
@@ -20,6 +21,11 @@ export interface ReciboParaLaHoja {
   nombre: string
   categoria: string | null
   recibo: ReciboArmado
+  /**
+   * El número que le dio la base al guardarlo (RP-000123). La vista previa no lo tiene —el lote todavía no se
+   * guardó— y el papel dice «N° al guardar»: nunca un número previsto, que otro recibo puede ganar antes.
+   */
+  codigo?: string | null
 }
 
 const CORTE = '1px dashed #B5B4AF'
@@ -75,6 +81,7 @@ function ReciboCompacto({ r, quincena }: { r: ReciboParaLaHoja; quincena: { desd
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '12px', fontWeight: 600 }}>Recibo de pago</div>
           <div style={{ color: GRIS }}>{`Quincena ${fechaCorta(quincena.desde)} al ${fechaCorta(quincena.hasta)}`}</div>
+          <div style={{ color: GRIS, fontFamily: MONO, fontSize: '9.5px' }} data-recibo-numero>{rotuloDelNumero(r.codigo)}</div>
         </div>
       </header>
       <div>

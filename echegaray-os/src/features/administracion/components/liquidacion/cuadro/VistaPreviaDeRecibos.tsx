@@ -61,8 +61,9 @@ async function bajarPdf(url: string): Promise<string | null> {
   return null
 }
 
-const aLaHoja = (r: ReciboDeLaFila): ReciboParaLaHoja =>
-  ({ personaId: r.fila.personaId, nombre: r.fila.nombre, categoria: r.categoria, recibo: r.recibo })
+// `codigo` sólo existe para lo GUARDADO (lo da la base): la vista previa lo pasa vacío y el papel dice «N° al guardar».
+const aLaHoja = (r: ReciboDeLaFila, codigo: string | null = null): ReciboParaLaHoja =>
+  ({ personaId: r.fila.personaId, nombre: r.fila.nombre, categoria: r.categoria, recibo: r.recibo, codigo })
 
 export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   /** Las filas visibles, en el orden de la grilla. */
@@ -113,13 +114,13 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   }, [paraImprimir, quincena.desde, quincena.hasta])
 
   /** Guarda el lote y devuelve los que quedaron en el legajo (con su id), dejando el aviso escrito. */
-  const guardar = async (): Promise<{ recibo: ReciboDeLaFila; id: string }[]> => {
+  const guardar = async (): Promise<{ recibo: ReciboDeLaFila; id: string; codigo: string | null }[]> => {
     const r = await guardarRecibosDelLote(lote.listos.map((x) => x.sellado))
     if (!r.ok) { setAviso({ tono: 'mal', lineas: [r.error] }); return [] }
     const porPersona = new Map(r.recibos.map((x) => [x.personaId, x]))
     const guardados = lote.listos.flatMap((recibo) => {
       const x = porPersona.get(recibo.fila.personaId)
-      return x?.ok && x.id ? [{ recibo, id: x.id }] : []
+      return x?.ok && x.id ? [{ recibo, id: x.id, codigo: x.codigo ?? null }] : []
     })
     const fallos = lote.listos.flatMap((recibo) => {
       const x = porPersona.get(recibo.fila.personaId)
@@ -146,7 +147,7 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
         const guardados = await guardar()
         if (guardados.length === 0) { v.close(); return }
         ventana.current = v
-        setParaImprimir(guardados.map((g) => aLaHoja(g.recibo)))
+        setParaImprimir(guardados.map((g) => aLaHoja(g.recibo, g.codigo)))
       } catch {
         // La acción no volvió (conexión cortada, error del servidor): la ventana en blanco no queda huérfana y los
         // botones no quedan muertos en «Guardando…» (auditoría 01/10/2026).
@@ -229,7 +230,7 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
       )}
       <div ref={caja} data-testid="recibos-lote-hojas">
         <div style={{ zoom: escala }}>
-          <HojasDeRecibosA4 vista recibos={lote.listos.map(aLaHoja)} quincena={quincena} />
+          <HojasDeRecibosA4 vista recibos={lote.listos.map((r) => aLaHoja(r))} quincena={quincena} />
         </div>
       </div>
       {paraImprimir && (

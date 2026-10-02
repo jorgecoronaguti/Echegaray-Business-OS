@@ -13,6 +13,7 @@
 // calcula nada, se dibuja lo que se recibe.
 
 import { V } from '@/shared/components/v2/patron'
+import { rotuloDelNumero } from '@/shared/recibo/codigoDeRecibo'
 import type { ReciboArmado } from '../../../services/reciboDeLaQuincena'
 import { pesos } from '../formato'
 
@@ -70,13 +71,17 @@ export function imprimirEnVentana(v: Window, nodo: HTMLElement, titulo: string, 
  *
  * `pie` escribe debajo de las firmas de dónde salió este papel: en la reimpresión dice cuándo se emitió el
  * original, para que dos copias del mismo recibo no se lean como dos pagos.
+ *
+ * `codigo` es el número que le dio la base al guardarlo (RP-000123, dueño 02/10/2026). Sin código el papel
+ * todavía no se guardó y dice «N° al guardar»: el número no se prevé, lo da la serie en el momento.
  */
-export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, borde = true, pie }: {
+export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, codigo = null, borde = true, pie }: {
   hoja?: React.RefObject<HTMLDivElement | null>
   nombre: string
   categoria: string | null
   quincena: { desde: string; hasta: string }
   recibo: ReciboArmado
+  codigo?: string | null
   borde?: boolean
   pie?: string
 }) {
@@ -100,6 +105,7 @@ export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, borde
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '15px', fontWeight: 600 }}>Recibo de pago</div>
           <div style={{ fontSize: '11.5px', color: '#6B6B69' }}>{`Quincena ${fechaCorta(quincena.desde)} al ${fechaCorta(quincena.hasta)}`}</div>
+          <div style={{ fontSize: '11px', color: '#6B6B69', fontFamily: MONO }} data-testid="recibo-numero">{rotuloDelNumero(codigo)}</div>
         </div>
       </header>
 

@@ -10,6 +10,7 @@ import { aWinAnsi } from '../../obras/services/cierreObra.ts'
 import { dibujarLogoPdf } from '../../../shared/exportar/logoPdf.ts'
 import { RAZON_SOCIAL_RECIBO, type ReciboParaFirmar } from '../logica/recibo.ts'
 import { fechaHoraDeFirma, fraseDelRecibo, trazoParaPdf, type FirmaDelRecibo } from '../logica/reciboFirma.ts'
+import { rotuloDelNumero } from '../../../shared/recibo/codigoDeRecibo.ts'
 
 const A5_APAISADO: [number, number] = [595.28, 419.53]
 const M = 36
@@ -53,6 +54,11 @@ export async function pdfDeReciboFirmado(r: ReciboParaFirmar, firma: FirmaDelRec
   const caja = { w: negrita.widthOfTextAtSize(imp, 13) + 20, h: 24 }
   page.drawRectangle({ x: A5_APAISADO[0] - M - caja.w, y: alto - M - 44, width: caja.w, height: caja.h, borderColor: NEGRO, borderWidth: 1 })
   texto(imp, A5_APAISADO[0] - M - caja.w + 10, alto - M - 36, negrita, 13)
+  // EL NÚMERO DEL RECIBO (serie de pago), debajo del importe. El ER del pie es de la ENTREGA, no de este papel.
+  if (firma.codigo) {
+    const numero = rotuloDelNumero(firma.codigo)
+    texto(numero, A5_APAISADO[0] - M - normal.widthOfTextAtSize(aWinAnsi(numero), 9), alto - M - 60, normal, 9, GRIS)
+  }
 
   let y = alto - M - 70
   raya(M, A5_APAISADO[0] - M, y)

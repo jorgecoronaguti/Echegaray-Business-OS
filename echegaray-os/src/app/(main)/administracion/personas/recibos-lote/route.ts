@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from('recibo_liquidacion')
-    .select('id, nombre, categoria, quincena_desde, quincena_hasta, total, renglones')
+    .select('id, codigo, nombre, categoria, quincena_desde, quincena_hasta, total, renglones')
     .in('id', ids.data)
   if (error) return Response.json({ error: `No pude leer los recibos: ${error.message}` }, { status: 500 })
   const porId = new Map((data ?? []).map((f) => [f.id as string, f]))
@@ -41,6 +41,7 @@ export async function GET(req: Request) {
       quincenaDesde: f.quincena_desde, quincenaHasta: f.quincena_hasta,
       total: f.total == null ? null : Number(f.total),
       renglones: (f.renglones ?? { horas: [], medios: [] }) as RenglonesSellados,
+      codigo: typeof f.codigo === 'string' ? f.codigo : null,
     }
   })
   const q = recibos[0]

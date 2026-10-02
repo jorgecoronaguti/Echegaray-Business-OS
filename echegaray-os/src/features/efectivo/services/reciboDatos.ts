@@ -20,6 +20,10 @@ export interface ReciboFirmadoGuardado extends FirmaDelRecibo {
 }
 
 const COLUMNAS = 'rendicion_id, entrega_id, monto, fecha, concepto, proveedor, trazo, aclaracion, dni, firmado_en'
+// El número (RP-000123) llega con la migración 20261002T1200. El código se publica antes que la base: si la
+// columna todavía no está, se lee sin ella. Sin esto un recibo firmado se leería como «sin firmar».
+const COLUMNAS_CON_NUMERO = `${COLUMNAS}, codigo`
+const SIN_COLUMNA = '42703'
 
 /** Los ids de rendición que ya tienen el recibo firmado; `null` si no se pudo leer. */
 export async function leerRendicionesFirmadas(ids: string[]): Promise<Set<string> | null> {
@@ -32,7 +36,10 @@ export async function leerRendicionesFirmadas(ids: string[]): Promise<Set<string
 
 /** El recibo firmado de una rendición, con lo que se firmó; `null` si no está firmado (o no se puede ver). */
 export async function leerReciboFirmado(supabase: SupabaseClient, rendicion: string): Promise<ReciboFirmadoGuardado | null> {
-  const { data } = await supabase.from('efectivo_recibo_firma').select(COLUMNAS).eq('rendicion_id', rendicion).maybeSingle()
+  const leer = (columnas: string) =>
+    supabase.from('efectivo_recibo_firma').select(columnas).eq('rendicion_id', rendicion).maybeSingle()
+  let { data, error } = await leer(COLUMNAS_CON_NUMERO)
+  if (error?.code === SIN_COLUMNA) ({ data, error } = await leer(COLUMNAS))
   if (!data) return null
   const f = data as unknown as ReciboFirmadoGuardado
   return { ...f, monto: Number(f.monto) }

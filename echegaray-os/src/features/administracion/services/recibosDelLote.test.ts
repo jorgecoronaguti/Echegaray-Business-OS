@@ -62,7 +62,7 @@ test('la marca «impreso»: el último recibo de cada persona, en hora de San Ju
 const recibo = (n: number): ReciboParaElPdf => ({
   nombre: `PERSONA NÚMERO ${n}`, categoria: n % 2 ? 'Oficial Especializado' : null,
   quincenaDesde: '2026-09-16', quincenaHasta: '2026-09-30', total: 536000.5,
-  renglones: papel().renglones,
+  renglones: papel().renglones, codigo: `RP-${String(n + 1).padStart(6, '0')}`,
 })
 
 test('el PDF: cuatro por hoja en A4 horizontal — 1, 4, 5 y 9 recibos son 1, 1, 2 y 3 hojas', async () => {
@@ -80,7 +80,7 @@ test('el PDF: cuatro por hoja en A4 horizontal — 1, 4, 5 y 9 recibos son 1, 1,
 test('el PDF no se rompe con lo que el papel puede traer: «sin dato», renglón sub, nombre largo, sin medios', async () => {
   const raro: ReciboParaElPdf = {
     nombre: 'MALDONADO BATISTA EMILIANO MIGUEL DE LOS ÁNGELES Y OTROS NOMBRES MUY LARGOS', categoria: 'Jefe de obra — mensual',
-    quincenaDesde: '2026-09-16', quincenaHasta: '2026-09-30', total: null,
+    quincenaDesde: '2026-09-16', quincenaHasta: '2026-09-30', total: null, codigo: null,
     renglones: {
       horas: [{ rotulo: 'Horas trabajadas', importe: null, horas: null }, { rotulo: 'Horas al 50 %', importe: null, horas: 7.5 }],
       medios: [{ rotulo: 'Efectivo', importe: null }, { rotulo: 'Adelanto del 20/09 → descontado', importe: -150000, sub: true }],
@@ -93,7 +93,7 @@ test('el PDF no se rompe con lo que el papel puede traer: «sin dato», renglón
 
 test('CABLEADO: el lote guarda por la misma puerta, compara antes de registrar, y la ruta del PDF es sólo de quien liquida', () => {
   const acciones = leer('./recibosEmitidosActions.ts')
-  assert.match(acciones, /if \(ya && mismoPapel\(ya, r\)\) \{ recibos\.push\(\{ personaId: r\.personaId, ok: true, id: ya\.id, yaEstaba: true \}\); continue \}/)
+  assert.match(acciones, /if \(ya && mismoPapel\(ya, r\)\) \{ recibos\.push\(\{ personaId: r\.personaId, ok: true, id: ya\.id, codigo: ya\.codigo, yaEstaba: true \}\); continue \}/)
   assert.match(acciones, /const x = await registrar\(supabase, r\)/, 'el lote registra con la misma función que el individual')
   assert.match(acciones, /\.is\('archivado_en', null\)/, 'un recibo archivado no cuenta como ya guardado')
   assert.match(acciones, /No pude leer los recibos ya guardados[^`]*No guardé nada/, 'si no puede comparar no registra a ciegas')
