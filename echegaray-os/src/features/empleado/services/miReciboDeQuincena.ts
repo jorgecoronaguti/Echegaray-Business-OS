@@ -91,6 +91,9 @@ export async function getMisRecibosDeQuincena(
   const { data, error } = await supabase
     .from('recibo_liquidacion_emitido')
     .select('id, codigo, quincena_desde, quincena_hasta, nombre, categoria, horas, banco, efectivo, total, renglones, emitido_en, estado, enviado_en, trazo, firmado_en, firmado_desde, papel_path, papel_subido_en, archivado_en, observacion')
+    // LO REEMPLAZADO NO ES MÍO PARA FIRMAR. La policy `recibo_liquidacion_mio` ya lo oculta una vez aplicada la
+    // migración 20261002T2000; este filtro vale desde antes y cubre a quien lea sin pasar por esa policy.
+    .neq('estado', 'reemplazado')
     .order('quincena_desde', { ascending: false })
     .order('emitido_en', { ascending: false })
   if (error) {

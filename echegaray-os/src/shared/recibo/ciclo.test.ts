@@ -95,3 +95,13 @@ test('el papel marcado sin foto es firma, dice cuándo y quién, y no se ofrece 
   assert.equal(sePuedeFirmar(con({ estado: 'firmado_papel' })), false)
   assert.equal(personaPuedeObservar(marcado), false)
 })
+
+test('un recibo reemplazado dice por cuál, no se firma, no se archiva y no se observa', () => {
+  const r = con({ estado: 'reemplazado', reemplazadoPor: 'RP-000004' })
+  assert.deepEqual(lecturaDelCiclo(r), { rotulo: 'Reemplazado por RP-000004', tono: 'nulo' })
+  assert.deepEqual(lecturaDelCiclo(con({ estado: 'reemplazado' })), { rotulo: 'Reemplazado por un recibo posterior', tono: 'nulo' })
+  assert.equal(esEstado('reemplazado'), true)
+  assert.equal(sePuedeFirmar(r), false)
+  assert.equal(sePuedeArchivar(r), false)
+  assert.equal(personaPuedeObservar(r), false)
+})

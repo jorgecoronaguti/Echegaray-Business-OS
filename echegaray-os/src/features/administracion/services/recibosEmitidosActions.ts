@@ -25,6 +25,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { liquidaSueldos } from '@/features/auth/types/areas'
 import { verificarContraElEstudio } from './controlContraElEstudio.ts'
+import { decidirReemplazo, type ReciboParaReemplazo } from '@/shared/recibo/reemplazo'
 import {
   mismoPapel, motivoParaNoEmitir, type PapelDelRecibo, type ReciboDelLoteGuardado, type ReciboSellado,
 } from './reciboEmitido.ts'
@@ -102,6 +103,14 @@ async function registrar(supabase: Cliente, r: ReciboSellado): Promise<ReciboAce
   // después habría que anularlo (pasó con RP-000001, 30/09). Lo decide el servidor mirando el estudio, no la pantalla.
   const motivo = await verificarContraElEstudio(supabase, r)
   if (motivo) return { ok: false, error: motivo }
+  const antes = await recibosDeLaQuincena(supabase, r)
+  if (!antes.ok) return antes
+  // YA HAY UNO FIRMADO: no se emite otro encima. Pisar una firma con otro papel lo decide el dueño, y hoy no hay
+  // pantalla para confirmarlo; la base lo rechaza igual (registrar_recibo_liquidacion), esto sólo lo dice primero.
+  const { reemplazar, firmado } = decidirReemplazo(antes.recibos, r)
+  if (firmado) {
+    return { ok: false, error: `Ya hay un recibo firmado de esta quincena: ${firmado.codigo ?? 'sin número'}. No emití otro: si hay que corregirlo, se resuelve con el dueño.` }
+  }
   const { data: id, error } = await supabase.rpc('registrar_recibo_liquidacion', {
     p_persona: r.personaId,
     p_desde: r.quincenaDesde,
@@ -132,7 +141,44 @@ async function registrar(supabase: Cliente, r: ReciboSellado): Promise<ReciboAce
 
   revalidatePath(`/administracion/personas/${r.personaId}`)
   const codigo = typeof fila.codigo === 'string' ? fila.codigo : null
-  return { ok: true, id: fila.id, codigo, mensaje: codigo ? `Recibo ${codigo} registrado en el legajo.` : 'Recibo registrado en el legajo.' }
+  const base = codigo ? `Recibo ${codigo} registrado en el legajo.` : 'Recibo registrado en el legajo.'
+  const quedaron = await losQueQuedaronReemplazados(supabase, reemplazar)
+  return { ok: true, id: fila.id, codigo, mensaje: quedaron.length > 0 ? `${base} Reemplaza a ${quedaron.join(', ')}.` : base }
+}
+
+/**
+ * LOS RECIBOS YA EMITIDOS DE ESA PERSONA Y QUINCENA, con lo que hace falta para saber si alguno está firmado.
+ * Sólo columnas que existen desde antes de la migración del reemplazo. Los archivados SÍ se leen: están firmados.
+ * Si no se puede leer NO se emite a ciegas: sin esto no se sabe si hay una firma que proteger.
+ */
+async function recibosDeLaQuincena(
+  supabase: Cliente, r: ReciboSellado,
+): Promise<{ ok: true; recibos: ReciboParaReemplazo[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase
+    .from('recibo_liquidacion')
+    .select('id, codigo, persona_id, quincena_desde, quincena_hasta, estado, firmado_en, papel_path, papel_sin_foto_en, archivado_en')
+    .eq('persona_id', r.personaId).eq('quincena_desde', r.quincenaDesde).eq('quincena_hasta', r.quincenaHasta)
+  if (error) return { ok: false, error: `No pude revisar los recibos ya emitidos de esta quincena: ${error.message}. No guardé nada.` }
+  return {
+    ok: true,
+    recibos: (data ?? []).map((f) => ({
+      id: f.id, codigo: typeof f.codigo === 'string' ? f.codigo : null, personaId: f.persona_id,
+      quincenaDesde: String(f.quincena_desde).slice(0, 10), quincenaHasta: String(f.quincena_hasta).slice(0, 10),
+      estado: String(f.estado), firmadoEn: f.firmado_en ?? null, papelPath: f.papel_path ?? null,
+      papelSinFotoEn: f.papel_sin_foto_en ?? null, archivadoEn: f.archivado_en ?? null,
+    })),
+  }
+}
+
+/**
+ * CUÁLES QUEDARON REEMPLAZADOS, LEÍDO EN LA FILA. Antes de aplicar la migración la base no reemplaza nada: el
+ * recibo se emite igual y el estado sigue siendo el de antes, así que acá no se afirma un reemplazo que no pasó.
+ * Una lectura que falla tampoco se afirma: vuelve vacío y el mensaje no lo menciona.
+ */
+async function losQueQuedaronReemplazados(supabase: Cliente, esperados: readonly ReciboParaReemplazo[]): Promise<string[]> {
+  if (esperados.length === 0) return []
+  const { data } = await supabase.from('recibo_liquidacion').select('codigo, estado').in('id', esperados.map((x) => x.id))
+  return (data ?? []).filter((f) => f.estado === 'reemplazado').map((f) => String(f.codigo))
 }
 
 type UltimoGuardado = { id: string; emitido_en: string; codigo: string | null } & PapelDelRecibo
@@ -152,6 +198,8 @@ async function ultimosGuardados(
     .eq('quincena_desde', validos[0].quincenaDesde).eq('quincena_hasta', validos[0].quincenaHasta)
     .in('persona_id', validos.map((r) => r.personaId))
     .is('archivado_en', null)
+    // Uno reemplazado no es «lo ya guardado»: reusarlo devolvería un recibo que ya no vale.
+    .neq('estado', 'reemplazado')
   if (error) return { ok: false, error: `No pude leer los recibos ya guardados: ${error.message}. No guardé nada.` }
   for (const f of data ?? []) {
     const ya = ultimos.get(f.persona_id)

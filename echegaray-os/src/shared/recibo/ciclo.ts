@@ -11,10 +11,10 @@
 // Sin JSX, sin `'use client'`, sin base: se prueba con `node --test`.
 
 export type EstadoDelRecibo =
-  | 'emitido' | 'enviado' | 'firmado_telefono' | 'firmado_papel' | 'archivado' | 'observado'
+  | 'emitido' | 'enviado' | 'firmado_telefono' | 'firmado_papel' | 'archivado' | 'observado' | 'reemplazado'
 
 export const ESTADOS: readonly EstadoDelRecibo[] = [
-  'emitido', 'enviado', 'firmado_telefono', 'firmado_papel', 'archivado', 'observado',
+  'emitido', 'enviado', 'firmado_telefono', 'firmado_papel', 'archivado', 'observado', 'reemplazado',
 ]
 
 /** Un estado que la base no conoce no se dibuja como «emitido»: se dice que no se entiende. */
@@ -36,6 +36,8 @@ export interface CicloDelRecibo {
   papelSinFotoEn?: string | null
   /** Nombre de quien lo marcó (ya resuelto), para decir «marcado por X». */
   papelSinFotoPor?: string | null
+  /** Si estado = reemplazado: el código del recibo que lo reemplazó («RP-000004»). `null` = no se pudo leer. */
+  reemplazadoPor?: string | null
 }
 
 /** ¿Alguien lo firmó, de la forma que sea? Las dos conviven (dueño, 22/09): no se elige una. */
@@ -48,15 +50,15 @@ export const estaFirmado = (
 
 /** Se archiva lo firmado, y una sola vez. */
 export const sePuedeArchivar = (r: CicloDelRecibo): boolean =>
-  r.estado !== 'archivado' && estaFirmado(r)
+  r.estado !== 'archivado' && r.estado !== 'reemplazado' && estaFirmado(r)
 
 /** La persona reclama ANTES de firmar; después, el reclamo va por otra vía. */
 export const personaPuedeObservar = (r: CicloDelRecibo): boolean =>
-  r.estado !== 'archivado' && !estaFirmado(r)
+  r.estado !== 'archivado' && r.estado !== 'reemplazado' && !estaFirmado(r)
 
 /** Firma quien todavía no firmó y no está archivado. */
 export const sePuedeFirmar = (r: CicloDelRecibo): boolean =>
-  r.estado !== 'archivado' && !estaFirmado(r)
+  r.estado !== 'archivado' && r.estado !== 'reemplazado' && !estaFirmado(r)
 
 /**
  * LA FIRMA GUARDADA, ABIERTA EN SUS PARTES PARA DIBUJARLA COMO JSX.
@@ -90,6 +92,11 @@ export interface LecturaDelCiclo {
  * falta; «enviado» solo no diría nada.
  */
 export function lecturaDelCiclo(r: CicloDelRecibo): LecturaDelCiclo {
+  // Reemplazado va primero: nunca se firmó (la base no reemplaza lo firmado), pero si un día trajera sellos
+  // de firma, «Firmado» sobre un recibo que ya no vale sería peor que decir que está reemplazado.
+  if (r.estado === 'reemplazado') {
+    return { rotulo: r.reemplazadoPor ? `Reemplazado por ${r.reemplazadoPor}` : 'Reemplazado por un recibo posterior', tono: 'nulo' }
+  }
   if (r.estado === 'archivado') return { rotulo: 'Archivado en el legajo', tono: 'pos' }
   if (r.estado === 'observado') return { rotulo: 'Observado: no coincide', tono: 'neg' }
   if (r.firmadoEn && r.papelSubidoEn) return { rotulo: 'Firmado · con el papel cargado', tono: 'pos' }

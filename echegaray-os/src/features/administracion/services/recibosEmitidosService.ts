@@ -31,6 +31,27 @@ function renglonesDe(v: unknown): RenglonesSellados {
   }
 }
 
+/**
+ * «REEMPLAZADO POR RP-…»: de cada reemplazado, el código del que lo reemplazó. Se pide APARTE y sólo si hay algún
+ * reemplazado: la columna `reemplazado_por` nace con la migración 20261002T2000, y pedirla en el select principal
+ * rompería la ficha entera mientras no esté aplicada. Si la lectura falla, el recibo se dibuja «reemplazado» a
+ * secas —no se inventa por cuál— y la ficha no se cae.
+ */
+async function codigosDeLosQueReemplazan(
+  supabase: SupabaseClient, filas: readonly Record<string, unknown>[],
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>()
+  const reemplazados = filas.filter((f) => f.estado === 'reemplazado').map((f) => String(f.id))
+  if (reemplazados.length === 0) return mapa
+  const { data } = await supabase.from('recibo_liquidacion').select('id, reemplazado_por').in('id', reemplazados)
+  const codigoDe = new Map(filas.map((f) => [String(f.id), texto(f.codigo)]))
+  for (const f of (data ?? []) as { id: string; reemplazado_por: string | null }[]) {
+    const c = f.reemplazado_por ? codigoDe.get(f.reemplazado_por) : null
+    if (c) mapa.set(f.id, c)
+  }
+  return mapa
+}
+
 export interface RecibosDelLegajo {
   puedeVer: boolean
   recibos: ReciboEnElLegajo[]
@@ -63,6 +84,7 @@ export async function getRecibosEmitidos(
   // identificar», que es más honesto que un uuid con pinta de nombre.
   const ids = [...new Set(filas.flatMap((f) => [f.emitido_por, f.papel_sin_foto_por]).filter((v): v is string => typeof v === 'string'))]
   const nombres = ids.length > 0 ? await nombresDeUsuarios(supabase) : new Map<string, string>()
+  const reemplazadoPor = await codigosDeLosQueReemplazan(supabase, filas)
   const recibos = filas.map((f): ReciboEnElLegajo => ({
     id: String(f.id),
     codigo: typeof f.codigo === 'string' ? f.codigo : null,
@@ -80,6 +102,7 @@ export async function getRecibosEmitidos(
     papelSinFotoPor: typeof f.papel_sin_foto_por === 'string' ? nombres.get(f.papel_sin_foto_por) ?? 'sin identificar' : null,
     archivadoEn: texto(f.archivado_en),
     observacion: texto(f.observacion),
+    reemplazadoPor: reemplazadoPor.get(String(f.id)) ?? null,
     personaId: String(f.persona_id),
     nombre: String(f.nombre ?? ''),
     categoria: (f.categoria as string | null) ?? null,

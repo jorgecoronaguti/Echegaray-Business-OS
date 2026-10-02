@@ -74,13 +74,16 @@ export function RecibosEmitidos({ datos }: { datos: RecibosDelLegajo }) {
 export function Fila({ r, abierto, alternar }: { r: ReciboEnElLegajo; abierto: boolean; alternar: () => void }) {
   const hoja = useRef<HTMLDivElement>(null)
   const [bloqueada, setBloqueada] = useState(false)
+  // REEMPLAZADO: sigue en el legajo (el número no se reutiliza ni se borra) pero atenuado y sin acciones: ya no vale.
+  const reemplazado = r.estado === 'reemplazado'
   return (
-    <div data-testid="recibo-emitido" style={{ borderBottom: `1px solid ${V.lineaFila}`, padding: '10px 0' }}>
+    <div data-testid="recibo-emitido" data-reemplazado={reemplazado || undefined}
+      style={{ borderBottom: `1px solid ${V.lineaFila}`, padding: '10px 0', opacity: reemplazado ? 0.55 : 1 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 16px', fontSize: '13px', color: V.tinta }}>
         <span style={{ minWidth: 170 }}>
           {`${fechaCorta(r.quincenaDesde)} al ${fechaCorta(r.quincenaHasta)}`}
           {/* EL ÚLTIMO DE LA QUINCENA. Los anteriores no se esconden: también se entregaron. */}
-          {!r.esUltimo && <span style={{ fontSize: '11px', color: V.apagado }}> · anterior</span>}
+          {!r.esUltimo && !reemplazado && <span style={{ fontSize: '11px', color: V.apagado }}> · anterior</span>}
         </span>
         <span style={{ fontFamily: MONO, fontSize: '12.5px', color: V.apagado }}>{horasDichas(r.horas)}</span>
         <span style={{ fontFamily: MONO, fontSize: '12.5px', color: V.apagado }}>{`banco ${cifra(r.banco)}`}</span>
@@ -95,11 +98,12 @@ export function Fila({ r, abierto, alternar }: { r: ReciboEnElLegajo; abierto: b
           style={{ border: 0, background: 'none', padding: 0, fontSize: '11.5px', color: V.tinta, textDecoration: 'underline', cursor: 'pointer' }}>
           {abierto ? 'Ocultar el papel' : 'Ver el papel'}
         </button>
-        <button type="button" data-testid="recibo-reimprimir"
+        {/* Un reemplazado no se reimprime: entregar un papel que ya no vale es el error que esto evita. */}
+        {!reemplazado && <button type="button" data-testid="recibo-reimprimir"
           onClick={() => setBloqueada(!imprimirHoja(hoja.current, tituloDelRecibo(r.nombre, r.quincenaDesde, r.quincenaHasta)))}
           style={{ border: 0, background: 'none', padding: 0, fontSize: '11.5px', color: V.tinta, textDecoration: 'underline', cursor: 'pointer' }}>
           Reimprimir
-        </button>
+        </button>}
         {bloqueada && (
           <span style={{ fontSize: '11.5px', color: V.warn }} data-testid="recibo-reimprimir-bloqueada">
             El navegador bloqueó la ventana. Permití las ventanas emergentes de app.ecsas.com.ar.
@@ -205,7 +209,7 @@ function Ciclo({ r }: { r: ReciboEnElLegajo }) {
 
       {/* ENVIAR A FIRMAR TAMBIÉN DESDE ACÁ: un recibo emitido a la mañana con «Aceptar e imprimir» no tiene
           por qué volver al cuadro de Liquidación para llegar al teléfono. */}
-      {!estaFirmado(r) && r.estado !== 'archivado' && (
+      {!estaFirmado(r) && r.estado !== 'archivado' && r.estado !== 'reemplazado' && (
         <button type="button" data-testid="recibo-enviar" disabled={pendiente} style={enlace}
           onClick={() => correr(() => enviarReciboAFirmar(r.id))}>
           {r.estado === 'enviado' ? 'Volver a enviarlo a firmar' : 'Enviar a firmar'}
@@ -236,7 +240,7 @@ function Ciclo({ r }: { r: ReciboEnElLegajo }) {
         </span>
       )}
 
-      {r.estado !== 'archivado' && (
+      {r.estado !== 'archivado' && r.estado !== 'reemplazado' && (
         pidiendoMotivo ? (
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
             <input value={motivo} onChange={(e) => setMotivo(e.target.value)} data-testid="recibo-motivo"

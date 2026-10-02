@@ -28,6 +28,8 @@ export async function GET(req: Request) {
     .from('recibo_liquidacion')
     .select('id, codigo, nombre, categoria, quincena_desde, quincena_hasta, total, renglones')
     .in('id', ids.data)
+    // Un reemplazado no se entrega en un PDF: cae en «no encontré» como si no estuviera, que es lo que vale.
+    .neq('estado', 'reemplazado')
   if (error) return Response.json({ error: `No pude leer los recibos: ${error.message}` }, { status: 500 })
   const porId = new Map((data ?? []).map((f) => [f.id as string, f]))
   // EN EL ORDEN PEDIDO (el de la grilla). Si falta uno no se entrega un PDF incompleto que parezca entero.

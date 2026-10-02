@@ -59,6 +59,8 @@ export async function leerRecibosDeLaQuincena(
     .select('id, persona_id, emitido_en, codigo')
     .eq('quincena_desde', quincena.desde).eq('quincena_hasta', quincena.hasta)
     .is('archivado_en', null)
+    // «Impreso» es lo vigente: un reemplazado ya no es el recibo de la persona.
+    .neq('estado', 'reemplazado')
   if (error) return { impresos: {}, error: error.message }
   return { impresos: ultimoPorPersona((data ?? []) as Fila[]), error: null }
 }
