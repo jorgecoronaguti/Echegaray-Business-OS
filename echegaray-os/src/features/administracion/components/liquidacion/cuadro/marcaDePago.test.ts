@@ -41,7 +41,8 @@ test('LA GRILLA PINTA LA FILA Y LA CELDA FIJA CON EL MISMO COLOR, Y DIBUJA EL BO
 })
 
 test('EL BOTÓN LLAMA A LA ACCIÓN DEL SERVIDOR CON LA VENTANA, EL GRUPO Y LA PERSONA; SIN HEX SUELTO', () => {
-  assert.match(MARCA, /marcarLineaPagada\(\{ \.\.\.quincena, grupo, persona_id: personaId, pagada: !pagada \}\)/)
+  // La fecha del efectivo sólo viaja si se eligió una (02/10/2026); la ventana, el grupo y la persona, siempre.
+  assert.match(MARCA, /marcarLineaPagada\(\{\s*\.\.\.quincena, grupo, persona_id: personaId, pagada: !pagada, \.\.\.\(fechaDelPago \? \{ fecha_pago: fechaDelPago \} : \{\}\),?\s*\}\)/)
   assert.doesNotMatch(MARCA, /#[0-9A-Fa-f]{3,6}\b/, 'ningún color fuera de los tokens')
   assert.match(MARCA, /disabled=\{pendiente\}/, 'no admite un segundo clic mientras escribe')
   assert.match(MARCA, /if \(cerrada\)/, 'la quincena cerrada no se toca')

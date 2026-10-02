@@ -41,6 +41,7 @@ import { avisoDeAutocierre, decisionDeAutocierre, type LineaCongelada } from './
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { pagoAlMarcarPagada } from './pagoAlMarcarPagada'
 import { escribirRedondeo, verificarGuardadoDelRedondeo } from './efectivoRedondeado'
+import { COLUMNA_FECHA_DEL_PAGO, fechaDelPagoSchema, puenteParaElPago } from './fechaDelPagoEnEfectivo'
 
 const RUTA = '/administracion/personas'
 
@@ -324,6 +325,8 @@ const celdaSchema = ventanaSchema.extend({
   valor: z.union([z.number().finite(), z.string().max(LARGO_MAXIMO_DE_FORMULA)]),
   // DESHACER (Cmd+Z): lo que debería haber hoy. Si la celda cambió, no se pisa.
   esperado: z.union([z.literal(''), z.coerce.number().finite()]).optional(),
+  // DÍA EN QUE SALIÓ EL EFECTIVO (sólo «Pagado efectivo»). Sin él, hoy: lo resuelve la base.
+  fecha_pago: fechaDelPagoSchema.optional(),
 })
 
 /** Qué celdas puede guardar HOY esta base. Se pregunta a la base, no a `migrations/`. */
@@ -349,6 +352,12 @@ async function columnaGuardable(
   return { columna }
 }
 
+/** ¿La base ya tiene la columna puente de la fecha del pago (migración 20261002T1800)? Se le pregunta a la base. */
+async function columnaDeLaFechaExiste(supabase: ReturnType<typeof createAdminClient>): Promise<boolean> {
+  const sonda = await supabase.from('liquidacion_linea').select(COLUMNA_FECHA_DEL_PAGO).limit(1)
+  return !sonda.error
+}
+
 /**
  * UNA CELDA DE LA LÍNEA. Se guarda el número escrito, no el recalculado: la cadena se rehace al
  * leer (`aplicarOverrides`), y guardar los derivados congelaría hoy una cuenta que mañana cambia
@@ -357,7 +366,7 @@ async function columnaGuardable(
 export async function guardarCeldaLiquidacion(entrada: unknown): Promise<ResultadoLiquidacion> {
   const parsed = celdaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, campo, valor: tecleado, esperado, ...v } = parsed.data
+  const { persona_id: personaId, campo, valor: tecleado, esperado, fecha_pago: fechaDelPago, ...v } = parsed.data
   // UNA CUENTA QUE NO SE ENTIENDE NO SE GUARDA, Y SE DICE POR QUÉ. Guardar el texto crudo dejaría una celda que
   // no es un número; guardar un 0 liquidaría a alguien en cero por un tipeo.
   const escrito = leerCeldaNumerica(typeof tecleado === 'number' ? String(tecleado) : tecleado)
@@ -403,6 +412,12 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   if (hayMarca) Object.assign(cambios, selloDeAutor((await getUsuarioActual(supabase))?.id ?? null))
   // LA CUENTA VIAJA AL LADO DEL NÚMERO, NUNCA EN SU LUGAR: lo que se paga es el número.
   if (hayFormulas) cambios.formulas = siguientesFormulas(hoy?.formulas, campo, escrito.expresion)
+  // EL EFECTIVO BAJA LA CAJA EL DÍA QUE SALIÓ (02/10/2026): el trigger de la línea deja el movimiento con esta fecha.
+  if (campo === 'pagadoEfectivo') {
+    const fecha = await puenteParaElPago(fechaDelPago, hoyEnObra(), () => columnaDeLaFechaExiste(admin))
+    if (!fecha.ok) return { ok: false, error: fecha.error }
+    Object.assign(cambios, fecha.puente)
+  }
 
   let filas: Record<string, unknown>[]
   if (esperado !== undefined) {
@@ -475,6 +490,8 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
 const pagadaSchema = ventanaSchema.extend({
   persona_id: z.string().uuid(),
   pagada: z.boolean(),
+  // Día en que salió el efectivo que la marca da por pagado (o que el deshacer devuelve). Sin él, hoy.
+  fecha_pago: fechaDelPagoSchema.optional(),
 })
 
 const MIGRACION_PAGADA = '20260916T1300_liquidacion_linea_pagada.sql'
@@ -496,7 +513,7 @@ function sinCuentasDePago(formulas: unknown): Record<string, string> {
 export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiquidacion> {
   const parsed = pagadaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, pagada, ...v } = parsed.data
+  const { persona_id: personaId, pagada, fecha_pago: fechaDelPago, ...v } = parsed.data
 
   const supabase = await createClient()
   const permiso = await puedeLiquidar(supabase)
@@ -574,6 +591,10 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
   // `liquidacion_cambio` se quedaba sin quién. La persona real (no la lente «ver como») viaja en el sello, como en
   // `guardarCeldaLiquidacion`; en el marcar es la misma que `pagada_por`.
   Object.assign(aEscribir, selloDeAutor((await getUsuarioActual(supabase))?.id ?? null))
+  // EL EFECTIVO QUE LA MARCA DA POR PAGADO BAJA LA CAJA EL DÍA ELEGIDO (hoy si no se tocó): lo registra el trigger.
+  const fecha = await puenteParaElPago(fechaDelPago, hoyEnObra(), () => columnaDeLaFechaExiste(admin))
+  if (!fecha.ok) return { ok: false, error: fecha.error }
+  Object.assign(aEscribir, fecha.puente)
   const { data, error } = await admin.from('liquidacion_linea')
     .upsert(aEscribir, { onConflict: 'liquidacion_id,persona_id' })
     .select('pagada_en, pagado_banco, pagado_efectivo')

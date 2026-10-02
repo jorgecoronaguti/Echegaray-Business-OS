@@ -14,6 +14,7 @@ import { estadoDelCuadro, resumenDeEstados } from '../../services/estadoDelCuadr
 import { CuadroLiquidacion } from './CuadroLiquidacion'
 import { leerHistorialDeLaQuincena } from '../../services/historialDeManualesService'
 import { ProveedorDeHistorial } from './HistorialDeManuales'
+import { FechaDelPagoEnEfectivo, ProveedorDeFechaDelPago } from './cuadro/FechaDelPagoEnEfectivo'
 
 // LA SOLAPA «LIQUIDACIÓN» — qué cobra cada persona en esta quincena y por qué canal sale.
 //
@@ -59,6 +60,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 
   return (
     <ProveedorDeHistorial lectura={historial}>
+    <ProveedorDeFechaDelPago hoy={hoy}>
     <div data-testid="bloque-liquidacion">
       {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR. Un cuadro en cero porque la RLS
           rechazó la consulta es indistinguible de una quincena sin cargar, y la diferencia entre
@@ -96,6 +98,11 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 
       <Tarjeta tarjeta={tarjeta} desglose={desglose} />
 
+      {/* La fecha del efectivo que sale de la caja: sólo si la base deja escribir «Pagado efectivo» y hay algo abierto. */}
+      {camposEditables.includes('pagadoEfectivo') && cuadros.some((c) => estadoDelCuadro(estados, c.grupo).estado !== 'cerrada') && (
+        <div style={{ padding: '0 0 8px', display: 'flex', justifyContent: 'flex-end' }}><FechaDelPagoEnEfectivo /></div>
+      )}
+
       <SinActividad personas={sinActividad} />
 
       {!conFilas ? (
@@ -123,6 +130,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
         </>
       )}
     </div>
+    </ProveedorDeFechaDelPago>
     </ProveedorDeHistorial>
   )
 }

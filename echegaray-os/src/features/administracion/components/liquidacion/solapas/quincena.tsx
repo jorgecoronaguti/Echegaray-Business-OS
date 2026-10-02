@@ -6,6 +6,7 @@ import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDe
 import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
 import { leerHistorialDeLaQuincena } from '../../../services/historialDeManualesService'
 import { ProveedorDeHistorial } from '../HistorialDeManuales'
+import { FechaDelPagoEnEfectivo, ProveedorDeFechaDelPago } from '../cuadro/FechaDelPagoEnEfectivo'
 import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
@@ -142,6 +143,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <ProveedorDeHistorial lectura={historialDeManuales}>
+    <ProveedorDeFechaDelPago hoy={hoy}>
     <div data-testid="vista-quincena">
       {/* LOS ERRORES DE LA EXPOSICIÓN YA VIENEN EN `liquidacion.errores`: sumarlos otra vez los dibujaba
           dos veces con la misma clave. La clave lleva el índice: dos fuentes pueden fallar con el mismo rótulo. */}
@@ -176,6 +178,10 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         }}
         cerrar={hrefDe({ solapa: 'cierre', buscar: undefined })}
       />
+      {/* La fecha del efectivo que sale de la caja: sólo si la base deja escribir «Pagado efectivo» y hay quincena abierta. */}
+      {liquidacion.camposEditables.includes('pagadoEfectivo') && cuadrosCerrados.size === 0 && (
+        <div style={{ padding: '0 0 8px', display: 'flex', justifyContent: 'flex-end' }}><FechaDelPagoEnEfectivo /></div>
+      )}
       <GrillaEspejoQuincena
         dias={dias}
         secciones={secciones}
@@ -196,6 +202,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         }
       />
     </div>
+    </ProveedorDeFechaDelPago>
     </ProveedorDeHistorial>
   )
 }

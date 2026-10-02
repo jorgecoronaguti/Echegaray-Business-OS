@@ -14,6 +14,7 @@
 import { useState, useTransition } from 'react'
 import { marcarLineaPagada } from '../../../services/liquidacionActions'
 import { diaDelSello } from './marcaDePago'
+import { useFechaDelPagoEnEfectivo } from './FechaDelPagoEnEfectivo'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 
 export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
@@ -25,6 +26,8 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
   cerrada: boolean
 }) {
   const [pendiente, empezar] = useTransition()
+  // El efectivo que la marca da por pagado baja la caja el día elegido arriba (sólo viaja si no es hoy).
+  const fechaDelPago = useFechaDelPagoEnEfectivo()
   const [error, setError] = useState<string | null>(null)
   // LO QUE PASÓ CON LA QUINCENA al marcar al último: «cerrada» o «NO cerré: …». Un «Marcada como pagada» a secas no se
   // repite, ya lo dice la fila verde.
@@ -40,7 +43,9 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
 
   const alternar = () => empezar(async () => {
     setError(null)
-    const r = await marcarLineaPagada({ ...quincena, grupo, persona_id: personaId, pagada: !pagada })
+    const r = await marcarLineaPagada({
+      ...quincena, grupo, persona_id: personaId, pagada: !pagada, ...(fechaDelPago ? { fecha_pago: fechaDelPago } : {}),
+    })
     if (!r.ok) { setError(r.error); return }
     setAviso(/Todos pagados|todos pagados/.test(r.mensaje) ? r.mensaje : null)
   })

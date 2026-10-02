@@ -34,6 +34,7 @@ import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
+import { useFechaDelPagoEnEfectivo } from './cuadro/FechaDelPagoEnEfectivo'
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import { accionDelRedondeo, debeGuardarAlSalir, efectivoMostrado, teclaDelRedondeo, motivoSinCambios } from '../../services/efectivoRedondeado'
 import { horas, pesos, textoDelRedondeo } from './formato'
@@ -191,6 +192,8 @@ export function CeldaEditable({
   expresion?: string | null
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
+  // El día elegido para el efectivo que sale de la caja (sólo viaja si no es hoy). Hook antes de cualquier `return`.
+  const fechaDelPago = useFechaDelPagoEnEfectivo()
   // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
   // todavía no lo pasan. Los dos conviven UNA versión: quien no lo pase dibuja lo de siempre.
   const marca = origen ?? (manual ? 'manual' : 'calculado')
@@ -225,6 +228,7 @@ export function CeldaEditable({
         guardar={async (v, contexto) => {
           const r = await guardarCeldaLiquidacion({
             ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(), esperado: contexto?.esperado,
+            ...(campo === 'pagadoEfectivo' && fechaDelPago ? { fecha_pago: fechaDelPago } : {}),
           })
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
