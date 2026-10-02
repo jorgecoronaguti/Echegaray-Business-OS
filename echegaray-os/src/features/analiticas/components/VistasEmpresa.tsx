@@ -43,21 +43,40 @@ import { Torta } from './Torta'
  * Límite conocido: `overflow-x: auto` computa la `y` en `auto` por spec, así que algo que sobresalga
  * POR ARRIBA de la grilla se recortaría. Hoy el contenido mide exactamente el alto de la caja.
  */
-export function Columnas({ meses }: {
-  meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string; sellos?: string[] }[]
+export function Columnas({ meses, compacto = false }: {
+  meses: {
+    mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string
+    /** Rótulos bajo el mes. `corto` es el que entra en una columna de ~32 px (teléfono, con `compacto`). */
+    sellos?: { largo: string; corto: string }[]
+    /** Valor abreviado para el teléfono con `compacto` («33,2», sin «$» ni «M»: la unidad va en la leyenda). */
+    valorCorto?: string
+  }[]
+  /**
+   * LOS MESES ENTRAN TODOS EN LA PANTALLA DEL TELÉFONO (QA producción, 02/10/2026). Con `minmax(56px, 1fr)`
+   * diez meses miden 632 px en una caja de 358: junio se cortaba y julio–octubre quedaban fuera de vista
+   * sin pista alguna. Con `compacto` la columna es `minmax(0, 1fr)` (~32 px en 390), el valor se abrevia
+   * y los sellos pasan a su forma corta; desde `lg` todo vuelve a ser como antes. Sólo lo pide Nómina:
+   * Caja y Obras mantienen su deslizamiento declarado arriba.
+   */
+  compacto?: boolean
 }) {
   const cruza = new Set(meses.map((m) => m.mes.slice(0, 4))).size > 1
   return (
-    <div className="overflow-x-auto lg:overflow-visible">
-      <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(56px, 1fr))` }}>
+    <div className={compacto ? '' : 'overflow-x-auto lg:overflow-visible'}>
+      <div className={`grid h-[220px] items-end lg:gap-4 ${compacto ? 'gap-1' : 'gap-2'}`}
+        style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(${compacto ? 0 : 56}px, 1fr))` }}>
         {meses.map((m) => (
           <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
-            <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
+            <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor == null ? m.nota : compacto && m.valorCorto ? <><span className="lg:hidden">{m.valorCorto}</span><span className="hidden lg:inline">{m.valor}</span></> : m.valor}</div>
             <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
               {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
             </div>
             <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
-            {m.sellos?.filter(Boolean).map((t) => <div key={t} className={`-mt-1 whitespace-nowrap text-[10px] leading-[14px] ${t === 'parcial' ? 'text-warn' : 'text-muted'}`}>{t}</div>)}
+            {m.sellos?.map((t) => (
+              <div key={t.largo} className="-mt-1 whitespace-nowrap text-[11px] leading-[14px] text-muted">
+                {compacto ? <><span className="lg:hidden">{t.corto}</span><span className="hidden lg:inline">{t.largo}</span></> : t.largo}
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -116,17 +135,23 @@ export function VistaNomina({ pagado, costo, personas, filtros, mes, hoy }: {
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia' },
         ]} />
       <Seccion titulo="El costo, mes a mes" arriba="pt-8"
-        aclaracion="mano de obra con cargas, FCL y ART; cada mes dice si es real o estimado"
-        detalle="Sale de costo_mo_quincena, la misma función que usa Obras. Real: costo total del empleador que figura en el recibo (desde julio). Estimado: bruto del recibo por un factor, porque los recibos de enero a junio no traen contribuciones cargadas. Blanco: lo que cuesta la parte registrada; negro: lo cobrado en mano. Un mes incompleto va atenuado y dice «parcial». Las personas sin tarifa no suman y no valen 0."
+        aclaracion="millones de $; con cargas, FCL y ART; cada mes dice si es real o estimado"
+        detalle="Sale de costo_mo_quincena, la misma función que usa Obras. Real: costo total del empleador que figura en el recibo (desde julio). Estimado: bruto del recibo por un factor, porque los recibos de enero a junio no traen contribuciones cargadas. Blanco: lo que cuesta la parte registrada; negro: lo cobrado en mano. Un mes incompleto va atenuado y dice «parcial». Las personas sin tarifa no suman y no valen 0. El mes en curso crece cada día: el costo se modela con las horas cargadas hasta hoy, así que dos lecturas del mismo mes en días distintos no coinciden."
         leyenda={[{ color: 'bg-serie-1', rotulo: 'blanco (con cargas)' }, { color: 'bg-serie-2', rotulo: 'negro (en mano)' }]}>
         {costo == null ? <SinLectura que="el costo de mano de obra por quincena" /> : (
-          <Columnas meses={lineas.map((x) => {
+          <Columnas compacto meses={lineas.map((x) => {
             const c = x.costo
             if (c?.costo == null) return { mes: x.mes, valor: null, nota: 'sin medir', partes: [] }
             const apagado = c.parcial ? ' opacity-60' : ''
             return {
               mes: x.mes, valor: millones(c.costo), color: c.parcial ? 'text-muted' : undefined,
-              sellos: [...(c.parcial ? ['parcial'] : []), c.etiqueta === 'en parte estimado' ? 'mixto' : c.etiqueta ?? ''],
+              valorCorto: (c.costo / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+              sellos: [
+                ...(c.parcial ? [{ largo: 'parcial', corto: 'parc.' }] : []),
+                ...(c.etiqueta === 'real' ? [{ largo: 'real', corto: 'real' }]
+                  : c.etiqueta === 'estimado' ? [{ largo: 'estimado', corto: 'est.' }]
+                  : c.etiqueta ? [{ largo: 'mixto', corto: 'mixto' }] : []),
+              ],
               partes: [
                 { alto: (c.negro / max) * 130, clase: `bg-serie-2${apagado}` },
                 { alto: (c.blanco / max) * 130, clase: `bg-serie-1${apagado}` },
