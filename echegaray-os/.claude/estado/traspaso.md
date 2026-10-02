@@ -1,3 +1,45 @@
+# TRASPASO — 02/10/2026 11:45 (sesión 3bc62984, ventana f7) — LEER ESTE BLOQUE PRIMERO
+
+**origin/main = 76d2830c7.** Publicado hoy después del bloque de abajo: 414661a76 (detalle de barras Analíticas: toque, posición, teclado), 448a8d452 (pipeline: el motivo de un paso caído ya no es «}»), a8aa24c12 + 76d2830c7 (Mantenimiento: el panel abre con códigos de 3 cifras; QA en producción OK salvo «Se operan con gente», que no abre nada al tocar — sin diagnosticar).
+
+- **PymeNación: LISTO.** «2 · ENVIAR AL BANCO» (12iON4XMo8lgWUm2Dj0PYHOyXkKXeQN9V) tiene los 9 PDF (1–7 con firma de Rodrigo y fecha 02/10/2026, recomprimidos: 3,3 MB en total). Borrador en Gmail de jorge@ `r-1041555331299493971` (hilo 1a0d8ed15f523caf, a 3200CNE1@bna.com.ar) con los 9 adjuntos. Lo envía el dueño. Avisos: F66294 prevé firma certificada por el banco; sello «APODERADO».
+- **ANR: carpeta «Actualización 2026-10»** (13vEgBgD7QA3T512PjiTD8AZuLDocykVL): Anexo 1 (fecha 02/10, firmado, cargo corregido a ADMINISTRADOR TITULAR según RPC 28/09/2026), Anexo 2 firmado ($12,1 M), Presupuesto, y 01–05 (certificado RPC, resolución, Acta 16 con 50/50, contrato social, poder). FALTA afuera: hojas 1 y 2 del libro de accionistas (escanear el libro físico), constancias ARCA / IIBB / cumplimiento fiscal DGR San Juan (vencidas). Sin mail ni borrador: «después armamos la respuesta». Detalle: scratchpad/anr/PEDIDOS.md y scratchpad/anr2/FALTANTES.md.
+- **Contadores:** borrador `r-1444655814691849705` (hilo 1a0f79faf556a029) a frasesores.a@ cc rodrigo@, con resumen de cuenta de septiembre + planilla de control PDF/XLSX; ZIP y carpeta de facturas compartidos como lector con frasesores.a@gmail.com. FALTA que el dueño pase: ConsultaEcheques-Emitidos (.xls), resumen Visa, extracto en Excel (el chat no recibe .xls: que los suba a Drive «Septiembre 26» 1T_5eFH6w8s_SxxM2gboN4Bi_vbSyvToy). Decisiones: MP e inversiones no se informan; filas N, Starlink y estacionamiento afuera.
+- **Pipeline:** corrida 10:50 falló en OBRAS, Calendario de Cobros y Tarjeta (desde 08:55, tras 4f22c7281 «huella de formato por celda»; causa NO confirmada). Con 448a8d452 la corrida siguiente debería dejar el titular del error en el journal: leerlo y diagnosticar. Inflación: verde.
+- **Pagos en efectivo de liquidación:** migración 20261002T1800 SIN aplicar; aplicar sólo cuando producción (otro checkout) tenga ≥ 690339965, y verificar con las cifras del bloque de abajo.
+- **Pendientes menores:** detalle de barras tapa vecinas / rótulo «Blanco (con cargas)» partido / en teléfono queda bajo la barra inferior; octubre de Analíticas 3,79 vs 5,59 sin explicar; arquitectura de datos (worktree `arquitectura-datos`) sin retomar; worktrees de agentes a limpiar.
+- **Firma de Rodrigo:** PNG en scratchpad/firma/ de esta sesión (memoria `firma-rodrigo-imagen-para-documentos`). Al estampar con fitz, guardar con `garbage=4, deflate=True, deflate_images=True` (sin eso cada PDF pesa 4 MB).
+
+---
+
+# TRASPASO — 02/10/2026 11:00 (sesión 3bc62984, ventana f7) — LEER ESTO PRIMERO
+
+La sesión 081bf46e murió a las 10:02. `origin/main` = `690339965`. Worktree de entrega: `.claude/worktrees/entrega-f7-0210` (cherry-pick de lo firmado → tests ahí → `git push origin HEAD:main`). Scratchpad: `/tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os-daily/3bc62984-a9ac-4d72-a4b5-a2dae9ab144a/scratchpad/`.
+
+## Publicado hoy desde f7 (firmado por auditor)
+- Inflación del pipeline (`7efc01805`): falta ver el EFECTO en la corrida de las 10:50 (tarea de fondo `bpltlxxbn`; a las 10:59 el servicio seguía `activating`). `Parámetros!A79` duplicada: la borra el dueño.
+- Recibos finales «Liquidación final AAAA-MM» + serie RC/RP (`590998782`). 68 históricos sin renombrar; finales con histórico quedan «a decidir».
+- Analíticas › Nómina lee `costo_mo_quincena` (`a4c52bf4d`, `c66ec2905`), QA en producción OK. Abierto: octubre 3,79 M en pantalla vs 5,59 M del auditor, sin explicar. En curso (agente a5365…): detalle al pasar el mouse por las barras.
+- Pagos en efectivo de Liquidación → caja, FASE 1, sólo CÓDIGO (`690339965`). **MIGRACIÓN `20261002T1800_liquidacion_pago_efectivo_baja_la_caja.sql` SIN APLICAR.** Orden: primero que el checkout de producción tenga `690339965` (trae el filtro de `efectivo-raw-pestana.mjs`; si no, el timer escribe 241 filas en `_EFECTIVO_RAW`), después aplicar con `aplicar-migracion.mjs`. Verificar: 241 deltas · $ 101.104.980,73 · 2 posteriores al 24/09 ($ 253.000) · `efectivo_caja_saldo` = 36.297.000 con JWT de dirección y 0 filas con jefe_obra · réplica 6 filas sin cambio · `fecha_pago_efectivo` no nula = 0. Fechas del dueño: 16/09 ($ 1.460.200, antes del sello) y 01/10 ($ 253.000). FASE 2 (Sheet: CAJA lee `efectivo_movimiento_caja` «Pago de jornales»; retirar `formulaJornalesEfectivoPosteriores` y oficina en `caja-posterior-al-corte.mjs` ~730/~793 y el add-back línea 483) sin empezar, va sobre copia.
+- Comprobantes de transferencia: Sánchez López fila 1037 y Con-Sec fila 1056, adjuntos `tipo='pago'`.
+
+## PymeNación (prioridad del dueño; lo manda hoy)
+Carpeta `1ff-L3JwKj7cv80PR9UKOcDHuWsJam-b4` reordenada: «1 · IMPRIMIR Y FIRMAR (Rodrigo)» (7 PDF numerados), «2 · ENVIAR AL BANCO» (8 DDJJ IVA, 9 F.931), «3 · NO ENVIAR — trabajo interno», LEEME raíz reescrito. Flujo v3 (+2 % ingresos, base; oct-27 121.835.099,89) auditado por tercero: presentable. **El dueño rechazó la presentación: «los números de los pdfs están mal escritos, rehacer» y preguntó si se respetó estricto el formato del banco.** En curso: agente afbb3… rehace la presentación del PDF del flujo (columnas angostas, cifras pegadas, negritas desparejas, página suelta, «Base proyección» desalineada) contra el modelo `1qC9yy…`; agente a3765… audita fidelidad y números de los otros 6 documentos y rehace. Al volver: mirar yo cada PDF, y avisar. Decisión pendiente del dueño: si deja en Premisas el escenario desfavorable (−41,07 M). No se arma mail hasta que Rodrigo firme.
+
+## Otros agentes en curso
+- Contadores (a6b1a…): info mensual de septiembre + zip de comprobantes + borrador de respuesta en Gmail de Jorge + aviso por bot. No se envía.
+- ANR Agencia de Inversiones (a7754…): actualizar presupuesto (+10 %) y formularios en copias, subcarpeta «Actualización 2026-10»; sin mail (falta «ok ANR»); avisa por bot.
+- Herramientas › Mantenimiento (a46e2…): contestar dónde quedó el registro de fallas/revisiones de rodados y rehacer el panel con la skill UX. Después: auditor-de-cierre, publicar, QA visual.
+
+## Arquitectura de datos («mejoras de BD») — sin retomar
+Informe A–I en scratchpad de 081bf46e `arq/INFORME.md`. Worktree `arquitectura-datos`: commit `72640f79d` (catálogo, 515 objetos) + 4 archivos sin commitear (`catalogo-datos.test.mjs`, `catalogo-guardrails.test.mjs`, `migracion-peligrosa.mjs` y su test). Falta: terminar, auditor, publicar, DM con el informe. Estado contestado al dueño por bot (post `5xxom955dtd3bnyjq9ifmzn5aa`).
+
+---
+# (anterior) TRASPASO — 02/10/2026 mañana (sesión 081bf46e)
+
+
+---
+
 # TRASPASO — 02/10/2026 mañana (sesión 081bf46e) — LEER ESTO PRIMERO
 
 `origin/main` = producción = `9583210a0`. Migraciones aplicadas hoy: `20261002T1200` (numeración de recibos), `T1500` y `T1510` (cuenta corriente por categoría + grant de `cobranzas.categoria`).
