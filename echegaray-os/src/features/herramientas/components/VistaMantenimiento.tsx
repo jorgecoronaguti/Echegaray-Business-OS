@@ -20,6 +20,7 @@ import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
 import { PanelRodado } from './PanelRodado'
 import { seRevisa } from '../logica/revision'
+import { activoElegido } from '../logica/activo-elegido'
 import { RevisionesMantenimiento } from './RevisionesMantenimiento'
 import { SUPERFICIE, V, bajadaPagina, botonSecundario, eyebrow, tituloPagina } from './estilo'
 
@@ -38,9 +39,9 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
   const total = ORDEN.reduce((s, g) => s + cola[g].length, 0) + mecanico.length
   const viejo = Math.max(0, ...ORDEN.flatMap((g) => cola[g].map((x) => x.dias)), ...mecanico.map((x) => x.dias ?? 0))
   const elegir = (codigo: string) => router.replace(`${ruta}?activo=${encodeURIComponent(codigo)}`, { scroll: false })
-  const elegido = activo ? parque.activos.find((a) => a.codigo === activo) ?? null : null
+  const elegido = activoElegido(activo, parque.activos)
   // `?revision=<código>` abre la ficha de revisión (RTO, service, seguro, inspección) en vez de la del activo.
-  const revisado = revision ? parque.activos.find((a) => a.codigo === revision) ?? null : null
+  const revisado = activoElegido(revision, parque.activos)
 
   const panelDe = (elegido ?? revisado)!
   return (
