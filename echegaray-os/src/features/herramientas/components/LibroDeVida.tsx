@@ -48,7 +48,7 @@ export function LibroDeVida({ activo, eventos, proveedores, nombres = {}, varian
   const [formulario, setFormulario] = useState<Abierto>(tel && !abiertosA.length ? { nuevo: 'arreglo' } : null)
   const [aviso, setAviso] = useState<string | null>(null)
   if (eventos == null) {
-    return <div style={{ fontSize: '12.5px', color: V.tenue }} data-testid="libro-sin-migracion">Falta aplicar la migración 20260930T2300 del libro de vida: todavía no se pueden cargar novedades.</div>
+    return <div style={{ fontSize: '12.5px', color: V.tenue }} data-testid="libro-sin-migracion">El libro de vida todavía no está disponible: no se pueden cargar novedades.</div>
   }
   if (!admiteArreglo(activo) && !abiertosA.length) {
     return <div style={{ fontSize: '12.5px', color: V.tenue }} data-testid="libro-lote">Es un lote: el arreglo se carga por unidad. Para avisar que algo falla, usá «Reportar un problema».</div>

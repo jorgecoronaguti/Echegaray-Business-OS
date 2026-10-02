@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { camposDe, faltaParaGuardar, valoresParaEnviar, type ValoresRevision } from './revision-campos.ts'
+import { avisoSinVencimiento, camposDe, faltaParaGuardar, valoresParaEnviar, type ValoresRevision } from './revision-campos.ts'
 
 const v = (p: Partial<ValoresRevision> = {}): ValoresRevision => ({
   fecha: '2026-10-02', vencimiento: '', lectura: '', resultado: '', lugar: '', numero: '', costo: '', observaciones: '', ...p,
@@ -41,17 +41,22 @@ test('lo que el tipo no lleva no viaja aunque la pantalla lo tenga guardado de o
   assert.equal(insp.resultado, 'apto')
 })
 
-test('RTO y seguro sin vencimiento no se guardan; service e inspección sí', () => {
-  assert.match(faltaParaGuardar('seguro', 'rodado', v()) ?? '', /vencimiento/)
-  assert.match(faltaParaGuardar('rto', 'rodado', v({ resultado: 'apto' })) ?? '', /vencimiento/)
-  assert.equal(faltaParaGuardar('service', 'rodado', v()), null)
-  assert.equal(faltaParaGuardar('inspeccion', 'equipo', v()), null)
+test('sin vencimiento NUNCA bloquea el guardado: RTO y seguro sólo avisan', () => {
+  assert.equal(faltaParaGuardar('seguro', 'rodado', v()), null)
+  assert.equal(faltaParaGuardar('rto', 'rodado', v({ resultado: 'apto' })), null)
+  assert.match(avisoSinVencimiento('seguro', 'rodado', v()) ?? '', /no se puede avisar/)
+  assert.match(avisoSinVencimiento('rto', 'rodado', v()) ?? '', /no se puede avisar/)
+  assert.equal(avisoSinVencimiento('rto', 'rodado', v({ vencimiento: '2027-01-01' })), null)
+  assert.equal(avisoSinVencimiento('service', 'rodado', v()), null)
 })
 
-test('la RTO pide resultado y el condicional pide plazo', () => {
-  assert.match(faltaParaGuardar('rto', 'rodado', v({ vencimiento: '2027-01-01' })) ?? '', /resultado/)
+test('el condicional pide plazo; la RTO sin resultado se guarda', () => {
   assert.match(faltaParaGuardar('inspeccion', 'rodado', v({ resultado: 'condicional' })) ?? '', /plazo/)
   assert.equal(faltaParaGuardar('rto', 'rodado', v({ vencimiento: '2027-01-01', resultado: 'apto' })), null)
+})
+
+test('una RTO sin resultado ni vencimiento se guarda igual', () => {
+  assert.equal(faltaParaGuardar('rto', 'rodado', v()), null)
 })
 
 test('sin fecha no se guarda', () => {

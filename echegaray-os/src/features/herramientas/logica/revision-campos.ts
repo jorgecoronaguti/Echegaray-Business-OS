@@ -13,8 +13,8 @@ export interface CamposRevision {
   guardar: string
   fecha: string
   vence: string
-  /** Sin vencimiento la revisión no sirve de aviso: RTO y seguro lo exigen. */
-  venceObligatorio: boolean
+  /** Sin vencimiento no se puede avisar cuando esté por vencer: se avisa, NO se bloquea el guardado. */
+  venceImporta: boolean
   lectura: string | null
   numero: string | null
   lugar: string | null
@@ -28,22 +28,22 @@ export function camposDe(tipo: TipoRevision, clase: ClaseRevisable): CamposRevis
   switch (tipo) {
     case 'rto':
       return {
-        titulo: 'Cargar RTO', guardar: 'Guardar RTO', fecha: 'Fecha de la revisión', vence: 'Vence', venceObligatorio: true,
+        titulo: 'Cargar RTO', guardar: 'Guardar RTO', fecha: 'Fecha de la revisión', vence: 'Vence', venceImporta: true,
         lectura, numero: 'N° de certificado / oblea', lugar: 'Planta de RTO', costo: true, resultado: true, foto: 'Foto del certificado',
       }
     case 'seguro':
       return {
-        titulo: 'Cargar seguro', guardar: 'Guardar seguro', fecha: 'Vigente desde', vence: 'Vence la póliza', venceObligatorio: true,
+        titulo: 'Cargar seguro', guardar: 'Guardar seguro', fecha: 'Vigente desde', vence: 'Vence la póliza', venceImporta: true,
         lectura: null, numero: 'N° de póliza', lugar: 'Compañía', costo: true, resultado: false, foto: 'Foto de la póliza',
       }
     case 'service':
       return {
-        titulo: 'Cargar service', guardar: 'Guardar service', fecha: 'Fecha del service', vence: 'Próximo service (fecha)', venceObligatorio: false,
+        titulo: 'Cargar service', guardar: 'Guardar service', fecha: 'Fecha del service', vence: 'Próximo service (fecha)', venceImporta: false,
         lectura: `${lectura} del service`, numero: 'N° de orden o remito', lugar: 'Taller', costo: true, resultado: false, foto: 'Foto del remito o ticket',
       }
     case 'inspeccion':
       return {
-        titulo: 'Cargar inspección', guardar: 'Guardar inspección', fecha: 'Fecha de la inspección', vence: 'Próxima inspección', venceObligatorio: false,
+        titulo: 'Cargar inspección', guardar: 'Guardar inspección', fecha: 'Fecha de la inspección', vence: 'Próxima inspección', venceImporta: false,
         lectura, numero: 'N° de informe', lugar: 'Quién inspeccionó', costo: false, resultado: true, foto: 'Foto del informe',
       }
   }
@@ -75,12 +75,15 @@ export function valoresParaEnviar(tipo: TipoRevision, clase: ClaseRevisable, v: 
   }
 }
 
+/** Aviso que NO bloquea: se guarda igual (el vencimiento nunca fue obligatorio). */
+export function avisoSinVencimiento(tipo: TipoRevision, clase: ClaseRevisable, v: Pick<ValoresRevision, 'vencimiento'>): string | null {
+  return camposDe(tipo, clase).venceImporta && !v.vencimiento ? 'Sin vencimiento no se puede avisar cuando esté por vencer.' : null
+}
+
 /** Lo que falta antes de mandar, dicho en la pantalla. `null` = se puede guardar. */
 export function faltaParaGuardar(tipo: TipoRevision, clase: ClaseRevisable, v: ValoresRevision): string | null {
   const c = camposDe(tipo, clase)
   if (!v.fecha) return `Falta la ${c.fecha.toLowerCase()}.`
-  if (c.venceObligatorio && !v.vencimiento) return `Falta el vencimiento: sin eso no avisa cuando se acerque.`
   if (c.resultado && v.resultado === 'condicional' && !v.vencimiento) return 'Un apto condicional lleva el plazo de la nueva verificación: cargá «Vence».'
-  if (c.resultado && tipo === 'rto' && !v.resultado) return 'Elegí el resultado de la RTO: apto, apto condicional o rechazado.'
   return null
 }

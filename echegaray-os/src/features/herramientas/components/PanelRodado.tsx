@@ -13,7 +13,7 @@
 // y al guardar vuelve acá con la confirmación escrita. Nada se guarda sin que la pantalla lo diga.
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { historialDeRodado } from '../logica/historial-rodado'
 import {
   MIGRACION_REVISION, NOMBRE_RESULTADO, NOMBRE_REVISION, seRevisa, semaforo, textoLecturaRevision, TIPOS_POR_CLASE, UNIDAD_LECTURA, vigenteDe,
@@ -37,11 +37,17 @@ export function PanelRodado({ id, onCerrar }: { id: string; onCerrar?: () => voi
   const [aviso, setAviso] = useState<string | null>(null)
   const [todo, setTodo] = useState(false)
   const a = parque.activoPorId.get(id)
+  // El detalle técnico va a la consola, no a la pantalla del dueño.
+  const faltaEventos = parque.eventos == null
+  const faltaRevision = parque.revisionesVigentes == null
+  useEffect(() => {
+    if (faltaEventos) console.warn('Herramientas: falta aplicar la migración 20260930T2300 (libro de vida)')
+    if (faltaRevision) console.warn(`Herramientas: falta aplicar la migración ${MIGRACION_REVISION} (revisiones)`)
+  }, [faltaEventos, faltaRevision])
   if (!a) return null
   if (!seRevisa(a)) return <div style={{ fontSize: '13px', color: V.apagado }}>Este panel es de rodados y máquinas vivos.</div>
 
   const unidad = UNIDAD_LECTURA[a.clase]
-  const titulo = a.patente && !a.nombre.includes(a.patente) ? `${a.nombre} · ${a.patente}` : a.nombre
   const hecho = (t: string) => { setAviso(t); setVista({ t: 'resumen' }); refrescar() }
   const volver = () => setVista({ t: 'resumen' })
 
@@ -92,7 +98,7 @@ export function PanelRodado({ id, onCerrar }: { id: string; onCerrar?: () => voi
         <div style={{ ...eyebrow, paddingTop: 10 }}>Estado y arreglos</div>
         {parque.eventos == null ? (
           <>
-            <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración 20260930T2300 del libro de vida: los arreglos todavía no se cargan, pero sí se puede reportar una falla.</div>
+            <div style={{ fontSize: '12.5px', color: V.tenue }}>El historial de arreglos todavía no está disponible. Igual se puede reportar una falla.</div>
             <div><button type="button" onClick={() => { setAviso(null); setVista({ t: 'falla' }) }} style={botonPrimarioGrande} data-testid="reportar-falla">Reportar una falla</button></div>
           </>
         ) : (
@@ -107,7 +113,7 @@ export function PanelRodado({ id, onCerrar }: { id: string; onCerrar?: () => voi
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="revision-vigentes">
         <div style={{ ...eyebrow, paddingTop: 10, paddingBottom: 4 }}>Revisiones</div>
         {sinBase ? (
-          <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración {MIGRACION_REVISION} de la ficha de revisión: todavía no se puede cargar.</div>
+          <div style={{ fontSize: '12.5px', color: V.tenue }}>Las revisiones todavía no están disponibles.</div>
         ) : TIPOS_POR_CLASE[a.clase].map((tipo) => {
           const r = vigenteDe(parque.revisionesVigentes, a.id, tipo)
           const s = semaforo(r, hoy)

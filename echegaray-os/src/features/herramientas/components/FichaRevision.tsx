@@ -4,7 +4,7 @@
 // donde se cargan (`PanelRodado`). El semáforo lo decide `logica/revision.ts` con la fecha de hoy.
 
 import Link from 'next/link'
-import { MIGRACION_REVISION, NOMBRE_REVISION, seRevisa, semaforo, TIPOS_POR_CLASE, vigenteDe } from '../logica/revision'
+import { NOMBRE_REVISION, seRevisa, semaforo, TIPOS_POR_CLASE, vigenteDe } from '../logica/revision'
 import { useHerramientas } from './Espacio'
 import { AZUL, V, eyebrow, vacio } from './estilo'
 
@@ -20,7 +20,7 @@ export function ResumenRevision({ id }: { id: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-revision-resumen">
       <div style={{ ...eyebrow, paddingTop: 10 }}>Revisión técnica</div>
       {parque.revisionesVigentes == null ? (
-        <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración {MIGRACION_REVISION} de la ficha de revisión.</div>
+        <div style={{ fontSize: '12.5px', color: V.tenue }}>Las revisiones todavía no están disponibles.</div>
       ) : TIPOS_POR_CLASE[a.clase].map((tipo) => {
         const s = semaforo(vigenteDe(parque.revisionesVigentes, a.id, tipo), hoy)
         return (

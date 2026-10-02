@@ -14,7 +14,7 @@ import { subirFotoDeActivo } from '../services/subida-foto'
 import {
   NOMBRE_RESULTADO, NOMBRE_REVISION, TIPOS_POR_CLASE, type ClaseRevisable, type ResultadoRevision, type TipoRevision,
 } from '../logica/revision'
-import { camposDe, faltaParaGuardar, valoresParaEnviar } from '../logica/revision-campos'
+import { avisoSinVencimiento, camposDe, faltaParaGuardar, valoresParaEnviar } from '../logica/revision-campos'
 import { V, campo, eyebrow } from './estilo'
 
 const ZONA = 'America/Argentina/San_Juan'
@@ -98,7 +98,7 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
           <input type="date" value={fecha} max={hoyIso()} onChange={(e) => setFecha(e.target.value)} style={estiloCampo} data-testid="revision-fecha" required />
         </label>
         <label>
-          <span style={rotulo}>{c.vence}{c.venceObligatorio ? '' : ' · opcional'}</span>
+          <span style={rotulo}>{c.vence}</span>
           <input type="date" value={vencimiento} min={fecha} onChange={(e) => setVencimiento(e.target.value)} style={estiloCampo} data-testid="revision-vencimiento" />
         </label>
         {c.lectura && (
@@ -159,6 +159,10 @@ export function FormularioRevision({ activo, clase, variante = 'escritorio', tip
         {foto ? 'Foto lista · cambiar' : `${c.foto} (opcional)`}
       </button>
       <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { setFoto(e.target.files?.[0] ?? null); e.target.value = '' }} />
+
+      {!error && avisoSinVencimiento(tipo, clase, { vencimiento }) && (
+        <div role="status" style={{ fontSize: tel ? '13px' : '12px', color: V.warn }} data-testid="revision-sin-vencimiento">{avisoSinVencimiento(tipo, clase, { vencimiento })}</div>
+      )}
 
       {error && <div role="alert" style={{ fontSize: tel ? '13.5px' : '12.5px', color: V.neg, lineHeight: 1.5 }}>{error}</div>}
 
