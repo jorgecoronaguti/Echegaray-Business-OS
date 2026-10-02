@@ -1,6 +1,31 @@
-# TRASPASO — 01/10/2026 noche (sesión 081bf46e) — LEER ESTO PRIMERO
+# TRASPASO — 02/10/2026 mañana (sesión 081bf46e) — LEER ESTO PRIMERO
 
-`origin/main` = `fb3e20a0b` (+ este traspaso). Producción (`produccion/`) al día. Chat y bot reinician solos entre las 2 y las 5 h: hasta entonces corren el código de ayer.
+`origin/main` = producción = `9583210a0`. Migraciones aplicadas hoy: `20261002T1200` (numeración de recibos), `T1500` y `T1510` (cuenta corriente por categoría + grant de `cobranzas.categoria`).
+
+## 02/10 — cerrado
+- **Recibos de sueldo de septiembre**: 21 recibos cargados (17 de Q2-09, Castillo Q1-09, 3 finales `FINAL-09/2026`), auditados por un tercero (37/37 iguales al PDF), hojas en legajos y Drive. Liquidación en producción muestra el recibo real. Memoria `cuadrilla-pedro-tello-2209`.
+- **Cuadrilla de Pedro Tello** (Carrizo, Tello Antúnez, Moreno): subcontrato en `messina-playon-dilucion-acido`, carpeta «4. SUBCONTRATISTAS › PEDRO TELLO», ficha de proveedor con 11 papeles, DNI en legajos.
+- **Numeración de recibos RP/RC**: publicada, migrada, auditada y vista en producción (legajo `?v=retribucion`). Memoria `recibos-numeracion-rp-rc`.
+- **Guarda de formato por celda**: publicada (`4f22c7281`). FALTA mirar la corrida de las 10:50 (primera con la guarda nueva): `obras-pestana` y `calendario-cobros-pestana` dieron ✗ a las 08:50 con la guarda vieja; OBRAS ya no tiene #VALUE! pero H:J de las filas nuevas y el TOTAL quedaron sin formato $.
+- **Cuenta corriente del cliente sólo blanco**: publicada. Tiró la ficha de Clientes ~20 min (grant por columna); arreglado con T1510. Memoria `funcion-invoker-columna-sin-grant`.
+- **Extracto Santander (58)**: 10 movimientos nuevos, saldo $32.389.202,34 al 01/10, cierra. ARCOR $1.856.903,40 del 30/09 = FA 01-00000216 menos retenciones (INFERENCIA, avisado al dueño; Cobranzas no se toca).
+- OB-0072/73 en «Previo», egresos cargados; panel de recibos que se tildaba, arreglado.
+
+- **ARCOR FA 01-00000216** (dueño: «hacelo vos»): Cobranzas fila 53 → Cobrado 30/09, retenciones $417.896,60 (Y/Z/AA con fórmula + SUSS 1 % dentro de M, igual que la fila 49), total $1.856.903,40 = banco ref. 2647443. Releído en el Sheet. Falta ver la réplica `public.cobranzas` (sheet_id 49) tras el sync de las 10:34 — el clasificador negó dispararlo a mano. Antes/después en scratchpad `arcor/`.
+
+## 02/10 — abierto
+- **REVISIÓN DE ARQUITECTURA DE DATOS (pedido grande del dueño, etapa 1 SÓLO LECTURA)**: brief y ayudante SQL read-only en scratchpad `arq/` (`BRIEF.md`, `sql.mjs`). Frentes (un archivo cada uno en `arq/`): 01 inventario+drift migraciones · 02 seguridad · 03 obras+identidad · 04 pares semánticos · 05 ingestas/Sheets · 06 procesos/deploy · 07 pantalla→fuente · 08 orquestador/XSAS. Cerrados 02, 04, 06 (conteos clave verificados por mí). Después: sintetizar el informe A–I, catálogo de datos + guardrails ejecutables (ratchet con lista de deuda actual) en un worktree, auditor, publicar, DM. Dueño: «te habilito todos los permisos para supabase no me pidas más nada».
+- Hallazgo vivo del frente 06: `echegaray-flujo-caja.service` en failed en todas las corridas desde 01/10 07:10 (`parametros-inflacion` «escribí 5 filas y devuelve 6», `obras-pestana`, `calendario-cobros-pestana`, `tarjeta-pestana`). La corrida de las 10:50 es la primera con la guarda nueva.
+- **PymeNación**: flujo percibido ARMADO (Sheet `1NiCK4ruQ52CYMdbFYyiVjH6zcDInAWfuI4-SgdPUNFI`, PDF `1gZxVAPqWyrV2BsM61zWRhGDU0oQqDRyw`, LEEME `1cDTZHJCKkWT1U2saOnJmoVkKak22kQQciWzWweGhg8c`, scratchpad `bna4/`). En auditoría independiente (opus). Con su veredicto: DM al dueño con enlaces y pendientes. Nada se manda al banco.
+- Dueño debe contestar: «ok limpiar» para quitar el «$/h cat.» escrito a mano (escala de agosto) en 7 personas de Q1-09.
+- `recibos-a-legajos.mjs` nombra las finales «Recibo sin-periodo» (68 históricos) — sin arreglar. `datosDelNombre` no reconoce «RECIBO RC-0000NN».
+- Worktrees para quitar (todo en main): `huella-formato-por-celda`, `recibos-numeracion`, `cuenta-corriente-blanco`, `obras-total-sin-plan`, `obras-rotulo-formato`, `cobranzas-estado-de-cuenta`, `fotos-por-activo`.
+- Rojo ajeno en main: `orquestador/lib/obras-economia-contratado.pg.test.mjs`.
+
+---
+(lo de abajo es el traspaso del 01/10 noche; PymeNación y OBRAS están actualizados arriba)
+
+Chat y bot reinician solos entre las 2 y las 5 h: hasta entonces corren el código de ayer.
 Migraciones aplicadas hoy: T0300, T0400, T0600, T0700, T0800, T0900, T1000, T1100, **T1200** (`cliente_cobranza` + `fecha_venta`). Ninguna pendiente.
 El dueño recibe todo por DM del bot (`avisar-al-dueno.mjs`). `--aplicar` de una migración lo frena el clasificador hasta que el dueño lo autoriza en la conversación: no se rodea.
 
