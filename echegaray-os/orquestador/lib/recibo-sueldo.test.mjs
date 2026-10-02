@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CUIT_EMPRESA, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
+import { CUIT_EMPRESA, clasificarFinalesContraHistorico, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
 
 // Una página real del recibo de la 2da quincena de julio de 2026, tal como la extrae pdf-parse.
 const PAGINA = `Q MES AÑO APELLIDO Y NOMBRE N° LEGAJO SUELDO BRUTO
@@ -100,4 +100,17 @@ test('una final sin mes legible lo dice, no lo inventa', () => {
 test('una quincena sigue siendo quincena y el nombre viejo de la final se reconoce', () => {
   assert.equal(personaDelRecibo(PAGINA).final, false)
   assert.equal(nombreHistoricoSinPeriodo({ nombre: 'CARRIZO PEDRO' }), 'Recibo sin-periodo · CARRIZO PEDRO.pdf')
+})
+
+test('dos finales de una persona contra UN solo «sin-periodo» histórico: ninguna se saltea en silencio', () => {
+  // EL DEFECTO QUE ATRAPA: `previos.has(viejo)` daba «ya estaba» a las dos y la segunda nunca se subía.
+  const r = clasificarFinalesContraHistorico(new Map([
+    ['p1', { persona: 'CARRIZO', viejo: 'Recibo sin-periodo · CARRIZO.pdf', nombres: new Set(['Liquidación final 2026-08 · CARRIZO.pdf', 'Liquidación final 2026-09 · CARRIZO.pdf']) }],
+    ['p2', { persona: 'TELLO', viejo: 'Recibo sin-periodo · TELLO.pdf', nombres: new Set(['Liquidación final 2026-09 · TELLO.pdf']) }],
+  ]))
+  assert.equal(r.aRenombrar.length, 1)
+  assert.match(r.aRenombrar[0], /TELLO/)
+  assert.equal(r.ambiguas.length, 2)
+  assert.match(r.ambiguas.join('\n'), /final ambigua contra histórico sin-periodo/)
+  assert.match(r.ambiguas.join('\n'), /2026-08/)
 })

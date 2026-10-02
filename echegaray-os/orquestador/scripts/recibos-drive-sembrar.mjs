@@ -157,11 +157,15 @@ async function recibosDelCliente(g, requerir, cliente, obras) {
   }
   const filas = []
   for (const a of aceptados.values()) {
-    const { numero, fecha, faltan } = datosDelNombre(a.name)
+    const { numero, fecha, faltan, serie } = datosDelNombre(a.name)
+    // RP es el recibo de pago a PERSONAL: en una carpeta de cliente no es un recibo de cobro. Guardar su
+    // número como `numero` de `recibo_cliente` lo juzgaría contra el libro RC. Se descarta y se avisa.
+    const ajena = motivoDeSerieAjena(serie)
+    if (ajena) { descartes.push({ ...a, motivo: ajena }); continue }
     const { monto, nota } = await importeDelArchivo(g, requerir, a)
     filas.push({
       cliente_id: cliente.id, obra_id: obraDeLasCarpetas(a.obraIds),
-      numero, fecha, monto, drive_file_id: a.id, drive_url: enlaceDrive(a.id), nombre_archivo: a.name,
+      numero, serie, fecha, monto, drive_file_id: a.id, drive_url: enlaceDrive(a.id), nombre_archivo: a.name,
       faltan: [...faltan, ...(nota ? [nota] : [])],
     })
   }
@@ -187,6 +191,10 @@ async function guardar(f) {
   )
 }
 
+/** Sólo RC es recibo de cliente. Devuelve el motivo del descarte o `null`. */
+export const motivoDeSerieAjena = (serie) =>
+  serie && serie !== 'RC' ? `serie ${serie} (no es de cobro a cliente) dentro de una carpeta de cliente` : null
+
 /**
  * ¿QUÉ RECIBOS DE DRIVE CHOCAN CON LA SERIE RC? (auditor, 02/10/2026)
  *
@@ -201,6 +209,8 @@ async function guardar(f) {
 export function choquesConLaSerie(filas, { aManoHasta, libro }) {
   const avisos = []
   for (const f of filas) {
+    // Sólo la serie RC es de clientes; un RP nunca se compara contra el libro RC (defensa por si llega acá).
+    if (f.serie && f.serie !== 'RC') continue
     const n = /^\d{1,9}$/.test(String(f.numero ?? '').trim()) ? Number(f.numero) : null
     if (n == null || n <= aManoHasta) continue
     const asiento = libro.get(n)

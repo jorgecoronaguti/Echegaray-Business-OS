@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { choquesConLaSerie, motivoDeDescarte, raicesDelCliente, ubicacionAdmisible } from './recibos-drive-sembrar.mjs'
+import { choquesConLaSerie, motivoDeDescarte, motivoDeSerieAjena, raicesDelCliente, ubicacionAdmisible } from './recibos-drive-sembrar.mjs'
 
 test('la carpeta del cliente y la de cada obra son raíces, agrupadas por carpeta', () => {
   // Messina declara la MISMA carpeta de Drive para dos obras distintas.
@@ -61,4 +61,14 @@ test('serie RC: avisa el recibo de Drive con número mayor a los de mano que no 
   assert.equal(avisos.length, 2)
   assert.match(avisos[0], /^⚠ .*Recibo 21.*ANULADO.*JSON descartado/)
   assert.match(avisos[1], /^⚠ .*Recibo 22.*n° 22 .*no está en el libro/)
+})
+
+test('un RP (pago a personal) en carpeta de cliente se descarta y nunca se juzga contra el libro RC', () => {
+  // EL DEFECTO QUE ATRAPA: «RP-000012» daba numero 12 y se avisaba/guardaba como recibo RC 12.
+  assert.match(motivoDeSerieAjena('RP'), /RP.*no es de cobro a cliente/)
+  assert.equal(motivoDeSerieAjena('RC'), null)
+  assert.equal(motivoDeSerieAjena(undefined), null)
+  const avisos = choquesConLaSerie([{ numero: '25', serie: 'RP', nombre_archivo: 'RECIBO RP-000025.pdf' }],
+    { aManoHasta: 19, libro: new Map() })
+  assert.deepEqual(avisos, [])
 })

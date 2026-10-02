@@ -124,3 +124,22 @@ export function personaQueCorresponde(datos, plantel) {
   const suyo = limpio(datos.cuil)
   return plantel.find((p) => limpio(p.cuil) === suyo) ?? null
 }
+
+/**
+ * Las finales de la corrida que coinciden con un «Recibo sin-periodo · X.pdf» ya subido.
+ *
+ * Ese nombre cubre COMO MÁXIMO UNA final por persona. Con una sola, es la vieja (se lista para
+ * renombrar). Con más de una no se puede saber cuál es: no se sube ninguna y se avisan todas por
+ * nombre. Saltearlas en silencio como «ya estaba» perdería la que no estaba.
+ *
+ * @param porPersona Map<id, { persona, viejo, nombres: Set<string> }>
+ */
+export function clasificarFinalesContraHistorico(porPersona) {
+  const aRenombrar = []
+  const ambiguas = []
+  for (const { persona, viejo, nombres } of porPersona.values()) {
+    if (nombres.size === 1) aRenombrar.push(`${persona}: ${viejo} → ${[...nombres][0]}`)
+    else for (const n of nombres) ambiguas.push(`${persona}: ${n} (final ambigua contra histórico sin-periodo)`)
+  }
+  return { aRenombrar, ambiguas }
+}

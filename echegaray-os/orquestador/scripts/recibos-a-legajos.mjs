@@ -23,7 +23,7 @@ import { PDFDocument } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
 import { getTokenFor } from '../lib/google-oauth.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from '../lib/recibo-sueldo.mjs'
+import { clasificarFinalesContraHistorico, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from '../lib/recibo-sueldo.mjs'
 
 // --listar-nombres: SÓLO LECTURA (baja los PDF de Drive pero no sube, no crea carpetas ni escribe en la
 // base). Dice qué nombre le toca a cada liquidación final y cuáles de los «Recibo sin-periodo» ya
@@ -89,8 +89,9 @@ const archivos = await listar(`'${ORIGEN}' in parents and trashed=false and mime
 archivos.sort((a, b) => a.name.localeCompare(b.name))
 console.log(`PDF en la carpeta: ${archivos.length}`)
 
-const informe = { paginas: 0, sinTexto: 0, sinCuil: 0, sinPersona: new Map(), finalesSinMes: 0, aRenombrar: [], subidos: 0, yaEstaban: 0, fallidos: 0, porPersona: new Map() }
+const informe = { paginas: 0, sinTexto: 0, sinCuil: 0, sinPersona: new Map(), finalesSinMes: 0, aRenombrar: [], ambiguas: [], subidos: 0, yaEstaban: 0, fallidos: 0, porPersona: new Map() }
 const carpetaCache = new Map()
+const finalesContraHistorico = new Map()
 const yaEnCarpeta = new Map()
 
 let n = 0
@@ -148,8 +149,11 @@ for (const f of archivos) {
       // Renombrar los históricos es otra decisión (con el dueño); acá sólo se lista.
       const viejo = nombreHistoricoSinPeriodo(datos)
       if (viejo !== nombre && previos.has(viejo) && !previos.has(nombre)) {
-        informe.aRenombrar.push(`${persona.nombre_completo}: ${viejo} → ${nombre}`)
-        informe.yaEstaban++
+        // Se decide al final de la corrida: hasta ver todas las finales de la persona no se sabe si el
+        // nombre viejo (que cubre COMO MÁXIMO UNA) alcanza. Mientras tanto no se sube nada.
+        const k = persona.id
+        if (!finalesContraHistorico.has(k)) finalesContraHistorico.set(k, { persona: persona.nombre_completo, viejo, nombres: new Set() })
+        finalesContraHistorico.get(k).nombres.add(nombre)
         continue
       }
     }
@@ -195,6 +199,12 @@ async function registrar(personaId, driveFileId, nombre, datos) {
     [personaId, driveFileId, fecha, nombre])
 }
 
+{
+  const { aRenombrar, ambiguas } = clasificarFinalesContraHistorico(finalesContraHistorico)
+  informe.aRenombrar.push(...aRenombrar); informe.yaEstaban += aRenombrar.length
+  informe.ambiguas.push(...ambiguas)
+}
+
 console.log('\n═══ RESULTADO ═══')
 console.log(`páginas leídas       ${informe.paginas}`)
 console.log(`sin capa de texto    ${informe.sinTexto}`)
@@ -203,6 +213,10 @@ console.log(`hojas ${APLICAR ? 'subidas' : 'a subir'}        ${informe.subidos}`
 console.log(`ya estaban           ${informe.yaEstaban}`)
 console.log(`fallidas             ${informe.fallidos}`)
 console.log(`finales sin mes      ${informe.finalesSinMes}`)
+if (informe.ambiguas.length) {
+  console.log(`\nFINALES AMBIGUAS — no se subió ninguna, decide una persona (${informe.ambiguas.length}):`)
+  for (const l of informe.ambiguas) console.log(`  ${l}`)
+}
 if (LISTAR || informe.aRenombrar.length) {
   console.log(`\nfinales ya subidas con el nombre viejo (${informe.aRenombrar.length}) — NO se renombran acá:`)
   for (const l of informe.aRenombrar) console.log(`  ${l}`)
