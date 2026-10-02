@@ -14,12 +14,15 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { rotuloDelNumero } from '@/shared/recibo/codigoDeRecibo'
-import type { ReciboArmado } from '../../../services/reciboDeLaQuincena'
+import { textoDeHoras, type ReciboArmado, type RenglonDelRecibo } from '../../../services/reciboDeLaQuincena'
 import { pesos } from '../formato'
 
 export const MONO = "'IBM Plex Mono', monospace"
 export const fechaCorta = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 export const plata = (n: number | null): string => (n == null ? 'sin dato' : pesos(n))
+
+/** Un renglón de horas en el papel, con la plata de esta hoja (`textoDeHoras`). */
+export const lineaDeHoras = (r: RenglonDelRecibo): { detalle?: string; importe: string } => textoDeHoras(r, plata)
 
 /** El nombre que el diálogo de impresión propone al guardar como PDF. Uno solo, para los dos caminos. */
 export const tituloDelRecibo = (nombre: string, desde: string, hasta: string): string =>
@@ -117,7 +120,7 @@ export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, codig
       {recibo.horas.length > 0 && (
         <Bloque titulo="Trabajo de la quincena">
           {recibo.horas.map((r) => (
-            <Linea key={r.rotulo} rotulo={r.rotulo} importe={r.horas == null ? 'sin dato' : `${String(r.horas).replace('.', ',')} h`} />
+            <Linea key={r.rotulo} rotulo={r.rotulo} {...lineaDeHoras(r)} sub={r.sub} />
           ))}
         </Bloque>
       )}

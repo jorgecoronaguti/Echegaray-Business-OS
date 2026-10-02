@@ -36,9 +36,14 @@ const vacia = {
 const fila = (id: string, nombre: string, linea: LineaConOverrides, categoria: string | null = 'oficial'): FilaDelEspejo =>
   ({ personaId: id, nombre, categoria, grupo: 'obreros', cerrada: false, linea, celdas: [] }) as unknown as FilaDelEspejo
 
-test('el recibo del lote es el del panel: 96 h, banco, efectivo y total, sellado con la persona y la quincena', () => {
+test('el recibo del lote es el del panel: 96 h con su reparto y la cuenta del valor hora, banco, efectivo y total', () => {
   const r = reciboPorDefecto(fila('p1', 'Ana', jornalero), Q, fmt, rotulo)
-  assert.deepEqual(r.recibo.horas.map((h) => [h.rotulo, h.horas]), [['Horas trabajadas', 96]])
+  // Por defecto desde el 02/10/2026 (dueño: «no sale ni valor hora en el recibo»): el reparto y la cuenta.
+  assert.deepEqual(r.recibo.horas.map((h) => [h.rotulo, h.horas, h.importe]), [
+    ['Horas trabajadas', 96, null],
+    ['Horas trabajadas por recibo', 45, null],
+    ['Horas trabajadas fuera de recibo', 51, 306000],
+  ])
   assert.deepEqual(r.recibo.medios.map((m) => [m.rotulo, m.importe]), [['Depósito en banco', 230000], ['Efectivo', 306000]])
   assert.equal(r.sellado.total, 536000)
   assert.deepEqual([r.sellado.personaId, r.sellado.quincenaDesde, r.sellado.quincenaHasta, r.categoria], ['p1', Q.desde, Q.hasta, 'OFICIAL'])
@@ -198,7 +203,7 @@ test('el panel de una persona y la vista previa del lote ofrecen EL MISMO checkl
   const previa = fuente('./VistaPreviaDeRecibos.tsx')
   assert.match(previa, /OPCIONES_DEL_RECIBO\.map/)
   assert.match(previa, /armarLote\(filas, marcados, quincena, pesos, rotuloCategoria, cambios\)/)
-  assert.deepEqual(OPCIONES_DEL_RECIBO.map((o) => o.clave), ['horas', 'horasRecibo', 'horasFuera', 'banco', 'efectivo', 'pagado'])
+  assert.deepEqual(OPCIONES_DEL_RECIBO.map((o) => o.clave), ['horas', 'horasRecibo', 'horasFuera', 'valorHora', 'banco', 'efectivo', 'pagado'])
 })
 
 test('la vista previa escala la hoja al ancho de un panel que RESERVA el lugar de la barra de scroll', () => {

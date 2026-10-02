@@ -25,7 +25,7 @@ import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import {
-  armarRecibo, conceptosDisponibles,
+  alternarConcepto, armarRecibo, conceptosDisponibles,
   type ConceptoDelRecibo, type EleccionDelRecibo,
 } from '../../../services/reciboDeLaQuincena'
 import { sellarRecibo } from '../../../services/reciboEmitido'
@@ -133,8 +133,8 @@ export function ArmarRecibo({ fila, quincena }: {
           const motivo = disponibles[clave]
           return (
             <label key={clave} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 32, fontSize: '13px', color: motivo ? V.apagado : V.tinta, cursor: motivo ? 'default' : 'pointer' }}>
-              <input type="checkbox" checked={!motivo && eleccion[clave]} disabled={!!motivo}
-                onChange={(x) => setEleccion({ ...eleccion, [clave]: x.target.checked })}
+              <input type="checkbox" checked={!motivo && eleccion[clave] === true} disabled={!!motivo}
+                onChange={(x) => setEleccion(alternarConcepto(eleccion, clave, x.target.checked))}
                 data-testid={`recibo-opcion-${clave}`} style={{ width: 16, height: 16 }} />
               <span>{rotulo}</span>
               {motivo && <span style={{ fontSize: '11.5px' }}>· {motivo}</span>}

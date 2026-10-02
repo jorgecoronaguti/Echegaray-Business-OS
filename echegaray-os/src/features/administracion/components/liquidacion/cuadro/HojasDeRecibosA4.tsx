@@ -13,7 +13,7 @@
 
 import type { ReciboArmado } from '../../../services/reciboDeLaQuincena'
 import { rotuloDelNumero } from '@/shared/recibo/codigoDeRecibo'
-import { fechaCorta, MONO, plata } from './HojaDelRecibo'
+import { fechaCorta, lineaDeHoras, MONO, plata } from './HojaDelRecibo'
 import { enHojas, RECIBOS_POR_HOJA } from './lotesDeRecibos'
 
 export interface ReciboParaLaHoja {
@@ -90,7 +90,7 @@ function ReciboCompacto({ r, quincena }: { r: ReciboParaLaHoja; quincena: { desd
       </div>
       <div style={{ borderTop: '1px solid #D9D8D4' }}>
         {recibo.horas.map((x) => (
-          <Renglon key={x.rotulo} rotulo={x.rotulo} importe={x.horas == null ? 'sin dato' : `${String(x.horas).replace('.', ',')} h`} />
+          <Renglon key={x.rotulo} rotulo={x.rotulo} {...lineaDeHoras(x)} sub={x.sub} />
         ))}
         {recibo.medios.map((x, i) => (
           <Renglon key={`${x.rotulo}-${i}`} rotulo={x.rotulo} importe={plata(x.importe)} sub={x.sub} />
@@ -112,10 +112,10 @@ function ReciboCompacto({ r, quincena }: { r: ReciboParaLaHoja; quincena: { desd
   )
 }
 
-function Renglon({ rotulo, importe, sub }: { rotulo: string; importe: string; sub?: boolean }) {
+function Renglon({ rotulo, detalle, importe, sub }: { rotulo: string; detalle?: string; importe: string; sub?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: sub ? '0 0 0 10px' : '1.5px 0', color: sub ? GRIS : '#1F1F1E' }}>
-      <span>{rotulo}</span>
+      <span>{rotulo}{detalle && <span style={{ color: GRIS, marginLeft: 6 }}>{detalle}</span>}</span>
       <span style={{ fontFamily: MONO }}>{importe}</span>
     </div>
   )

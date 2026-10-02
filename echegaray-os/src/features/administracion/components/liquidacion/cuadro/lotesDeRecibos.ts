@@ -29,6 +29,8 @@ export const OPCIONES_DEL_RECIBO: { clave: ConceptoDelRecibo; rotulo: string }[]
   // trabajadas fuera de recibo». Van juntas al total de horas, que es de lo que son partes.
   { clave: 'horasRecibo', rotulo: 'Horas trabajadas por recibo' },
   { clave: 'horasFuera', rotulo: 'Horas trabajadas fuera de recibo' },
+  // Dueño, 02/10/2026: «no sale ni valor hora en el recibo». Es la cuenta del renglón de arriba (horas × $/h).
+  { clave: 'valorHora', rotulo: 'Valor hora' },
   { clave: 'banco', rotulo: 'Depósito en banco' },
   { clave: 'efectivo', rotulo: 'Efectivo' },
   { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },

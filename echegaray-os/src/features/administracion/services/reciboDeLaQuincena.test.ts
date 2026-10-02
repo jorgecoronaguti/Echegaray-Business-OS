@@ -23,11 +23,15 @@ const mensual = {
   pago: pagoDeLaLinea({ banco: 500000, negro: 200000 }),
 } as unknown as LineaConOverrides
 
-test('el papel dice las horas TOTALES y los dos medios, sin abrir blanco y negro', () => {
+test('el papel dice las horas TOTALES, su reparto por recibo / fuera de recibo con la cuenta, y los dos medios', () => {
   const r = armarRecibo(jornalero, eleccionInicial(jornalero), fmt)
-  // 45 en blanco + 51 en negro = 96 h trabajadas. El reparto no se imprime: es una cuenta interna.
-  assert.deepEqual(r.horas.map((h) => [h.rotulo, h.horas, h.importe]), [['Horas trabajadas', 96, null]])
-  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [['Depósito en banco', 230000], ['Efectivo', 306000]])
+  // 45 por recibo + 51 fuera = 96 h. Desde el 02/10/2026 el reparto y el valor hora salen por defecto.
+  assert.deepEqual(r.horas.map((h) => [h.rotulo, h.horas, h.importe]), [
+    ['Horas trabajadas', 96, null], ['Horas trabajadas por recibo', 45, null], ['Horas trabajadas fuera de recibo', 51, 306000],
+  ])
+  // Ya cobró 100.000 en efectivo: el papel dice lo pagado y lo que resta.
+  assert.deepEqual(r.medios.filter((m) => !m.sub).map((m) => [m.rotulo, m.importe]), [['Depósito en banco', 230000], ['Efectivo', 306000]])
+  assert.ok(r.medios.some((m) => m.rotulo === 'resta'))
   assert.equal(r.total, 536000)
 })
 
@@ -129,12 +133,11 @@ test('sin adelantos ni transferencias, el papel no agrega renglones que no dicen
 // recibo». Son el reparto, dicho por lo que el papel del estudio cubre — y por eso no pueden salir solas ni
 // llamarse blanco y negro: el control de emisión rebota esas dos palabras y el recibo no se podría guardar.
 
-test('las dos opciones nuevas están APAGADAS por defecto: el papel sigue diciendo sólo el total', () => {
+test('las dos opciones están TILDADAS por defecto para el jornalero con modelo (dueño 02/10/2026); el mensual, como antes', () => {
   const e = eleccionInicial(jornalero)
-  assert.equal(e.horasRecibo, false)
-  assert.equal(e.horasFuera, false)
-  const r = armarRecibo(jornalero, e, fmt)
-  assert.deepEqual(r.horas.map((h) => h.rotulo), ['Horas trabajadas'])
+  assert.deepEqual([e.horasRecibo, e.horasFuera, e.valorHora], [true, true, true])
+  const m = eleccionInicial(mensual, true)
+  assert.deepEqual([m.horasRecibo, m.horasFuera, m.valorHora, m.pagado], [false, false, false, false])
 })
 
 test('tildadas, el reparto va debajo del total y sangrado, y las partes suman el total', () => {

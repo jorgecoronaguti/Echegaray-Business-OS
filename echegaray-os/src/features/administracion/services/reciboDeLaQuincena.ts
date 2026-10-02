@@ -22,7 +22,7 @@ import { efectivoMostrado } from './efectivoRedondeado.ts'
 import { MOTIVO_SE_LIQUIDA_EN_LA_2DA, type ReciboDelEstudio } from './recibosDelEstudio.ts'
 import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
 
-export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
+export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'valorHora' | 'banco' | 'efectivo' | 'pagado'
 
 /**
  * LOS RÓTULOS DE LOS TRES RENGLONES QUE EL PAPEL AFIRMA, en un solo lugar.
@@ -52,8 +52,13 @@ export interface EleccionDelRecibo {
   horas: boolean
   /** Las horas que el recibo del estudio cubre. Apagada por defecto. */
   horasRecibo: boolean
-  /** Las horas que el recibo no cubre. Apagada por defecto. */
+  /** Las horas que el recibo no cubre. Tildada por defecto para el jornalero con modelo de sueldo. */
   horasFuera: boolean
+  /**
+   * LA CUENTA DE LAS HORAS FUERA DE RECIBO: horas × valor hora = importe (dueño, 02/10/2026: «no sale ni valor hora en
+   * el recibo»). Opcional porque los recibos y lotes armados antes de esta opción no la traen: ausente = no va.
+   */
+  valorHora?: boolean
   banco: boolean
   efectivo: boolean
   /** Debajo de cada medio: lo ya pagado (adelantos) y lo que resta. */
@@ -91,7 +96,7 @@ export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Rec
   // LA 1ª QUINCENA DEL MENSUAL NO TIENE RECIBO DE PAGO: el mes se paga una vez, con el de la 2ª.
   if (l.seLiquidaEnLa2da) {
     const m = MOTIVO_SE_LIQUIDA_EN_LA_2DA
-    return { horas: m, horasRecibo: m, horasFuera: m, banco: m, efectivo: m, pagado: m }
+    return { horas: m, horasRecibo: m, horasFuera: m, valorHora: m, banco: m, efectivo: m, pagado: m }
   }
   const horas = horasDeLaQuincena(l)
   const sinHoras = mensual ? 'cobra por mes: no se liquida por hora' : 'sin horas cargadas en la quincena'
@@ -99,10 +104,13 @@ export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Rec
   // no está, en vez de imprimir «0 h fuera de recibo», que afirmaría algo que nadie cargó.
   const r = horasPorRecibo(l)
   const f = horasFueraDeRecibo(l)
+  const motivoFuera = f == null ? (horas == null ? sinHoras : 'la quincena no trae el reparto de horas') : null
   return {
     horas: horas == null ? sinHoras : null,
     horasRecibo: r == null ? (horas == null ? sinHoras : 'la quincena no trae el reparto de horas') : null,
-    horasFuera: f == null ? (horas == null ? sinHoras : 'la quincena no trae el reparto de horas') : null,
+    horasFuera: motivoFuera,
+    // La cuenta es de las horas fuera de recibo: sin ellas no hay qué multiplicar, y sin $/h no se inventa uno.
+    valorHora: motivoFuera ?? (valorHoraFueraDeRecibo(l) == null ? 'la quincena no trae el valor hora' : null),
     banco: null,
     efectivo: null,
     pagado: null,
@@ -121,6 +129,26 @@ export function horasFueraDeRecibo(l: LineaConOverrides): number | null {
   return n == null ? null : Math.round(n * 100) / 100
 }
 
+/** El $/h con que se pagan las horas fuera de recibo, el mismo que usa el modelo de sueldo. `null` = no lo trae. */
+export function valorHoraFueraDeRecibo(l: LineaConOverrides): number | null {
+  const v = l.sueldo?.valorHoraNegro
+  return v == null || !Number.isFinite(v) || v <= 0 ? null : v
+}
+
+/**
+ * EL RENGLÓN DE LAS HORAS FUERA DE RECIBO CON SU CUENTA: «68,5 h × $ 6.348» y el importe. El importe va en el renglón
+ * de HORAS, no en los medios: `total` suma sólo los medios, así que no se cuenta dos veces con el efectivo. Las horas de
+ * recargo de extras que el modelo paga además (`recargoExtras`) se escriben en la cuenta: sin ellas no cerraría.
+ */
+function cuentaDeLasHorasFuera(l: LineaConOverrides, fmt: (n: number) => string): { detalle: string; importe: number } | null {
+  const h = horasFueraDeRecibo(l)
+  const v = valorHoraFueraDeRecibo(l)
+  if (h == null || v == null) return null
+  const extra = r2(l.sueldo?.recargoExtras ?? 0)
+  const horasDichas = extra > 0 ? `(${hs(h)} + ${hs(extra)} de recargo por extras)` : hs(h)
+  return { detalle: `${horasDichas} × ${fmt(v)}`, importe: r2((h + extra) * v) }
+}
+
 /**
  * EL TOTAL DE HORAS, sin abrir el reparto. Con modelo blanco + negro son las dos partes sumadas —que es
  * exactamente lo que la persona trabajó—; sin modelo, las horas de la línea. `null` = no hay horas cargadas,
@@ -137,11 +165,49 @@ export function horasDeLaQuincena(l: LineaConOverrides): number | null {
   return l.horas ?? null
 }
 
-/** Por defecto va todo lo que la línea puede decir. */
+/**
+ * LO QUE LLEVA EL PAPEL SI NADIE TOCA NADA.
+ *
+ * Dueño, 02/10/2026, pagando haberes: *«dejame la forma de hacer un buen recibo de eso, no sale ni valor hora en el
+ * recibo»*. Para el jornalero con modelo de sueldo, el recibo bueno es el que se puede controlar sin el panel: las
+ * horas por recibo, las de fuera con su cuenta, y —si ya cobró algo— lo pagado y lo que resta. Hasta el 02/10 el
+ * reparto arrancaba apagado (22/09: el papel decía sólo el total); lo cambió el pedido de hoy. Mensualizados y líneas
+ * sin modelo quedan como estaban: no hay reparto ni $/h que mostrar.
+ */
 export function eleccionInicial(l: LineaConOverrides, mensual = false): EleccionDelRecibo {
   const d = conceptosDisponibles(l, mensual)
-  // El reparto NO se tilda solo: el papel por defecto dice el total de horas y nada más.
-  return { horas: d.horas == null, horasRecibo: false, horasFuera: false, banco: true, efectivo: true, pagado: false }
+  const base = { horas: d.horas == null, horasRecibo: false, horasFuera: false, valorHora: false, banco: true, efectivo: true, pagado: false }
+  if (mensual || !l.sueldo) return base
+  const yaPagado = (l.pago?.pagadoBanco ?? 0) > 0 || (l.pago?.pagadoEfectivo ?? 0) > 0
+  return {
+    ...base,
+    horasRecibo: d.horasRecibo == null,
+    horasFuera: d.horasFuera == null,
+    valorHora: d.valorHora == null,
+    pagado: yaPagado,
+  }
+}
+
+/**
+ * TILDAR O DESTILDAR UN CONCEPTO, con la única dependencia que hay: la cuenta del valor hora es la del renglón de horas
+ * fuera de recibo. Tildar «Valor hora» lo tilda; destildar las horas fuera destilda el valor hora. Sirve igual para la
+ * elección del panel y para los cambios del lote (`CambiosDelLote`), por eso trabaja sobre un parcial.
+ */
+export function alternarConcepto<E extends Partial<EleccionDelRecibo>>(e: E, clave: ConceptoDelRecibo, marcar: boolean): E {
+  const sal: E = { ...e, [clave]: marcar }
+  if (clave === 'valorHora' && marcar) sal.horasFuera = true
+  if (clave === 'horasFuera' && !marcar) sal.valorHora = false
+  return sal
+}
+
+/**
+ * UN RENGLÓN DE HORAS EN EL PAPEL. Sin importe: las horas a la derecha. Con importe —la cuenta del valor hora de las
+ * horas fuera de recibo— la cuenta va como detalle («68,5 h × $ 6.348») y el importe a la derecha. Los recibos sellados
+ * antes del 02/10/2026 no traen importe en las horas y se reimprimen igual que siempre.
+ */
+export function textoDeHoras(r: RenglonDelRecibo, plata: (n: number) => string): { detalle?: string; importe: string } {
+  if (r.importe != null) return { ...(r.detalle ? { detalle: r.detalle } : {}), importe: plata(r.importe) }
+  return { importe: r.horas == null ? 'sin dato' : `${String(r.horas).replace('.', ',')} h` }
 }
 
 const hs = (n: number | null | undefined): string => (n == null ? 'sin dato' : `${String(Math.round(n * 100) / 100).replace('.', ',')} h`)
@@ -349,15 +415,15 @@ export function desglosarBancoSellado(
   return sal
 }
 
-export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n: number) => string, mensual = false): ReciboArmado {
+export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string, mensual = false): ReciboArmado {
   // PAPEL VACÍO = NO SE EMITE, ni desde el panel ni en el lote (`reciboSinNada`). El servidor lo frena también.
   if (l.seLiquidaEnLa2da) return { horas: [], medios: [], total: null, estimado: false }
   const d = conceptosDisponibles(l, mensual)
   const horas: RenglonDelRecibo[] = []
   if (e.horas && d.horas == null) {
     const hs = horasDeLaQuincena(l)
-    // SIN IMPORTE NI $/H: el importe por hora abriría el reparto que este papel no dice. Lo que se firma es
-    // cuántas horas trabajó y cuánta plata recibió.
+    // El total va sin importe: la plata se dice en los medios. La cuenta $/h, si se pide, va en el renglón de
+    // horas fuera de recibo (abajo), que es la única parte cuyo importe sale de horas × valor hora.
     horas.push({ rotulo: ROTULO.horas, horas: hs, detalle: null, importe: null })
   }
   // El reparto va DEBAJO del total y sangrado: son las partes de la cifra de arriba, no dos renglones más.
@@ -365,7 +431,12 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
     horas.push({ rotulo: ROTULO.horasRecibo, horas: horasPorRecibo(l), detalle: null, importe: null, sub: e.horas && d.horas == null })
   }
   if (e.horasFuera && d.horasFuera == null) {
-    horas.push({ rotulo: ROTULO.horasFuera, horas: horasFueraDeRecibo(l), detalle: null, importe: null, sub: e.horas && d.horas == null })
+    // CON «VALOR HORA», LA CUENTA (dueño 02/10): sólo cuelga de este renglón, así que sin él no se imprime suelta.
+    const cuenta = e.valorHora === true && d.valorHora == null ? cuentaDeLasHorasFuera(l, fmt) : null
+    horas.push({
+      rotulo: ROTULO.horasFuera, horas: horasFueraDeRecibo(l),
+      detalle: cuenta?.detalle ?? null, importe: cuenta?.importe ?? null, sub: e.horas && d.horas == null,
+    })
   }
 
   const m = medios(l, mensual)

@@ -39,7 +39,7 @@ import {
   armarLote, avisoDelLote, estadoDeOpcion, OPCIONES_DEL_RECIBO, textoDelLote,
   type AvisoDelLote, type CambiosDelLote, type ReciboDeLaFila,
 } from './lotesDeRecibos'
-import type { ConceptoDelRecibo } from '../../../services/reciboDeLaQuincena'
+import { alternarConcepto, type ConceptoDelRecibo } from '../../../services/reciboDeLaQuincena'
 
 type Tarea = 'imprimir' | 'pdf'
 
@@ -87,7 +87,7 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   const alternar = (clave: ConceptoDelRecibo, marcar: boolean) => {
     if (tarea) return
     setAviso(null)
-    setCambios((c) => ({ ...c, [clave]: marcar }))
+    setCambios((c) => alternarConcepto(c, clave, marcar))
   }
 
   // LA HOJA ENTRA ENTERA EN EL ANCHO DEL PANEL, sea el costado del escritorio o la pantalla del teléfono.
