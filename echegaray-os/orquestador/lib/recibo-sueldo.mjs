@@ -30,6 +30,7 @@ const CUIL = /\b(\d{2}-\d{8}-\d)\b/g
 
 /** Los doce meses en el texto del formulario, para leer «SEGUNDA QUINCENA 07/2026». */
 const QUINCENA = /(PRIMERA|SEGUNDA)\s+QUINCENA\s+(\d{1,2})\/(\d{4})/i
+const LIQUIDACION_FINAL = /LIQUIDACI[OÓ]N\s+FINAL/i
 const PERIODO_SUELTO = /PERIODO\s+DE\s+PAGO[^\d]{0,40}(\d{1,2})\/(\d{4})/i
 
 /**
@@ -60,9 +61,11 @@ export function personaDelRecibo(textoDePagina) {
   const i = lineas.findIndex((l) => /APELLIDO\s+Y\s+NOMBRE/i.test(l))
   let nombre = null
   let legajo = null
+  let mesDeLaFila = null
   if (i >= 0 && lineas[i + 1]) {
-    const m = /^(\d{1,2})\s+(\d{4})\s+([A-ZÁÉÍÓÚÑÜ' .-]+?)\s+(\d{1,5})\s+[\d.,]+$/.exec(lineas[i + 1])
-    if (m) { nombre = m[3].replace(/\s+/g, ' ').trim(); legajo = m[4] }
+    // La primera columna es el MES (aunque el rótulo diga «Q»): en la final puede venir precedida de otra.
+    const m = /^(?:\d{1,2}\s+)?(\d{1,2})\s+(\d{4})\s+([A-ZÁÉÍÓÚÑÜ' .-]+?)\s+(\d{1,5})\s+[\d.,]+$/.exec(lineas[i + 1])
+    if (m) { nombre = m[3].replace(/\s+/g, ' ').trim(); legajo = m[4]; mesDeLaFila = `${m[2]}-${m[1].padStart(2, '0')}` }
   }
 
   // ── EL PERÍODO ─────────────────────────────────────────────────────────────
@@ -70,24 +73,42 @@ export function personaDelRecibo(textoDePagina) {
   // suelto arriba, es OTRA cosa (el período de la obra social) y no se usa.
   let periodo = null
   let quincena = null
+  const final = LIQUIDACION_FINAL.test(texto) && !QUINCENA.test(texto)
   const q = QUINCENA.exec(texto)
   if (q) {
     quincena = q[1].toUpperCase() === 'PRIMERA' ? 1 : 2
     periodo = `${q[3]}-${q[2].padStart(2, '0')}`
+  } else if (final) {
+    // La final NO trae quincena ni mes en el rótulo, por eso caía en «sin-periodo». El mes sale de la
+    // fila «mes año APELLIDO» (mismo criterio que `periodoDe` del importador). Si esa fila no se lee,
+    // queda null: «final sin mes» explícito, nunca un mes supuesto — el «PERIODO 05/2026» suelto es la
+    // obra social, no el mes que se liquida.
+    periodo = mesDeLaFila
   } else {
     const p = PERIODO_SUELTO.exec(texto)
     if (p) periodo = `${p[2]}-${p[1].padStart(2, '0')}`
   }
 
-  return { cuil, nombre, legajo, periodo, quincena }
+  return { cuil, nombre, legajo, periodo, quincena, final }
 }
 
-/** El nombre del archivo de una página suelta: ordena solo y dice de qué es sin abrirlo. */
-export function nombreDelRecibo({ periodo, quincena, nombre }) {
+/**
+ * El nombre del archivo de una página suelta: ordena solo y dice de qué es sin abrirlo.
+ *
+ * La final sigue el patrón que ya lee la web (`periodoDelNombre` en recibosDelLegajo.ts:
+ * «Liquidación final 2026-08 · X»). Sin mes legible dice «sin mes»: se avisa, no se supone.
+ */
+export function nombreDelRecibo({ periodo, quincena, nombre, final }) {
+  const quien = nombre ? ` · ${nombre}` : ''
+  if (final) return `Liquidación final ${periodo ?? 'sin mes'}${quien}.pdf`
   const p = periodo ?? 'sin-periodo'
   const q = quincena ? ` Q${quincena}` : ''
-  return `Recibo ${p}${q}${nombre ? ` · ${nombre}` : ''}.pdf`
+  return `Recibo ${p}${q}${quien}.pdf`
 }
+
+/** Cómo se llamaba (mal) la final antes de este arreglo: 68 archivos históricos. Sólo para reconocerlos
+ *  en la carpeta —no volver a subirlos con otro nombre— y para listar su nombre nuevo. */
+export const nombreHistoricoSinPeriodo = ({ nombre }) => `Recibo sin-periodo${nombre ? ` · ${nombre}` : ''}.pdf`
 
 /**
  * A qué persona de la nómina corresponde una página.

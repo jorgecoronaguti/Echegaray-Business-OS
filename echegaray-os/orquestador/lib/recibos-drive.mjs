@@ -67,6 +67,9 @@ const SEP = '[:/.\\-]'
 const CON_NUMERO_Y_FECHA = new RegExp(`^recibos?\\s*n?[°ºo]?\\s*(\\d{1,4})\\s*-\\s*(\\d{1,2})${SEP}(\\d{1,2})${SEP}(\\d{2,4})\\b`)
 const SOLO_FECHA_CON_ANIO = new RegExp(`^recibos?\\s*(\\d{1,2})${SEP}(\\d{1,2})${SEP}(\\d{2,4})\\b`)
 const SOLO_FECHA_SIN_ANIO = new RegExp(`^recibos?\\s*(\\d{1,2})${SEP}(\\d{1,2})\\s*$`)
+// Numeración correlativa en producción desde el 02/10/2026: RP = pago a personal, RC = cobro a cliente.
+// Va ANTES que los cuatro dialectos: «RECIBO RC-000012» no es una fecha ni un número suelto.
+const CON_SERIE = /^recibos?\s+(rp|rc)\s*-\s*(\d{1,9})\b/
 const SOLO_NUMERO = /^recibos?\s*n?[°ºo]?\s*(\d{1,4})\b/
 
 /**
@@ -85,6 +88,14 @@ const SOLO_NUMERO = /^recibos?\s*n?[°ºo]?\s*(\d{1,4})\b/
 export function datosDelNombre(nombre) {
   const n = normalizar(sinExtension(nombre))
   const faltan = []
+  const serie = CON_SERIE.exec(n)
+  if (serie && Number(serie[2]) > 0) {
+    // El nombre no trae fecha: se avisa, no se completa. `numero` es el entero sin ceros, como en
+    // los otros dialectos; la serie va aparte porque el 12 de RP y el 12 de RC son recibos distintos.
+    const s = serie[1].toUpperCase()
+    const num = String(Number(serie[2]))
+    return { numero: num, serie: s, codigo: `${s}-${num.padStart(6, '0')}`, fecha: null, faltan: ['el nombre no trae fecha'] }
+  }
   let m = CON_NUMERO_Y_FECHA.exec(n)
   if (m) {
     const fecha = aFechaISO(m[2], m[3], m[4])

@@ -94,3 +94,20 @@ test('dos obras que declaran la misma carpeta no deciden nada', () => {
   assert.equal(obraDeLasCarpetas([]), null)
   assert.equal(obraDeLasCarpetas(['quattropani', 'quattropani']), 'quattropani')
 })
+
+test('«RECIBO RC-000012» y «RP-000007» (numeración nueva 02/10/2026) dan serie y número', () => {
+  // EL DEFECTO QUE ATRAPA: sin la rama de serie, el nombre caía en «ni número ni fecha» y el recibo
+  // numerado entraba al legajo sin su número.
+  assert.deepEqual(datosDelNombre('RECIBO RC-000012.pdf'),
+    { numero: '12', serie: 'RC', codigo: 'RC-000012', fecha: null, faltan: ['el nombre no trae fecha'] })
+  const rp = datosDelNombre('Recibo RP-000007 - 3:10:26.pdf')
+  assert.equal(rp.serie, 'RP')
+  assert.equal(rp.numero, '7')
+  assert.equal(rp.codigo, 'RP-000007')
+  assert.equal(datosDelNombre('RECIBO RC-000000.pdf').serie, undefined, 'el 0 no es un recibo')
+})
+
+test('la numeración nueva no rompe los dialectos viejos', () => {
+  assert.deepEqual(datosDelNombre('RECIBO 11 - 31:7:26.pdf'), { numero: '11', fecha: '2026-07-31', faltan: [] })
+  assert.equal(datosDelNombre('RECIBO 15:9.pdf').numero, null)
+})

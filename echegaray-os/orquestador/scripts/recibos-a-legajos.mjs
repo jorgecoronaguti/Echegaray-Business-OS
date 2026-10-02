@@ -23,9 +23,13 @@ import { PDFDocument } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
 import { getTokenFor } from '../lib/google-oauth.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { nombreDelRecibo, personaDelRecibo, personaQueCorresponde } from '../lib/recibo-sueldo.mjs'
+import { nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from '../lib/recibo-sueldo.mjs'
 
-const APLICAR = process.argv.includes('--aplicar')
+// --listar-nombres: SÓLO LECTURA (baja los PDF de Drive pero no sube, no crea carpetas ni escribe en la
+// base). Dice qué nombre le toca a cada liquidación final y cuáles de los «Recibo sin-periodo» ya
+// subidos se renombrarían. Fuerza el simulacro aunque se pase --aplicar.
+const LISTAR = process.argv.includes('--listar-nombres')
+const APLICAR = process.argv.includes('--aplicar') && !LISTAR
 const LIMITE = Number(process.argv[process.argv.indexOf('--limite') + 1]) || Infinity
 const ORIGEN = process.env.CARPETA_RECIBOS || '1kfdJqw9fk4DfVH6tbjc5dSrte5owty1L'
 const SUBCARPETA = 'RECIBOS DE SUELDO'
@@ -85,7 +89,7 @@ const archivos = await listar(`'${ORIGEN}' in parents and trashed=false and mime
 archivos.sort((a, b) => a.name.localeCompare(b.name))
 console.log(`PDF en la carpeta: ${archivos.length}`)
 
-const informe = { paginas: 0, sinTexto: 0, sinCuil: 0, sinPersona: new Map(), subidos: 0, yaEstaban: 0, fallidos: 0, porPersona: new Map() }
+const informe = { paginas: 0, sinTexto: 0, sinCuil: 0, sinPersona: new Map(), finalesSinMes: 0, aRenombrar: [], subidos: 0, yaEstaban: 0, fallidos: 0, porPersona: new Map() }
 const carpetaCache = new Map()
 const yaEnCarpeta = new Map()
 
@@ -135,6 +139,20 @@ for (const f of archivos) {
       } else yaEnCarpeta.set(persona.id, new Map())
     }
     const previos = yaEnCarpeta.get(persona.id)
+    if (datos.final) {
+      if (datos.periodo == null) {
+        informe.finalesSinMes++
+        console.log(`  ⚠ final SIN MES legible: ${f.name} p${i + 1} (${persona.nombre_completo}) → ${nombre}`)
+      }
+      // La final ya subida con el nombre viejo ES esta hoja: no se vuelve a subir con otro nombre.
+      // Renombrar los históricos es otra decisión (con el dueño); acá sólo se lista.
+      const viejo = nombreHistoricoSinPeriodo(datos)
+      if (viejo !== nombre && previos.has(viejo) && !previos.has(nombre)) {
+        informe.aRenombrar.push(`${persona.nombre_completo}: ${viejo} → ${nombre}`)
+        informe.yaEstaban++
+        continue
+      }
+    }
     if (previos.has(nombre)) {
       informe.yaEstaban++
       if (APLICAR) await registrar(persona.id, previos.get(nombre), nombre, datos)
@@ -184,6 +202,11 @@ console.log(`con texto sin CUIL   ${informe.sinCuil}`)
 console.log(`hojas ${APLICAR ? 'subidas' : 'a subir'}        ${informe.subidos}`)
 console.log(`ya estaban           ${informe.yaEstaban}`)
 console.log(`fallidas             ${informe.fallidos}`)
+console.log(`finales sin mes      ${informe.finalesSinMes}`)
+if (LISTAR || informe.aRenombrar.length) {
+  console.log(`\nfinales ya subidas con el nombre viejo (${informe.aRenombrar.length}) — NO se renombran acá:`)
+  for (const l of informe.aRenombrar) console.log(`  ${l}`)
+}
 console.log(`personas alcanzadas  ${informe.porPersona.size}`)
 if (informe.sinPersona.size) {
   console.log('\nCUIL que no está en la nómina (no se cuelga a nadie):')

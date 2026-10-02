@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CUIT_EMPRESA, nombreDelRecibo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
+import { CUIT_EMPRESA, nombreDelRecibo, nombreHistoricoSinPeriodo, personaDelRecibo, personaQueCorresponde } from './recibo-sueldo.mjs'
 
 // Una página real del recibo de la 2da quincena de julio de 2026, tal como la extrae pdf-parse.
 const PAGINA = `Q MES AÑO APELLIDO Y NOMBRE N° LEGAJO SUELDO BRUTO
@@ -26,6 +26,7 @@ test('lee de quién es la página y de qué período', () => {
     legajo: '5',
     periodo: '2026-07',
     quincena: 2,
+    final: false,
   })
 })
 
@@ -66,4 +67,37 @@ test('se empareja por CUIL, nunca por nombre', () => {
   assert.equal(personaQueCorresponde({ cuil: '20-29427106-7' }, plantel).id, 'p1')
   assert.equal(personaQueCorresponde({ cuil: '99-99999999-9' }, plantel), null)
   assert.equal(personaQueCorresponde({ cuil: null }, plantel), null)
+})
+
+// Una final: sin quincena en el rótulo; el mes sólo está en la fila «mes año APELLIDO».
+const FINAL = `LIQUIDACIÓN FINAL
+Q MES AÑO APELLIDO Y NOMBRE N° LEGAJO SUELDO BRUTO
+9 2026 CARRIZO PEDRO 12 400.000,00
+CATEGORÍA LABORAL C.U.I.L BANCO F. PAGO APORTES
+OFICIAL 20-11111111-2 SANTANDER RIO 08/10/2026
+C.U.I.T.: 30-71630464-3
+PERIODO
+05/2026`
+
+test('una liquidación final se detecta y se nombra con su mes, no «sin-periodo»', () => {
+  // EL DEFECTO QUE ATRAPA: sin quincena ni PERIODO DE PAGO, la final salía con periodo null y el
+  // archivo se llamaba «Recibo sin-periodo · X.pdf» (68 históricos).
+  const d = personaDelRecibo(FINAL)
+  assert.equal(d.final, true)
+  assert.equal(d.periodo, '2026-09')
+  assert.equal(d.quincena, null)
+  assert.equal(nombreDelRecibo(d), 'Liquidación final 2026-09 · CARRIZO PEDRO.pdf')
+})
+
+test('una final sin mes legible lo dice, no lo inventa', () => {
+  // El «PERIODO 05/2026» suelto es la obra social: usarlo sería suponer un mes.
+  const d = personaDelRecibo(FINAL.replace('9 2026 CARRIZO PEDRO 12 400.000,00', 'ilegible'))
+  assert.equal(d.final, true)
+  assert.equal(d.periodo, null)
+  assert.equal(nombreDelRecibo(d), 'Liquidación final sin mes.pdf')
+})
+
+test('una quincena sigue siendo quincena y el nombre viejo de la final se reconoce', () => {
+  assert.equal(personaDelRecibo(PAGINA).final, false)
+  assert.equal(nombreHistoricoSinPeriodo({ nombre: 'CARRIZO PEDRO' }), 'Recibo sin-periodo · CARRIZO PEDRO.pdf')
 })
