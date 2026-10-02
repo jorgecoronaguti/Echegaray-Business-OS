@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { faltaMigracion, mensajeDeError } from '../logica/formularios'
 import { diaAR } from '../logica/entregas'
 import { validarReciboPago } from '../logica/reciboPago'
-import { MIGRACION_RECIBO_PAGO } from './reciboPagoDatos'
+import { MIGRACION_RECIBO_PAGO, leerPersonasParaRecibo } from './reciboPagoDatos'
 
 export type ResultadoRecibo<T> = { ok: true; dato: T } | { ok: false; error: string }
 
@@ -55,7 +55,21 @@ export async function emitirReciboPagoAction(e: z.input<typeof emitirSchema>): P
   }
 }
 
-const anularSchema = z.object({ id: z.string().uuid(), motivo: z.string().trim().min(5, 'Escribí por qué se anula (al menos 5 letras).').max(400) })
+/**
+ * A nombre de quién sale el recibo de una persona del plantel (Liquidación · «Recibo por la diferencia»): nombre
+ * legal y DNI/CUIL del legajo. Sólo lectura; la RLS de `personas` y `persona_legajo` decide qué ve la sesión.
+ */
+export async function personaParaReciboAction(personaId: string): Promise<ResultadoRecibo<{ nombre: string; documento: string | null }>> {
+  if (!z.string().uuid().safeParse(personaId).success) return { ok: false, error: 'Persona inválida.' }
+  try {
+    const p = (await leerPersonasParaRecibo([personaId])).get(personaId)
+    return p ? { ok: true, dato: p } : { ok: false, error: 'No encontré a la persona en el padrón.' }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
+  }
+}
+
+const anularSchema =z.object({ id: z.string().uuid(), motivo: z.string().trim().min(5, 'Escribí por qué se anula (al menos 5 letras).').max(400) })
 
 export async function anularReciboPagoAction(e: z.input<typeof anularSchema>): Promise<ResultadoRecibo<null>> {
   const p = anularSchema.safeParse(e)

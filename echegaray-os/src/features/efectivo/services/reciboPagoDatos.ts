@@ -48,6 +48,55 @@ export async function leerRecibosEmitidos(): Promise<LecturaRecibos> {
   }
 }
 
+/**
+ * LOS RECIBOS DE UNA PERSONA, para su legajo (solapa Retribución). Todos, no los últimos 50: es el historial de lo
+ * que esa persona firmó. La cerradura es la misma RLS (`ve_economia()`).
+ */
+export async function leerRecibosDePersona(supabase: SupabaseClient, personaId: string): Promise<LecturaRecibos> {
+  try {
+    const { data, error } = await supabase.from('recibo_pago_efectivo').select(COLUMNAS)
+      .eq('persona_id', personaId).order('serie_numero', { ascending: false }).limit(500)
+    if (faltaMigracion(error)) return { estado: 'falta_migracion' }
+    if (error) return { estado: 'error', mensaje: error.message }
+    return { estado: 'ok', recibos: ((data ?? []) as Fila[]).map(aRecibo) }
+  } catch (err) {
+    return { estado: 'error', mensaje: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
+  }
+}
+
+/**
+ * A NOMBRE DE QUIÉN SALE EL RECIBO DE UNA PERSONA: el nombre legal y el DNI (o el CUIL) del legajo, con la misma
+ * regla que el padrón del panel de Efectivo. La que no viene en el mapa, la sesión no la ve.
+ */
+export type PersonaParaRecibo = { nombre: string; documento: string | null }
+
+export async function leerPersonasParaRecibo(ids: readonly string[]): Promise<Map<string, PersonaParaRecibo>> {
+  const supabase = await createClient()
+  const [pers, legajo] = await Promise.all([
+    supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids),
+    supabase.from('persona_legajo').select('id, dni, cuil').in('id', ids),
+  ])
+  const docDe = new Map<string, string>()
+  for (const l of (legajo.data ?? []) as { id: string; dni: string | null; cuil: string | null }[]) {
+    const d = String(l.dni ?? '').replace(/\D/g, '') || String(l.cuil ?? '').replace(/\D/g, '')
+    if (d) docDe.set(l.id, d)
+  }
+  const sal = new Map<string, PersonaParaRecibo>()
+  for (const p of (pers.data ?? []) as { id: string; nombre_completo: string | null; nombre_para_mostrar: string | null }[]) {
+    sal.set(p.id, { nombre: nombreLegal(p.nombre_completo) ?? nombreDePersona(p), documento: docDe.get(p.id) ?? null })
+  }
+  return sal
+}
+
+/** Varios recibos para un solo PDF, en el orden de su número. Los que la sesión no ve no vienen (RLS). */
+export async function leerRecibosParaImprimir(supabase: SupabaseClient, ids: readonly string[]): Promise<ReciboEmitido[] | 'falta_migracion'> {
+  const { data, error } = await supabase.from('recibo_pago_efectivo').select(COLUMNAS).in('id', ids)
+    .order('serie_numero', { ascending: true })
+  if (faltaMigracion(error)) return 'falta_migracion'
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Fila[]).map(aRecibo)
+}
+
 /** Un recibo para el PDF. `null` = no existe o la sesión no lo ve (la RLS decide: mismo 404). */
 export async function leerReciboEmitido(supabase: SupabaseClient, id: string): Promise<ReciboEmitido | 'falta_migracion' | null> {
   const { data, error } = await supabase.from('recibo_pago_efectivo').select(COLUMNAS).eq('id', id).maybeSingle()

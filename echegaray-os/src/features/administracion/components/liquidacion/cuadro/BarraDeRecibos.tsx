@@ -34,12 +34,14 @@ export function CasillaDeRecibo({ estado, alternar, etiqueta, testid, apagada }:
   )
 }
 
-export function BarraDeRecibos({ cuantos, de, verPrevia, quitar }: {
+export function BarraDeRecibos({ cuantos, de, verPrevia, verDiferencias, quitar }: {
   /** Los tildados que están a la vista. */
   cuantos: number
   /** Las personas a la vista: el «de 19». */
   de: number
   verPrevia: () => void
+  /** «Recibos por la diferencia» (dueño, 02/10/2026): el recibo de pago en efectivo de lo que faltó, para los tildados. */
+  verDiferencias: () => void
   quitar: () => void
 }) {
   if (cuantos === 0) return null
@@ -53,6 +55,11 @@ export function BarraDeRecibos({ cuantos, de, verPrevia, quitar }: {
         className="min-h-9 rounded-md border-0 px-4 text-[13px] font-semibold text-white max-[767px]:min-h-11 max-[767px]:flex-1"
         style={{ background: V.grafito, cursor: 'pointer' }}>
         Vista previa
+      </button>
+      <button type="button" onClick={verDiferencias} data-testid="recibos-lote-diferencia"
+        className="min-h-9 rounded-md bg-transparent px-4 text-[13px] font-semibold max-[767px]:min-h-11 max-[767px]:flex-1"
+        style={{ border: `1px solid ${V.lineaFuerte}`, color: V.tinta, cursor: 'pointer' }}>
+        Recibos por la diferencia
       </button>
       <button type="button" onClick={quitar} data-testid="recibos-lote-quitar"
         className="min-h-9 border-0 bg-transparent px-1 text-[12.5px] underline max-[767px]:min-h-11"

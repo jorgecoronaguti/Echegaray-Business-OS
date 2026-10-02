@@ -42,6 +42,8 @@ import { renglonesDeLosRecibos } from '../../../services/reciboDeLaQuincena'
 import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 import { ArmarRecibo } from './ArmarRecibo'
+import { ReciboPorLaDiferencia } from './ReciboPorLaDiferencia'
+import { restaDeEfectivo } from '../../../services/reciboPorLaDiferencia'
 import { ReciboEnBlanco } from './ReciboEnBlanco'
 import { conNetoDelRecibo, restaDelEfectivo } from '../../../services/liquidacionArrastre'
 import { MarcaDeArrastre } from './MarcaDeArrastre'
@@ -66,7 +68,9 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
   const jornales = tituloDeJornales(fila.linea)
   // «RECIBO» (dueño, 22/09/2026): el mismo panel pasa a armar el recibo de esta persona; «Volver» lo devuelve.
   // «RECIBO EN BLANCO» (dueño, 28/09/2026): el mismo lugar arma también el recibo con la forma del contador.
-  const [armando, setArmando] = useState<false | 'pago' | 'blanco'>(false)
+  const [armando, setArmando] = useState<false | 'pago' | 'blanco' | 'diferencia'>(false)
+  // «RECIBO POR LA DIFERENCIA» (dueño, 02/10/2026): sólo si le queda efectivo por pagar, según el recibo de la quincena.
+  const resta = restaDeEfectivo(fila.linea, tipoDeLiquidacion(fila) === 'mensual')
   return (
     <Drawer
       // «VOLVER» ARRIBA (dueño, 22/09/2026): *«al hacer click en recibo [...] tiene q haber arriba de ese desplegable
@@ -77,7 +81,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
             style={{ padding: '5px 12px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>
             ‹ Volver
           </button>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${armando === 'blanco' ? 'Recibo en blanco' : 'Recibo'} · ${fila.nombre}`}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${armando === 'blanco' ? 'Recibo en blanco' : armando === 'diferencia' ? 'Recibo por la diferencia' : 'Recibo'} · ${fila.nombre}`}</span>
         </span>
       ) : fila.nombre}
       subtitulo={`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · alta ${corta(fila.alta)}`}
@@ -85,7 +89,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       ancho={520}
       testid="panel-cuadro-persona"
       pie={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           {!armando && (
             <button type="button" onClick={() => setArmando('pago')} data-testid="panel-recibo"
               style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
@@ -96,6 +100,12 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
             <button type="button" onClick={() => setArmando('blanco')} data-testid="panel-recibo-blanco"
               style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
               Ver blanco
+            </button>
+          )}
+          {!armando && resta != null && (
+            <button type="button" onClick={() => setArmando('diferencia')} data-testid="panel-recibo-diferencia"
+              style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              Recibo por la diferencia
             </button>
           )}
           {/* TRES RÓTULOS QUE NO REPITEN LA PALABRA SOLA (dueño, 01/10/2026: «3 veces la palabra "recibo"… poné
@@ -112,7 +122,9 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
         <div style={{ padding: '16px 16px 24px' }}>
           {armando === 'blanco'
             ? <ReciboEnBlanco fila={fila} quincena={quincena} detalle={detalle} />
-            : <ArmarRecibo fila={fila} quincena={quincena} />}
+            : armando === 'diferencia' && resta != null
+              ? <ReciboPorLaDiferencia fila={fila} quincena={quincena} resta={resta} />
+              : <ArmarRecibo fila={fila} quincena={quincena} />}
         </div>
       ) : (
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>

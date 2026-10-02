@@ -1,4 +1,10 @@
-// EL PDF DEL RECIBO DE PAGO EN EFECTIVO A UN TERCERO — una hoja A4, ORIGINAL arriba y DUPLICADO abajo.
+// EL PDF DEL RECIBO DE PAGO EN EFECTIVO A UN TERCERO — media hoja A4 por recibo; con duplicado, la hoja entera.
+//
+// ═══ SIN DUPLICADO POR DEFECTO (dueño, 02/10/2026) ═══
+// *«no quiero duplicado, dame la opción en recibos de módulo de efectivo si quiero duplicado»*. Por defecto sale
+// una sola copia, sin rótulo «ORIGINAL»; en lote entran dos recibos (de dos personas) por hoja, cortados por la
+// línea punteada: la mitad de papel. Con `duplicado`, cada recibo ocupa su hoja con ORIGINAL arriba y DUPLICADO
+// abajo, como salía antes.
 //
 // A diferencia del recibo del gasto manual (`reciboPdf.ts`, firmado en pantalla), éste SE IMPRIME Y SE FIRMA
 // EN PAPEL: el dueño le paga a un subcontratista en la obra y necesita la firma ahí. Por eso lleva renglones
@@ -36,7 +42,7 @@ function partir(t: string, ancho: number, f: PDFFont, tam: number): string[] {
 interface Lienzo { doc: PDFDocument; page: PDFPage; normal: PDFFont; negrita: PDFFont }
 
 /** Una copia en la mitad cuyo borde de arriba es `techo`. */
-async function copia(l: Lienzo, r: ReciboPagoImpreso, techo: number, cual: 'ORIGINAL' | 'DUPLICADO') {
+async function copia(l: Lienzo, r: ReciboPagoImpreso, techo: number, cual: 'ORIGINAL' | 'DUPLICADO' | null) {
   const { page, normal, negrita } = l
   const texto = (t: string, x: number, y: number, f: PDFFont, tam: number, color = NEGRO) =>
     page.drawText(aWinAnsi(t), { x, y, size: tam, font: f, color })
@@ -48,7 +54,7 @@ async function copia(l: Lienzo, r: ReciboPagoImpreso, techo: number, cual: 'ORIG
   // Encabezado: logo + razón social a la izquierda; «RECIBO», el importe y el número a la derecha.
   const anchoLogo = await dibujarLogoPdf(l.doc, page, M, techo - M + 4, 40)
   texto(RAZON_SOCIAL_RECIBO, M + anchoLogo + 12, techo - M - 18, negrita, 11)
-  texto(cual, M + anchoLogo + 12, techo - M - 32, normal, 8, GRIS)
+  if (cual) texto(cual, M + anchoLogo + 12, techo - M - 32, normal, 8, GRIS)
   derecha('RECIBO', techo - M - 8, negrita, 20)
   const imp = `$ ${montoComoSeImprime(r.importe)}`
   const caja = { w: negrita.widthOfTextAtSize(imp, 13) + 20, h: 24 }
@@ -92,16 +98,53 @@ async function copia(l: Lienzo, r: ReciboPagoImpreso, techo: number, cual: 'ORIG
   }
 }
 
-export async function pdfDeReciboPago(r: ReciboPagoImpreso): Promise<Uint8Array> {
-  if (!Number.isFinite(r.importe) || r.importe <= 0) throw new Error('El recibo no tiene un importe válido')
-  const doc = await PDFDocument.create()
-  doc.setTitle(aWinAnsi(`Recibo ${r.codigo} - ${r.aNombreDe} - $ ${montoComoSeImprime(r.importe)}`))
-  doc.setAuthor('Echegaray Construcciones · Business OS')
-  const page = doc.addPage(A4)
-  const l: Lienzo = { doc, page, normal: await doc.embedFont(StandardFonts.Helvetica), negrita: await doc.embedFont(StandardFonts.HelveticaBold) }
-  await copia(l, r, A4[1], 'ORIGINAL')
-  // La línea de corte, punteada, entre las dos copias.
+const corte = (page: PDFPage) =>
   page.drawLine({ start: { x: 14, y: MITAD }, end: { x: A4[0] - 14, y: MITAD }, thickness: 0.5, color: GRIS, dashArray: [4, 4] })
-  await copia(l, r, MITAD, 'DUPLICADO')
+
+const validar = (r: ReciboPagoImpreso) => {
+  if (!Number.isFinite(r.importe) || r.importe <= 0) throw new Error(`El recibo ${r.codigo} no tiene un importe válido`)
+}
+
+export interface OpcionesDelPdf {
+  /** Original y duplicado de cada recibo, una hoja por recibo. Por defecto, una sola copia. */
+  duplicado?: boolean
+}
+
+/**
+ * VARIOS RECIBOS EN UN SOLO PDF (dueño, 02/10/2026: los recibos por la diferencia salen en lote, «no voy a ir
+ * haciendo 11 recibos»). Una sola impresión; cada recibo es el mismo que sale de a uno. Ninguno con importe inválido:
+ * frena el lote entero antes de dibujar, para que no salga un papel en blanco entre los que se firman.
+ */
+export async function pdfDeRecibosPago(rs: readonly ReciboPagoImpreso[], o: OpcionesDelPdf = {}): Promise<Uint8Array> {
+  if (rs.length === 0) throw new Error('No hay recibos para imprimir')
+  rs.forEach(validar)
+  const doc = await PDFDocument.create()
+  const [r] = rs
+  doc.setTitle(aWinAnsi(rs.length === 1
+    ? `Recibo ${r.codigo} - ${r.aNombreDe} - $ ${montoComoSeImprime(r.importe)}`
+    : `Recibos ${r.codigo} a ${rs[rs.length - 1].codigo} (${rs.length})`))
+  doc.setAuthor('Echegaray Construcciones · Business OS')
+  const fuentes = { doc, normal: await doc.embedFont(StandardFonts.Helvetica), negrita: await doc.embedFont(StandardFonts.HelveticaBold) }
+  if (o.duplicado) {
+    for (const x of rs) {
+      const page = doc.addPage(A4)
+      await copia({ ...fuentes, page }, x, A4[1], 'ORIGINAL')
+      corte(page)
+      await copia({ ...fuentes, page }, x, MITAD, 'DUPLICADO')
+    }
+    return doc.save()
+  }
+  for (let i = 0; i < rs.length; i += 2) {
+    const page = doc.addPage(A4)
+    await copia({ ...fuentes, page }, rs[i], A4[1], null)
+    if (i + 1 < rs.length) {
+      corte(page)
+      await copia({ ...fuentes, page }, rs[i + 1], MITAD, null)
+    }
+  }
   return doc.save()
+}
+
+export async function pdfDeReciboPago(r: ReciboPagoImpreso, o: OpcionesDelPdf = {}): Promise<Uint8Array> {
+  return pdfDeRecibosPago([r], o)
 }

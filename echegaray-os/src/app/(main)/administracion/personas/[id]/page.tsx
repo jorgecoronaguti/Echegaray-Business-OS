@@ -93,6 +93,8 @@ import { RetribucionDelLegajo } from '@/features/administracion/components/Retri
 import { getHaberesDelBanco } from '@/features/administracion/services/haberesDelBancoService'
 import { getRecibosEmitidos } from '@/features/administracion/services/recibosEmitidosService'
 import { RecibosEmitidos } from '@/features/administracion/components/RecibosEmitidos'
+import { RecibosDePagoEnEfectivo } from '@/features/administracion/components/RecibosDePagoEnEfectivo'
+import { leerRecibosDePersona } from '@/features/efectivo/services/reciboPagoDatos'
 import { RecibosDelLegajo } from '@/features/administracion/components/RecibosDelLegajo'
 import { getRecibosDelLegajo } from '@/features/administracion/services/recibosDelLegajoService'
 import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
@@ -221,15 +223,18 @@ export default async function FichaPersonaPage({
   // LOS RECIBOS EMITIDOS van con la Retribución y no con Documentos: dicen cuánta plata cobró la persona, y
   // Documentos la abre el jefe de obra. Misma puerta que el módulo donde se emiten (`liquidaSueldos`); la
   // cerradura sigue siendo la RLS de `recibo_liquidacion`.
-  const [retribucion, haberesBancoCrudo, recibosEmitidos] = vista === 'retribucion' && liquida
+  // LOS RECIBOS DE PAGO EN EFECTIVO (RP de Efectivo a su nombre, p. ej. la diferencia de efectivo de una quincena):
+  // misma puerta; la cerradura es la RLS de `recibo_pago_efectivo` (`ve_economia()`, hoy el mismo conjunto).
+  const [retribucion, haberesBancoCrudo, recibosEmitidos, recibosPagoEfectivo] = vista === 'retribucion' && liquida
     ? await Promise.all([
       getRetribucionDelLegajo(supabase, {
         personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
       }),
       getHaberesDelBanco(supabase, { personaId: id, puedeVer: true, anio: Number(hoy.slice(0, 4)) }),
       getRecibosEmitidos(supabase, { personaId: id, puedeVer: true }),
+      leerRecibosDePersona(supabase, id),
     ])
-    : [null, null, null]
+    : [null, null, null, null]
   // LA SOLAPA «RECIBOS»: sólo su vista y sólo con la puerta de sueldos (trae el neto de cada recibo).
   const recibosDelLegajo = vista === 'recibos' && liquida
     ? await getRecibosDelLegajo(supabase, { personaId: id, puedeVer: true })
@@ -647,6 +652,7 @@ export default async function FichaPersonaPage({
             <div className="mt-8"><HaberesDelBanco h={haberesBanco} /></div>
           )}
           {vista === 'retribucion' && recibosEmitidos && <RecibosEmitidos datos={recibosEmitidos} />}
+          {vista === 'retribucion' && recibosPagoEfectivo && <RecibosDePagoEnEfectivo lectura={recibosPagoEfectivo} />}
 
           {vista === 'documentos' && (
             <div data-testid="bloque-documentos">

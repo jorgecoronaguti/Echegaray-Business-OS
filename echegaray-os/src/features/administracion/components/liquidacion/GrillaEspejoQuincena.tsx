@@ -34,6 +34,7 @@ import { BarraDeRecibos, CasillaDeRecibo } from './cuadro/BarraDeRecibos'
 import { MOTIVO_SIN_NADA, estadoDeSeccion, marcarSeccion, sinNadaQueCobrar, soloLosVisibles } from './cuadro/lotesDeRecibos'
 import { MOTIVO_SE_LIQUIDA_EN_LA_2DA } from '../../services/recibosDelEstudio'
 import { VistaPreviaDeRecibos } from './cuadro/VistaPreviaDeRecibos'
+import { RecibosPorLaDiferencia } from './cuadro/RecibosPorLaDiferencia'
 import { rotuloCategoria } from './cuadro/CeldaTarifa'
 import { pesos } from './formato'
 import type { ReciboImpreso } from '../../services/recibosDeLaQuincenaService'
@@ -94,6 +95,8 @@ export function GrillaEspejoQuincena({
   const sellada = visibles.some((f) => f.cerrada)
   const general = totalGeneral(tJ, tM, sellada)
   const [viendoLaPrevia, setViendoLaPrevia] = useState(false)
+  // «RECIBOS POR LA DIFERENCIA» (dueño, 02/10/2026): el mismo tildado, otro papel. Un panel a la vez.
+  const [viendoDiferencias, setViendoDiferencias] = useState(false)
   // QUIEN NO TIENE NADA QUE COBRAR NO SE PUEDE TILDAR: la casilla va apagada con su motivo, antes y no después.
   const sinNada = sinNadaQueCobrar(visibles, quincena, pesos, rotuloCategoria)
   const marcados = soloLosVisibles(tildados, visibles.filter((f) => !sinNada.has(f.personaId)).map((f) => f.personaId))
@@ -153,12 +156,17 @@ export function GrillaEspejoQuincena({
           filas={(c) => filasDe('mensual', c)}
           total={(c) => <TotalMensuales columnas={c} t={tM} />} />
       )}
-      <BarraDeRecibos cuantos={marcados.size} de={visibles.length} verPrevia={() => setViendoLaPrevia(true)}
-        quitar={() => { setTildados(new Set()); setViendoLaPrevia(false) }} />
+      <BarraDeRecibos cuantos={marcados.size} de={visibles.length}
+        verPrevia={() => { setViendoDiferencias(false); setViendoLaPrevia(true) }}
+        verDiferencias={() => { setViendoLaPrevia(false); setViendoDiferencias(true) }}
+        quitar={() => { setTildados(new Set()); setViendoLaPrevia(false); setViendoDiferencias(false) }} />
       {/* LA VISTA PREVIA ES UN PANEL AL COSTADO, hermano de la grilla y no hijo de la barra: la barra es pegajosa
           (crea su propia pila) y un panel fijo adentro quedaría debajo del resto de la pantalla. */}
       {viendoLaPrevia && marcados.size > 0 && (
         <VistaPreviaDeRecibos filas={visibles} marcados={marcados} quincena={quincena} onCerrar={() => setViendoLaPrevia(false)} />
+      )}
+      {viendoDiferencias && marcados.size > 0 && (
+        <RecibosPorLaDiferencia filas={visibles} marcados={marcados} quincena={quincena} onCerrar={() => setViendoDiferencias(false)} />
       )}
       {/* `key` = LA PERSONA. Sin la clave, abrir a otra persona reutiliza el mismo árbol y cada celda editable
           conserva lo tecleado para la anterior (dueño, 11/09/2026: «si cambiás de persona la hora se cambia»). */}

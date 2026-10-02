@@ -1,6 +1,7 @@
 // EL RECIBO DE PAGO EN EFECTIVO A UN TERCERO, PARA IMPRIMIR — `/administracion/compras/recibo-pago/<id>`.
 //
-// Original y duplicado en una hoja A4, para que quien cobra firme en papel (dueño, 02/10/2026). Sirve igual
+// Una copia por defecto; `?duplicado=1` = original y duplicado en una hoja A4 (dueño, 02/10/2026: «no quiero
+// duplicado, dame la opción»). Para que quien cobra firme en papel. Sirve igual
 // para la primera impresión y para «Volver a imprimir»: el PDF sale de la FOTO guardada en
 // `recibo_pago_efectivo`, nunca del formulario, así que dos impresiones del mismo número dicen lo mismo.
 //
@@ -18,7 +19,7 @@ export const dynamic = 'force-dynamic'
 
 const noHay = (t = 'No encontrado') => new Response(t, { status: 404 })
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   if (!z.string().uuid().safeParse(id).success) return noHay()
   const supabase = await createClient()
@@ -35,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   let bytes: Uint8Array
   try {
-    bytes = await pdfDeReciboPago(r)
+    bytes = await pdfDeReciboPago(r, { duplicado: new URL(req.url).searchParams.get('duplicado') === '1' })
   } catch (err) {
     return new Response(err instanceof Error ? err.message : 'No se pudo armar el recibo', { status: 422 })
   }

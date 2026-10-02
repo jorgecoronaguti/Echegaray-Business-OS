@@ -128,6 +128,14 @@ export function borradorDesdeCompra(c: CompraParaRecibo, hoy: string): BorradorR
   }
 }
 
+/**
+ * EL PDF DE UN RECIBO. Una copia por defecto; con duplicado, original y duplicado en la hoja (dueño, 02/10/2026:
+ * «no quiero duplicado, dame la opción en recibos de módulo de efectivo si quiero duplicado»).
+ */
+export function urlDelReciboPago(id: string, duplicado = false): string {
+  return `/administracion/compras/recibo-pago/${id}${duplicado ? '?duplicado=1' : ''}`
+}
+
 /** ¿La fila se pagó en efectivo? «Tipo pago» del Sheet llega con espacios y mayúsculas sueltas. */
 export function pagadaEnEfectivo(tipoPago: string | null | undefined): boolean {
   return limpio(tipoPago ?? '').toLowerCase() === 'efectivo'

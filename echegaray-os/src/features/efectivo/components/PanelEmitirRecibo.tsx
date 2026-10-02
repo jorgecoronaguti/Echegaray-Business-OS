@@ -14,10 +14,11 @@ import { useState, useTransition } from 'react'
 import type { ObraOpcion } from '../types'
 import { pesos } from '../logica/entregas'
 import {
-  borradorDesdeCompra, fechaImpresa, fraseDelReciboPago, validarReciboPago, type BorradorReciboPago,
+  borradorDesdeCompra, fechaImpresa, fraseDelReciboPago, urlDelReciboPago, validarReciboPago, type BorradorReciboPago,
 } from '../logica/reciboPago'
 import { emitirReciboPagoAction } from '../services/reciboPagoAcciones'
 import type { OpcionesReciboPago } from '../services/reciboPagoDatos'
+import { ConDuplicado } from './ConDuplicado'
 import { Campo, Cerrar, ErrorPanel, PANEL_CLASE } from './Piezas'
 import { V, areaTexto, botonClaroGrande, botonOscuroGrande, cajaConfirmar, campo, campoMonto, panel } from './estilo'
 
@@ -36,6 +37,7 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
   const [fila, setFila] = useState<number | null>(null)
   const [emitido, setEmitido] = useState<{ id: string; codigo: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [duplicado, setDuplicado] = useState(false)
   const [pendiente, empezar] = useTransition()
   const set = (x: Partial<BorradorReciboPago>) => { setB((v) => ({ ...v, ...x })); setError(null) }
 
@@ -82,11 +84,12 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
       <aside style={panel} className={PANEL_CLASE} aria-label="Recibo emitido" data-testid="panel-recibo-emitido">
         <Cerrar titulo={`Recibo ${emitido.codigo} emitido`} bajada="Imprimilo y que lo firme quien cobró. Queda en «Recibos emitidos»." href={cerrarHref} />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <a href={`/administracion/compras/recibo-pago/${emitido.id}`} target="_blank" rel="noopener" style={botonOscuroGrande} data-testid="recibo-imprimir">
+          <a href={urlDelReciboPago(emitido.id, duplicado)} target="_blank" rel="noopener" style={botonOscuroGrande} data-testid="recibo-imprimir">
             Imprimir {emitido.codigo}
           </a>
           <button type="button" onClick={otro} style={botonClaroGrande}>Emitir otro</button>
         </div>
+        <ConDuplicado valor={duplicado} cambiar={setDuplicado} testid="recibo-con-duplicado" />
       </aside>
     )
   }
