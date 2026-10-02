@@ -46,6 +46,8 @@ import {
 } from './liquidacionCierre'
 import type { Quincena } from './quincena'
 import { fechasCortas } from './presentismo'
+import { fotosDelGrupo, type FotoDeLineaParaEscribir } from './fotoDelCierre'
+import { registrar } from '@/shared/registro/registroApp'
 
 const RUTA = '/administracion/personas'
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -101,22 +103,19 @@ async function cabecera(
  * actualizar, y `cobra`/`total` no son columnas que la sesión pueda tocar.
  */
 async function escribirFoto(
-  liquidacionId: string, lineas: readonly LineaParaCerrar[], conPresentismo: boolean,
+  liquidacionId: string, fotos: readonly FotoAEscribir[], conPresentismo: boolean,
 ): Promise<{ error: string } | null> {
-  const conPlata = lineas.filter((l) => l.cobra != null && l.enEfectivo != null && l.total != null)
-  if (conPlata.length !== lineas.length) {
-    return { error: 'Hay líneas sin importe calculable: no sello una foto con huecos.' }
-  }
   const admin = createAdminClient()
   const { data, error } = await admin.from('liquidacion_linea').upsert(
-    conPlata.map((l) => ({
+    fotos.map(({ linea: l, plata }) => ({
       liquidacion_id: liquidacionId,
       persona_id: l.personaId,
       horas: l.horas,
-      cobra: l.cobra,
-      por_banco: l.porBanco,
-      en_efectivo: l.enEfectivo,
-      total: l.total,
+      // LA PLATA ES LA DEL CUADRO (`fotoDeLaLinea`), no los campos crudos de la línea.
+      cobra: plata.cobra,
+      por_banco: plata.porBanco,
+      en_efectivo: plata.enEfectivo,
+      total: plata.total,
       actualizado_en: new Date().toISOString(),
       // EL PRESENTISMO SE CONGELA CON LA FOTO (15/09/2026): el importe en juego y las fechas que lo
       // hicieron perder. Sólo si la base tiene las columnas (`hayColumnasPresentismo`, probado contra
@@ -125,12 +124,17 @@ async function escribirFoto(
     })),
     { onConflict: 'liquidacion_id,persona_id' },
   ).select('persona_id')
-  if (error) return { error: error.message }
-  if ((data ?? []).length !== conPlata.length) {
-    return { error: 'La base no guardó todas las líneas: NO cerré la quincena.' }
+  if (error) return { error: `La base no guardó la foto de la quincena (${error.message}). No cerré nada de este grupo.` }
+  if ((data ?? []).length !== fotos.length) {
+    const guardadas = new Set(((data ?? []) as { persona_id: string }[]).map((r) => r.persona_id))
+    const faltan = fotos.filter((f) => !guardadas.has(f.linea.personaId)).map((f) => f.linea.nombre)
+    return { error: `La base no guardó la línea de ${faltan.join(', ') || 'alguna persona'}: NO cerré la quincena.` }
   }
   return null
 }
+
+type FotoAEscribir = FotoDeLineaParaEscribir<LineaParaCerrar>
+
 
 /** `presentismo` = importe en juego (aplica o perdido); `presentismo_perdido` = «17/09, 23/09» sólo si lo perdió. */
 function fotoDelPresentismo(l: LineaParaCerrar): { presentismo: number | null; presentismo_perdido: string | null } {
@@ -152,7 +156,7 @@ function fotoDelPresentismo(l: LineaParaCerrar): { presentismo: number | null; p
  * esas líneas es categoría, convenio y `sellado_en`.
  */
 async function escribirSello(
-  supabase: Cliente, liquidacionId: string, selladas: readonly LineaSellada[],
+  supabase: Cliente, liquidacionId: string, selladas: readonly LineaSellada[], nombreDe: ReadonlyMap<string, string>,
 ): Promise<{ error: string } | null> {
   for (const s of selladas) {
     const { data, error } = await supabase.from('liquidacion_linea').update({
@@ -163,16 +167,17 @@ async function escribirSello(
       actualizado_en: s.sellado_en,
     }).eq('liquidacion_id', liquidacionId).eq('persona_id', s.persona_id)
       .select('persona_id, valor_hora, sellado_en')
-    if (error) return { error: error.message }
+    const quien = nombreDe.get(s.persona_id) ?? s.persona_id
+    if (error) return { error: `La base no selló la línea de ${quien} (${error.message}).` }
     const fila = (data ?? [])[0] as { valor_hora: number | string | null } | undefined
-    if (!fila) return { error: `La base no selló la línea de ${s.persona_id} (permiso).` }
+    if (!fila) return { error: `La base no selló la línea de ${quien}: tu usuario no tiene permiso para cerrar.` }
     // NULL SE VERIFICA CONTRA NULL, no contra `Number(null)`: `Number(null)` es 0, así que la
     // comparación numérica daría por buena una línea de Oficina que la base hubiera sellado en $ 0.
     const igual = s.valor_hora == null
       ? fila.valor_hora == null
       : Number(fila.valor_hora) === Number(s.valor_hora)
     if (!igual) {
-      return { error: `La base selló ${fila.valor_hora} y yo mandé ${s.valor_hora}.` }
+      return { error: `La línea de ${quien} quedó con $/h ${fila.valor_hora} y el cuadro decía ${s.valor_hora}.` }
     }
   }
   return null
@@ -188,6 +193,38 @@ const porQueNo = (pendientes: readonly { texto: string; traba: boolean }[]): str
  * No escribe en el Sheet, no marca ningún pago y no genera recibos: cerrar es congelar (Nivel D).
  */
 export async function cerrarQuincenaAction(entrada: unknown): Promise<ResultadoCierre> {
+  const r = await cerrarQuincena(entrada)
+  if (!r.ok) await registrarFalla(entrada, r)
+  return r.ok ? r : { ok: false, error: r.error }
+}
+
+/**
+ * ═══ UN CIERRE QUE FALLA DEJA RASTRO (dueño, 02/10/2026: «me saltaron un par de errores») ═══
+ *
+ * El rechazo volvía como texto a la pantalla y no quedaba en ningún lado: la quincena seguía abierta y nadie podía decir
+ * qué había contestado. Va a `app_registro` por `registrar` —el mismo camino que el middleware y `instrumentation.ts`—,
+ * con la quincena, el grupo y el mensaje literal. `registrar` nunca tira: un registro caído no tapa el error real.
+ */
+async function registrarFalla(entrada: unknown, r: { error: string; grupo?: string; perfilId?: string | null }): Promise<void> {
+  const q = quincenaSchema.safeParse(entrada)
+  await registrar({
+    tipo: 'error_servidor',
+    ruta: RUTA,
+    metodo: 'POST',
+    perfil_id: r.perfilId ?? null,
+    mensaje: r.error,
+    detalle: {
+      accion: 'cerrarQuincena',
+      desde: q.success ? q.data.desde : null,
+      hasta: q.success ? q.data.hasta : null,
+      grupo: r.grupo ?? null,
+    },
+  })
+}
+
+type FallaDeCierre = { ok: false; error: string; grupo?: string; perfilId?: string | null }
+
+async function cerrarQuincena(entrada: unknown): Promise<ResultadoCierre | FallaDeCierre> {
   const parsed = quincenaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const q: Quincena = parsed.data
@@ -195,41 +232,52 @@ export async function cerrarQuincenaAction(entrada: unknown): Promise<ResultadoC
   const supabase = await createClient()
   const paso = await puerta(supabase)
   if ('error' in paso) return { ok: false, error: paso.error }
+  const perfilId = paso.perfilId
 
   const lectura = await getLiquidacionDeLaQuincena(supabase, q)
   // UNA FUENTE QUE NO SE PUDO LEER NO ES UNA FUENTE VACÍA. Sellar sobre una lectura incompleta
   // congela un importe corto con la misma cara con la que congela uno correcto.
   if (lectura.errores.length > 0) {
-    return { ok: false, error: `No pude leer ${lectura.errores.map((e) => e.que).join(', ')}: no cerré nada.` }
+    return { ok: false, perfilId, error: `No pude leer ${lectura.errores.map((e) => e.que).join(', ')}: no cerré nada.` }
   }
   const estado = estadoDeCierre(lectura.cuadros.flatMap((c) => c.lineas))
   if (!estado.puedeCerrar) {
     return {
       ok: false,
+      perfilId,
       error: estado.pendientes.length
         ? `No cerré: ${porQueNo(estado.pendientes)}`
         : 'No hay ninguna línea que cerrar.',
     }
   }
   if (Object.values(lectura.estados).some((e) => e.estado === 'cerrada')) {
-    return { ok: false, error: 'Esa quincena ya estaba cerrada.' }
+    return { ok: false, perfilId, error: 'Esa quincena ya estaba cerrada.' }
+  }
+  // LAS FOTOS DE TODOS LOS GRUPOS ANTES DE ESCRIBIR LA PRIMERA: un grupo cerrado y el otro trabado es media quincena.
+  const porGrupo: { grupo: string; lineas: LineaParaCerrar[]; fotos: FotoAEscribir[] }[] = []
+  for (const cuadro of lectura.cuadros) {
+    if (cuadro.lineas.length === 0) continue
+    const f = fotosDelGrupo(cuadro.lineas, cuadro.grupo)
+    if (!f.ok) return { ok: false, perfilId, grupo: cuadro.grupo, error: f.error }
+    porGrupo.push({ grupo: cuadro.grupo, lineas: cuadro.lineas, fotos: f.fotos })
   }
 
   const legajos = await legajosAlCerrar(supabase)
   const selladoEn = new Date().toISOString()
   let selladas = 0
-  for (const cuadro of lectura.cuadros) {
-    if (cuadro.lineas.length === 0) continue
-    const cab = await cabecera(supabase, q, cuadro.grupo)
-    if ('error' in cab) return { ok: false, error: cab.error }
-    const foto = await escribirFoto(cab.id, cuadro.lineas, lectura.hayColumnasPresentismo)
-    if (foto) return { ok: false, error: foto.error }
-    const sello = sellarLineas(cuadro.lineas, legajos, selladoEn)
-    const escrito = await escribirSello(supabase, cab.id, sello.selladas)
-    if (escrito) return { ok: false, error: escrito.error }
+  for (const g of porGrupo) {
+    const falla = (error: string): FallaDeCierre => ({ ok: false, perfilId, grupo: g.grupo, error })
+    const cab = await cabecera(supabase, q, g.grupo)
+    if ('error' in cab) return falla(cab.error)
+    const foto = await escribirFoto(cab.id, g.fotos, lectura.hayColumnasPresentismo)
+    if (foto) return falla(foto.error)
+    const sello = sellarLineas(g.lineas, legajos, selladoEn)
+    const nombres = new Map(g.lineas.map((l) => [l.personaId, l.nombre]))
+    const escrito = await escribirSello(supabase, cab.id, sello.selladas, nombres)
+    if (escrito) return falla(escrito.error)
     selladas += sello.selladas.length
-    const marca = await marcarCerrada(supabase, cab.id, paso.perfilId, selladoEn)
-    if (marca) return { ok: false, error: marca.error }
+    const marca = await marcarCerrada(supabase, cab.id, perfilId, selladoEn)
+    if (marca) return falla(marca.error)
   }
 
   const costo = await sellarCostoPorObra(q.desde)

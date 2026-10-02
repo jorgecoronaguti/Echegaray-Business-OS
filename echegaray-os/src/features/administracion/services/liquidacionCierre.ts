@@ -151,7 +151,7 @@ export function estadoDeCierre(
       clave: 'sin-cobra',
       traba: true,
       cuantas: sinCobra.length,
-      texto: `${sinCobra.length} sin importe calculable: falta el dato, no es $ 0.`,
+      texto: `${sinCobra.length} sin importe calculable (${sinCobra.map((l) => l.nombre).join(', ')}): falta el dato, no es $ 0.`,
     })
   }
   if (noCierra.length) {
@@ -159,7 +159,7 @@ export function estadoDeCierre(
       clave: 'no-cierra',
       traba: true,
       cuantas: noCierra.length,
-      texto: `${noCierra.length} donde por banco + efectivo no da el total.`,
+      texto: `${noCierra.length} donde por banco + efectivo no da el total (${noCierra.map((l) => l.nombre).join(', ')}).`,
     })
   }
   const liquidables = lineas.filter((l) => l.cobra != null && !l.sinTarifa)

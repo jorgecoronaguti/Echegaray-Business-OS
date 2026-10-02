@@ -5,7 +5,9 @@ import { avisoDeAutocierre, decisionDeAutocierre, fotoDeLinea, type LineaMarcabl
 const linea = (personaId: string, extra: Partial<LineaMarcable> = {}): LineaMarcable => ({
   personaId, nombre: personaId.toUpperCase(), horas: 90, valorHora: 6000, netoMensual: null, modalidad: 'por_hora' as LineaMarcable['modalidad'],
   cobra: 540000, porBanco: 250000, enEfectivo: 290000, total: 540000, adelanto: 0, yaTransferido: 0, sinTarifa: false,
-  pagadaEn: '2026-09-16T12:00:00Z', ...extra,
+  pagadaEn: '2026-09-16T12:00:00Z',
+  // LA FOTO SALE DEL CUADRO (`fotoDeLaLinea`): la fila trae el pago que pinta la pantalla.
+  pago: { banco: 250000, negro: 290000 }, ...extra,
 } as LineaMarcable)
 
 test('CON UNO SIN MARCAR NO HAY CIERRE, NI SE MIRAN LOS PENDIENTES', () => {

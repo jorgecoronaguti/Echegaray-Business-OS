@@ -621,7 +621,9 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
   // Sólo el grupo de esta persona, sólo si nada traba el sello (ausencias sin motivo, sin tarifa, no cierra), y con la
   // misma foto que congela el botón. Si algo traba, la marca queda y el mensaje dice qué falta: cerrar igual
   // congelaría ceros que mañana valen una jornada.
-  const decision = decisionDeAutocierre({ lineas: lineasDelGrupo, personaId, porPersona: pendientesPorPersona(cuadro.grilla, hoyISO) })
+  const decision = decisionDeAutocierre({
+    lineas: lineasDelGrupo, personaId, porPersona: pendientesPorPersona(cuadro.grilla, hoyISO), grupo: v.grupo,
+  })
   let cerrada: { ok: true; lineas: number } | { ok: false; error: string } | null = null
   if (decision.todasPagadas && !decision.pendientes.some((p) => p.traba)) {
     const r = await congelar(supabase, cab.id, decision.foto)

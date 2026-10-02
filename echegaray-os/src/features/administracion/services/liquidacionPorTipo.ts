@@ -88,6 +88,17 @@ function bancoDelMensual(l: LineaDelMensual): { banco: number | null; origen: Pa
 
 export function pagoDelMensual(l: LineaDelMensual): PagoDelMensual {
   const sueldo = l.cobra == null ? null : r2(l.cobra)
+  // LA 1ª QUINCENA NO LIQUIDA EL MES (dueño, 02/10/2026): su banco es el recibo del estudio de esa quincena, como dato,
+  // y no hay sueldo, efectivo, total ni saldo que afirmar. Lo pagado que consta se muestra; cuenta en la 2ª.
+  // Va ANTES de la cerrada: el cierre sella esa fila en 0 (`fotoDelCierre.ts`), y leer el banco de la foto pintaría
+  // «$0» donde el cuadro abierto mostraba el recibo.
+  if (l.seLiquidaEnLa2da) {
+    const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
+    const dato = l.sello != null
+      ? { banco: l.reciboNeto == null ? null : r2(l.reciboNeto), origen: l.reciboNeto == null ? null : 'recibo' as const }
+      : bancoDelMensual(l)
+    return { ...p, banco: dato.banco, sueldo: null, origenBanco: dato.origen }
+  }
   // ═══ LA QUINCENA CERRADA NO AFIRMA EL SALDO DE UN MENSUAL (auditor, 18/09/2026) ═══
   //
   // Un mensual cobra por MES, y la foto es de la QUINCENA: los jefes de julio dan +$358.000 en la 1ª y −$358.000 en la
@@ -100,12 +111,6 @@ export function pagoDelMensual(l: LineaDelMensual): PagoDelMensual {
       sueldo: conLinea ? sueldo : null, origenBanco: conLinea ? 'sellado' : null }
   }
   const { banco, origen } = bancoDelMensual(l)
-  // LA 1ª QUINCENA NO LIQUIDA EL MES (dueño, 02/10/2026): su banco es el recibo del estudio de esa quincena, como dato,
-  // y no hay sueldo, efectivo, total ni saldo que afirmar. Lo pagado que consta se muestra; cuenta en la 2ª.
-  if (l.seLiquidaEnLa2da) {
-    const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
-    return { ...p, banco, sueldo: null, origenBanco: origen }
-  }
   // LA 2ª LIQUIDA EL MES: lo pagado en la 1ª (un adelanto, el giro de su recibo) se descuenta acá, una vez.
   const pagadoBanco = r2(l.pagadoBanco + (l.pagadoEnLa1ra?.banco ?? 0))
   const pagadoEfectivo = r2(l.pagadoEfectivo + (l.pagadoEnLa1ra?.efectivo ?? 0))

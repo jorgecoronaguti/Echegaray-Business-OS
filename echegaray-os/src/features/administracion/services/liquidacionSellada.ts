@@ -104,6 +104,9 @@ function lineaDeLaFoto(
     reciboNeto: viva?.reciboNeto ?? null,
     ...(viva?.recibosDelEstudio ? { recibosDelEstudio: viva.recibosDelEstudio } : {}),
     ...(viva?.recibosFaltantes ? { recibosFaltantes: viva.recibosFaltantes } : {}),
+    // LA 1ª DEL MENSUAL SE SELLA SIN PLATA (`fotoDelCierre.ts`): que es la 1ª de quien cobra por mes es un hecho del
+    // período (tarifa vigente a esa fecha), no un dato de hoy. Sin la marca, la foto en 0 se leería como «cobró $0».
+    ...(viva?.seLiquidaEnLa2da ? { seLiquidaEnLa2da: true } : {}),
     reciboSinGiro: false,
     ...repartoComoCampos(cobra, modalidad),
     origenTarifa: ORIGEN_SELLADO,

@@ -19,7 +19,7 @@ const FUENTE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta
 const REABRE = readFileSync(new URL('./liquidacionActions.ts', import.meta.url), 'utf8')
 
 const cuerpoDe = (nombre: string): string => {
-  const i = FUENTE.indexOf(`export async function ${nombre}(`)
+  const i = FUENTE.indexOf(`async function ${nombre}(`)
   assert.ok(i > 0, `no encontré ${nombre}`)
   const resto = FUENTE.slice(i)
   return resto.slice(0, resto.indexOf('\n}\n'))
@@ -33,7 +33,8 @@ const antes = (cuerpo: string, a: string, b: string, porque: string): void => {
   assert.ok(ia < ib, porque)
 }
 
-for (const accion of ['cerrarQuincenaAction']) {
+// `cerrarQuincenaAction` envuelve a `cerrarQuincena` sólo para dejar rastro de la falla: la lógica vive en ésta.
+for (const accion of ['cerrarQuincena']) {
   test(`${accion} PREGUNTA EL ROL ANTES DE TOCAR LA BASE`, () => {
     const cuerpo = cuerpoDe(accion)
     assert.match(cuerpo, /const paso = await puerta\(supabase\)/)
@@ -51,7 +52,7 @@ for (const accion of ['cerrarQuincenaAction']) {
 }
 
 test('CERRAR SELLA PRIMERO Y MARCA LA CABECERA DESPUÉS — lo exige la policy, no la costumbre', () => {
-  const cuerpo = cuerpoDe('cerrarQuincenaAction')
+  const cuerpo = cuerpoDe('cerrarQuincena')
   // EL DEFECTO QUE ATRAPA: marcar la cabecera cerrada antes de sellar. `liquidacion_linea_edita_abierta`
   // exige `estado = 'abierta'`, así que el sello se rechazaría en silencio (0 filas, sin error) y la
   // quincena quedaría CERRADA Y SIN SELLO: diría que se pagó sin decir con qué valor hora.
@@ -62,7 +63,7 @@ test('CERRAR SELLA PRIMERO Y MARCA LA CABECERA DESPUÉS — lo exige la policy, 
 })
 
 test('CERRAR NO SELLA CON PENDIENTES, Y LOS DICE', () => {
-  const cuerpo = cuerpoDe('cerrarQuincenaAction')
+  const cuerpo = cuerpoDe('cerrarQuincena')
   assert.match(cuerpo, /if \(!estado\.puedeCerrar\)/)
   antes(cuerpo, 'if (!estado.puedeCerrar)', 'escribirFoto(', 'el bloqueo va antes de escribir')
   assert.match(cuerpo, /porQueNo\(estado\.pendientes\)/, 'el rechazo dice cuál pendiente traba')

@@ -8,8 +8,10 @@
 // La escritura la hace `marcarLineaPagada` en `liquidacionActions.ts`.
 
 import { estadoDeCierre, type DiasPendientesDePersona, type LineaParaCerrar, type Pendiente } from './liquidacionCierre.ts'
+import { fotoDeLaLinea, fotosDelGrupo, type LineaDelCuadro } from './fotoDelCierre.ts'
+import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
 
-export interface LineaMarcable extends LineaParaCerrar {
+export interface LineaMarcable extends LineaParaCerrar, LineaDelCuadro {
   personaId: string
   pagadaEn?: string | null
   adelanto: number
@@ -38,28 +40,44 @@ export interface DecisionDeAutocierre {
 }
 
 /** La foto de una línea, como la arma el botón «Cerrar quincena». `null` si no se puede congelar. */
-export function fotoDeLinea(l: LineaMarcable): LineaCongelada | null {
-  if (l.cobra == null || l.enEfectivo == null || l.total == null) return null
+export function fotoDeLinea(l: LineaMarcable, grupo: GrupoLiquidacion = 'obreros'): LineaCongelada | null {
+  // LA PLATA ES LA DEL CUADRO, la misma que sella el botón (`fotoDeLaLinea`): dos fotos para el mismo cierre serían
+  // dos verdades sobre lo que se pagó.
+  const f = fotoDeLaLinea(l, grupo)
+  if (!f.ok) return null
   return {
-    persona_id: l.personaId, horas: l.horas, valor_hora: l.valorHora, cobra: l.cobra, adelanto: l.adelanto,
-    ya_transferido: l.yaTransferido, por_banco: l.porBanco, en_efectivo: l.enEfectivo, total: l.total,
+    persona_id: l.personaId, horas: l.horas, valor_hora: l.valorHora, cobra: f.plata.cobra, adelanto: l.adelanto,
+    ya_transferido: l.yaTransferido, por_banco: f.plata.porBanco, en_efectivo: f.plata.enEfectivo, total: f.plata.total,
   }
 }
 
-export function decisionDeAutocierre({ lineas, personaId, porPersona = [] }: {
+/**
+ * ¿FALTA PAGARLE? La 1ª quincena del mensual no se paga (el mes se liquida en la 2ª, y «Pagar» ni se ofrece ni el
+ * servidor lo acepta): exigirle la marca dejaba al grupo esperando un pago que nunca va a existir y la quincena no se
+ * cerraba sola jamás.
+ */
+const esperaPago = (l: LineaMarcable): boolean => l.seLiquidaEnLa2da !== true
+
+export function decisionDeAutocierre({ lineas, personaId, porPersona = [], grupo = 'obreros' }: {
   lineas: readonly LineaMarcable[]
+  grupo?: GrupoLiquidacion
   /** La que se acaba de marcar: cuenta como pagada aunque la lectura sea de antes de escribir. */
   personaId: string
   porPersona?: readonly DiasPendientesDePersona[]
 }): DecisionDeAutocierre {
-  const todasPagadas = lineas.length > 0 && lineas.every((l) => l.personaId === personaId || Boolean(l.pagadaEn))
+  const todasPagadas = lineas.some(esperaPago)
+    && lineas.every((l) => !esperaPago(l) || l.personaId === personaId || Boolean(l.pagadaEn))
   if (!todasPagadas) return { todasPagadas: false, pendientes: [], foto: [] }
   const ids = new Set(lineas.map((l) => l.personaId))
   const estado = estadoDeCierre(lineas, { porPersona: porPersona.filter((p) => ids.has(p.personaId)) })
-  const foto = lineas.map(fotoDeLinea).filter((f): f is LineaCongelada => f != null)
+  const foto = lineas.map((l) => fotoDeLinea(l, grupo)).filter((f): f is LineaCongelada => f != null)
   const pendientes = [...estado.pendientes]
   // SIN FOTO NO HAY CIERRE POSIBLE: eso traba de verdad, no es un aviso.
   if (foto.length === 0) pendientes.push({ clave: 'sin-foto', traba: true, texto: 'ninguna línea se puede congelar', cuantas: lineas.length })
+  // UNA FILA QUE NO SE PUEDE SELLAR COMO LA MUESTRA EL CUADRO TRABA, con su nombre: congelar el resto y dejarla afuera
+  // cerraría la quincena con una persona sin foto.
+  const grupoEntero = fotosDelGrupo(lineas, grupo)
+  if (!grupoEntero.ok && foto.length > 0) pendientes.push({ clave: 'sin-foto', traba: true, texto: grupoEntero.error, cuantas: lineas.length - foto.length })
   return { todasPagadas: true, pendientes, foto }
 }
 
