@@ -193,6 +193,8 @@ function absorbidoPor(a: { lado: 'banco' | 'efectivo'; importe: number } | null,
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 
+export const ROTULO_SUB = { reciboDeSueldo: 'Recibo de sueldo', diferencia: 'Diferencia a revisar' } as const
+
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /** «Q1-09/2026» → «1ª quincena de septiembre». Lo que no se reconoce se dice tal cual: no se inventa una fecha. */
@@ -212,11 +214,12 @@ const origenesDichos = (periodoOrigen: string): string => periodoOrigen.split(',
  * quincena que se paga por este banco. Los importes pagados no cambian; sólo se dice de dónde sale cada uno.
  */
 function desgloseDelBanco(neto: number, arrastre: number, periodoOrigen: string, residuo = 0): RenglonDelRecibo[] {
+  // SIN TEXTO DE MÁS (dueño, 02/10: «no me gustan las aclaraciones extras… confunden»): rótulo corto, sin repetir el del banco.
   return [
-    { rotulo: `${ROTULO.banco} · recibo de sueldo`, importe: neto, sub: true },
-    ...(arrastre > 0 ? [{ rotulo: `${ROTULO.banco} · saldo del recibo de la ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true }] : []),
+    { rotulo: ROTULO_SUB.reciboDeSueldo, importe: neto, sub: true },
+    ...(arrastre > 0 ? [{ rotulo: `Saldo ${origenesDichos(periodoOrigen)}`, importe: arrastre, sub: true }] : []),
     // LO QUE NO CIERRA SE DICE: el neto del estudio manda y la diferencia queda a la vista, no repartida en silencio.
-    ...(residuo !== 0 ? [{ rotulo: `${ROTULO.banco} · diferencia a revisar`, importe: residuo, sub: true }] : []),
+    ...(residuo !== 0 ? [{ rotulo: ROTULO_SUB.diferencia, importe: residuo, sub: true }] : []),
   ]
 }
 
@@ -236,21 +239,46 @@ function netoDelEstudio(l: LineaConOverrides): number | null {
   return l.reciboNeto ?? null
 }
 
-/** La cuenta del efectivo a la vista: lo que cobra menos lo que sale por banco. */
-const cuentaDelEfectivo = (banco: number | null, efectivo: number, fmt: (n: number) => string, redondeado = false): string =>
-  `${banco == null ? `efectivo ${fmt(efectivo)}` : `total ${fmt(r2(banco + efectivo))} − depósito en banco ${fmt(banco)} = ${fmt(efectivo)}`}${redondeado ? ' · se paga redondeado' : ''}`
+/**
+ * EL EFECTIVO QUE ENTREGA EL DUEÑO (dueño, 02/10/2026): el «Efect. red.» del cuadro —`efectivoMostrado` sobre
+ * `efectivoParaRedondear`, las mismas funciones de la celda, sin cuenta nueva— redondea el SALDO que resta. En el
+ * recibo, entonces, «resta» es ese número y «Efectivo» es lo ya pagado más esa resta: nunca un importe con centavos
+ * bajo un efectivo redondo. Si lo ya pagado supera lo que correspondía, no se inventa nada: se muestra lo pagado y
+ * resta 0. `null` = no se puede afirmar (la cadena del panel no cierra con la del cuadro): se muestra el exacto.
+ */
+function efectivoDelPapel(l: LineaConOverrides, mensual: boolean, exacto: number | null, pagado: number | null): { total: number; resta: number } | null {
+  const pag = pagado ?? 0
+  if (exacto == null || !(exacto > 0 || pag > 0)) return null
+  const aRedondear = efectivoParaRedondear(l, mensual)
+  if (aRedondear == null) return null
+  const saldo = r2(exacto - pag)
+  if (!(r2(saldo) === r2(aRedondear) || (saldo <= 0 && aRedondear <= 0))) return null
+  const resta = efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado ?? null, enEfectivo: aRedondear }).valor ?? 0
+  return { total: r2(pag + resta), resta }
+}
 
 /**
- * EL EFECTIVO QUE ENTREGA EL DUEÑO: el «Efect. red.» del cuadro, sin una cuenta nueva (`efectivoMostrado` sobre
- * `efectivoParaRedondear`, las mismas funciones de la celda): el guardado, o el sugerido al $1.000. Sólo cuando el
- * efectivo del papel es el que queda por pagar (nada pagado aparte): si ya hubo pagos, el redondeado del cuadro es de
- * OTRA cifra (lo que resta) y mezclarlo con el total exacto sería inventar. `null` = se muestra el exacto.
+ * Los rótulos de un papel sellado ANTES de esta limpieza («Depósito en banco · recibo de sueldo», «… · saldo del
+ * recibo de la …») se reimprimen con los cortos, y sin ninguna cuenta escrita al lado de un importe. No toca
+ * importes, orden ni cantidad de renglones. El único texto que se conserva es «ESTIMADO».
  */
-function efectivoRedondeadoDelCuadro(l: LineaConOverrides, mensual: boolean, exacto: number | null): number | null {
-  if (exacto == null || !(exacto > 0)) return null
-  const aRedondear = efectivoParaRedondear(l, mensual)
-  if (aRedondear == null || r2(aRedondear) !== r2(exacto)) return null
-  return efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado ?? null, enEfectivo: aRedondear }).valor
+export function limpiarMediosSellados(medios: RenglonDelRecibo[]): RenglonDelRecibo[] {
+  const prefijo = `${ROTULO.banco} · `
+  return medios.map((m) => {
+    let rotulo = m.rotulo
+    if (m.sub && rotulo.startsWith(prefijo)) {
+      const resto = rotulo.slice(prefijo.length)
+      rotulo = resto === 'recibo de sueldo' ? ROTULO_SUB.reciboDeSueldo
+        : resto === 'diferencia a revisar' ? ROTULO_SUB.diferencia
+          : resto.startsWith('saldo del recibo de la ') ? `Saldo ${resto.slice('saldo del recibo de la '.length)}` : resto
+    }
+    const detalle = m.detalle?.startsWith('ESTIMADO') ? m.detalle : undefined
+    if (rotulo === m.rotulo && detalle === m.detalle) return m
+    const limpio: RenglonDelRecibo = { ...m, rotulo }
+    if (detalle) limpio.detalle = detalle
+    else delete limpio.detalle
+    return limpio
+  })
 }
 
 /**
@@ -270,23 +298,21 @@ const bancoEstimado = (l: LineaConOverrides): boolean =>
 export function desglosarBancoSellado(
   medios: RenglonDelRecibo[],
   d: { netoDelEstudio: number | null; arrastre: { importe: number; periodoOrigen: string } | null },
-  fmt: (n: number) => string,
 ): RenglonDelRecibo[] {
   const i = medios.findIndex((m) => !m.sub && m.rotulo === ROTULO.banco)
   const banco = i >= 0 ? medios[i].importe : null
   if (i < 0 || banco == null || d.netoDelEstudio == null) return medios
-  if (medios.some((m) => m.sub && m.rotulo.startsWith(`${ROTULO.banco} ·`))) return medios
+  if (medios.some((m) => m.sub && m.rotulo === ROTULO_SUB.reciboDeSueldo)) return medios
   const resta = d.arrastre && d.arrastre.importe > 0 ? r2(d.arrastre.importe) : 0
   const neto = r2(d.netoDelEstudio)
   const residuo = r2(banco - resta - neto)
   if (resta === 0 && residuo === 0) return medios
-  const sal = medios.map((m) => (!m.sub && m.rotulo === ROTULO.efectivo && m.importe != null && !m.detalle && resta > 0
-    ? { ...m, detalle: cuentaDelEfectivo(banco, m.importe, fmt) } : m))
+  const sal = [...medios]
   sal.splice(i + 1, 0, ...desgloseDelBanco(neto, resta, d.arrastre?.periodoOrigen ?? '', residuo))
   return sal
 }
 
-export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string, mensual = false): ReciboArmado {
+export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n: number) => string, mensual = false): ReciboArmado {
   const d = conceptosDisponibles(l, mensual)
   const horas: RenglonDelRecibo[] = []
   if (e.horas && d.horas == null) {
@@ -316,14 +342,11 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)
     if (estimadoAca) estimado = true
-    // Con «ya pagado / resta» a la vista los renglones de abajo son exactos: el redondeado se queda afuera.
-    const red = clave === 'efectivo' && !(e.pagado && x.pagado != null) ? efectivoRedondeadoDelCuadro(l, mensual, x.total) : null
-    const importe = red ?? x.total
-    const abrirCuenta = clave === 'efectivo' && x.total != null && (red != null || (e.banco && restaDelBanco(l) != null && m.banco.total != null))
+    const papel = clave === 'efectivo' ? efectivoDelPapel(l, mensual, x.total, x.pagado) : null
+    const importe = papel?.total ?? x.total
     renglones.push({
       rotulo, importe,
       ...(estimadoAca ? { detalle: 'ESTIMADO: todavía no hay recibo del estudio' } : {}),
-      ...(abrirCuenta ? { detalle: cuentaDelEfectivo(e.banco ? m.banco.total : null, x.total as number, fmt, red != null) } : {}),
     })
     elegidos.push(importe)
     if (clave === 'banco' && x.total != null) {
@@ -340,7 +363,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
       if (m.excedente?.lado === clave && m.excedente.importe > 0) {
         renglones.push({ rotulo: 'cobró de más', importe: m.excedente.importe, sub: true })
       }
-      renglones.push({ rotulo: 'resta', importe: x.resta, sub: true })
+      renglones.push({ rotulo: 'resta', importe: papel?.resta ?? x.resta, sub: true })
     }
   }
   const total = elegidos.length === 0 || elegidos.some((v) => v == null)

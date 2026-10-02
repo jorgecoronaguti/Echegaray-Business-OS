@@ -9,20 +9,24 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { mismoCuil, cuilNormalizado } from './cuil.ts'
-import { desglosarBancoSellado } from './reciboDeLaQuincena.ts'
+import { desglosarBancoSellado, limpiarMediosSellados } from './reciboDeLaQuincena.ts'
 import type { ReciboEnElLegajo } from './reciboEmitido.ts'
 
 const FilaNeto = z.object({ cuil: z.string().nullable(), periodo: z.string(), neto: z.coerce.number().finite() })
 const FilaArrastre = z.object({ desde: z.string(), importe: z.coerce.number().finite().positive(), periodo_origen: z.string() })
 
 const r2 = (n: number) => Math.round(n * 100) / 100
-const pesos = (n: number) => `$ ${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 /** `2026-09-16` → `Q2-09/2026`, la clave de período del estudio. */
 const periodoDe = (desde: string) => `Q${Number(desde.slice(8, 10)) === 1 ? 1 : 2}-${desde.slice(5, 7)}/${desde.slice(0, 4)}`
 
 /** Devuelve los mismos recibos con el banco desglosado donde las cuentas cierran. Ante un error de lectura, los deja como están. */
-export async function conBancoDesglosado(supabase: SupabaseClient, personaId: string, recibos: ReciboEnElLegajo[]): Promise<ReciboEnElLegajo[]> {
+export async function conBancoDesglosado(supabase: SupabaseClient, personaId: string, crudos: ReciboEnElLegajo[]): Promise<ReciboEnElLegajo[]> {
+  // PRIMERO LA LIMPIEZA, y siempre: los rótulos largos y las cuentas escritas junto a un importe no se reimprimen.
+  const recibos = crudos.map((r) => {
+    const medios = limpiarMediosSellados(r.renglones.medios)
+    return medios.every((m, i) => m === r.renglones.medios[i]) ? r : { ...r, renglones: { ...r.renglones, medios } }
+  })
   if (recibos.length === 0) return recibos
   const [arr, per] = await Promise.all([
     supabase.from('liquidacion_arrastre').select('desde, importe, periodo_origen').eq('persona_id', personaId),
@@ -46,7 +50,7 @@ export async function conBancoDesglosado(supabase: SupabaseClient, personaId: st
   const filas = (netos ?? []).flatMap((x) => { const f = FilaNeto.safeParse(x); return f.success ? [f.data] : [] })
   return recibos.map((r) => {
     const neto = filas.find((f) => mismoCuil(f.cuil, cuil) && f.periodo === periodoDe(r.quincenaDesde))?.neto ?? null
-    const medios = desglosarBancoSellado(r.renglones.medios, { netoDelEstudio: neto, arrastre: arrastres.get(r.quincenaDesde) ?? null }, pesos)
+    const medios = desglosarBancoSellado(r.renglones.medios, { netoDelEstudio: neto, arrastre: arrastres.get(r.quincenaDesde) ?? null })
     return medios === r.renglones.medios ? r : { ...r, renglones: { ...r.renglones, medios } }
   })
 }
