@@ -317,6 +317,7 @@ export function TabResumen({
               {veComercial && (
                 <FilaKV k="Contratado" v={obra.monto_contratado != null ? plataMillones(obra.monto_contratado) : <SinDato>sin cargar</SinDato>} />
               )}
+              <FilaKV k="Inicio plan" v={obra.fecha_inicio_plan ? fechaLarga(obra.fecha_inicio_plan) : <SinDato>sin plan</SinDato>} />
               <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fechaLarga(obra.fecha_inicio_real) : inicioRespaldo ? `${fechaLarga(inicioRespaldo.fecha)} · ${inicioRespaldo.origen}` : <SinDato>sin arrancar</SinDato>} />
               <FilaKV k="Fin plan" v={obra.fecha_fin_plan ? fechaLarga(obra.fecha_fin_plan) : <SinDato>sin plan</SinDato>} />
               <FilaKV k="Fin proyectado" tono={finProyectadoTarde ? 'warn' : 'ink'}
