@@ -22,14 +22,15 @@ export interface Ubicacion {
 
 export function ubicarPanel({ ancla, ventana, panel }: {
   ancla: Rect
-  ventana: { ancho: number; alto: number }
+  /** `reservaAbajo`: píxeles del pie que otra barra fija ya ocupa (la de navegación del teléfono). */
+  ventana: { ancho: number; alto: number; reservaAbajo?: number }
   panel: { ancho: number; alto: number }
 }): Ubicacion {
   const ancho = Math.min(panel.ancho, ventana.ancho - 2 * MARGEN)
   // CENTRADO EN EL PUNTO Y LUEGO ENCERRADO EN LA VENTANA.
   const centro = (ancla.left + ancla.right) / 2
   const left = Math.max(MARGEN, Math.min(centro - ancho / 2, ventana.ancho - ancho - MARGEN))
-  const lugarAbajo = ventana.alto - ancla.bottom - SEPARACION - MARGEN
+  const lugarAbajo = ventana.alto - (ventana.reservaAbajo ?? 0) - ancla.bottom - SEPARACION - MARGEN
   const lugarArriba = ancla.top - SEPARACION - MARGEN
   // ABAJO SALVO QUE NO ENTRE Y ARRIBA SÍ: leer hacia abajo es lo natural, y subir sólo cuando no queda otra.
   const arriba = panel.alto > lugarAbajo && lugarArriba > lugarAbajo

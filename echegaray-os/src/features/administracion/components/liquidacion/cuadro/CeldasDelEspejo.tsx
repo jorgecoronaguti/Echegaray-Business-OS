@@ -236,6 +236,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
           grupo={fila.grupo}
           soloLectura={soloLectura}
           expresion={fila.linea.formulas[campo] ?? null}
+          nombre={fila.nombre}
           ancho={claseCampo}
           rotuloDeshacer={`${ROTULO_DE_CAMPO[campo] ?? campo} de ${fila.nombre}`}
           marcaCompacta

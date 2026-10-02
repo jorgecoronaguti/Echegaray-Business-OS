@@ -165,7 +165,7 @@ export function MarcaDeOrigen({ origen, compacta = false, titulo, celda }: {
  */
 export function CeldaEditable({
   campo, valor, unidad, ceroEsVacio = false, manual, origen, tituloDeOrigen, personaId, quincena,
-  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer, expresion = null,
+  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer, expresion = null, nombre,
 }: {
   campo: CampoEditable
   valor: number | null
@@ -190,6 +190,8 @@ export function CeldaEditable({
   rotuloDeshacer?: string
   /** La cuenta guardada de esta celda («=340909,09+197272,73»). Se ve al abrir el campo, no en reposo. */
   expresion?: string | null
+  /** De quién es la celda: titula el detalle del pago en efectivo («Pagado en efectivo — Ana, …»). */
+  nombre?: string
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
   // El día elegido para el efectivo que sale de la caja (sólo viaja si no es hoy). Hook antes de cualquier `return`.
@@ -198,7 +200,7 @@ export function CeldaEditable({
   // todavía no lo pasan. Los dos conviven UNA versión: quien no lo pase dibuja lo de siempre.
   const marca = origen ?? (manual ? 'manual' : 'calculado')
   if (soloLectura) {
-    return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo }} /></>
+    return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo, persona: nombre, valor, cuenta: expresion }} /></>
   }
   return (
     <span style={{
@@ -233,7 +235,7 @@ export function CeldaEditable({
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
       />
-      <MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo }} />
+      <MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} celda={{ grupo, personaId, campo, persona: nombre, valor, cuenta: expresion }} />
     </span>
   )
 }

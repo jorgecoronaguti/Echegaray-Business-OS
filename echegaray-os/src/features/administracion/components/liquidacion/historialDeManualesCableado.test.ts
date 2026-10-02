@@ -53,3 +53,27 @@ test('la acción manda el sello de autor sólo si la base tiene la columna', () 
   assert.match(s, /if \(hayMarca\) Object\.assign\(cambios, selloDeAutor\(/)
   assert.match(s, /pedir\(`\$\{columna\}, formulas, escribio_en`\)/)
 })
+
+test('el cuadro de «Pagado en efectivo» es UNO: la celda manual no deja el title nativo que lo tapaba', () => {
+  const todo = leer('cuadro/CeldasBlancoNegro.tsx')
+  const desde = todo.indexOf('export function CeldaPagado')
+  const s = todo.slice(desde, todo.indexOf('export function CeldaSaldo'))
+  assert.ok(desde > 0 && s.length > 0, 'no encontré CeldaPagado')
+  assert.equal([...s.matchAll(/title=\{l\.manual\[campo\] \? undefined : titulo\}/g)].length, 2, 'las dos ramas de CeldaPagado')
+  assert.doesNotMatch(s, /<div data-testid=\{testid\} title=\{titulo\}[ >]/, 'quedó un title fijo sobre la celda de pagado')
+})
+
+test('el cuadro de pago en efectivo se abre por teclado y por toque, y explica qué es el punto', () => {
+  const s = leer('HistorialDeManuales.tsx')
+  assert.match(s, /onFocus=\{\(e\) => \{ if \(e\.currentTarget\.matches\(':focus-visible'\)\)/, 'foco con teclado abre')
+  assert.match(s, /onClick=/, 'Enter o toque fijan el cuadro')
+  assert.match(s, /reservaAbajo: window\.matchMedia\(ES_TELEFONO\)\.matches \? ALTO_BARRA : 0/, 'la barra inferior del teléfono no lo tapa')
+  assert.match(leer('DetalleDePagoEnEfectivo.tsx'), /detalle\.leyendaDelPunto/, 'el punto amarillo se explica dentro del cuadro')
+})
+
+test('la celda de Pagado entrega persona, importe y cuenta al cuadro (sin eso el título sale vacío)', () => {
+  for (const archivo of ['CeldasDeLiquidacion.tsx', 'cuadro/CeldasBlancoNegro.tsx']) {
+    assert.match(leer(archivo), /persona: (nombre|fila\.nombre)/, `${archivo}: no pasa de quién es la celda`)
+  }
+  assert.match(leer('cuadro/CeldasDelEspejo.tsx'), /nombre=\{fila\.nombre\}/)
+})

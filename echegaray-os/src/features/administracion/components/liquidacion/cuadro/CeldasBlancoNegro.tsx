@@ -341,15 +341,15 @@ export function CeldaPagado({ campo, fila, edicion }: {
   }
   if (seEscribeDinero(fila, campo, edicion)) {
     return (
-      <div data-testid={testid} title={titulo}>
+      <div data-testid={testid} title={l.manual[campo] ? undefined : titulo}>
         <Escribible campo={campo} fila={fila} quincena={edicion.quincena}
           camposEditables={edicion.camposEditables} ancho={104} claseCampo="w-24" />
       </div>
     )
   }
   return (
-    <div data-testid={testid} title={titulo} style={{ ...DERECHA, color: l[campo] === 0 ? V.tenue : V.tinta }}>
-      {pesos(l[campo])}<MarcaDeOrigen origen={l.origen[campo]} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo }} />
+    <div data-testid={testid} title={l.manual[campo] ? undefined : titulo} style={{ ...DERECHA, color: l[campo] === 0 ? V.tenue : V.tinta }}>
+      {pesos(l[campo])}<MarcaDeOrigen origen={l.origen[campo]} compacta celda={{ grupo: fila.grupo, personaId: fila.personaId, campo, persona: fila.nombre, valor: l[campo], cuenta: l.formulas[campo] ?? null }} />
     </div>
   )
 }

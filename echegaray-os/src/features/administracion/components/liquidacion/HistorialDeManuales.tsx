@@ -20,6 +20,9 @@ import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffe
 import { createPortal } from 'react-dom'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { claveDeCelda, type EntradaDeHistorial } from '../../services/historialDeManuales'
+import { detalleDePagoEnEfectivo } from '../../services/detalleDePagoEnEfectivo'
+import { ALTO_BARRA } from '../../../../shared/components/movil/tokens'
+import { DetalleDePagoEnEfectivo } from './DetalleDePagoEnEfectivo'
 import { ubicarPanel, type Ubicacion } from './ubicarPanel'
 
 import type { LecturaDelHistorial } from '../../services/historialDeManualesService'
@@ -36,9 +39,22 @@ export const useHistorialDeManuales = (): LecturaDelHistorial | null => {
   return l && (l.historial !== null || l.error !== null) ? l : null
 }
 
-export interface CeldaDeHistorial { grupo: string; personaId: string; campo: CampoEditable }
+export interface CeldaDeHistorial {
+  grupo: string
+  personaId: string
+  campo: CampoEditable
+  /** Para titular el detalle de «Pagado en efectivo»: de quién es la celda, su importe de hoy y la cuenta guardada. */
+  persona?: string
+  valor?: number | null
+  cuenta?: string | null
+}
 
-const ANCHO_DEL_PANEL = 280
+/** El detalle propio sólo existe para el pago en efectivo; el resto de las celdas conserva el historial genérico. */
+const esPagoEnEfectivo = (c: CeldaDeHistorial): boolean => c.campo === 'pagadoEfectivo'
+/** En el teléfono la barra inferior de contextos (64 px) tapa el pie de la ventana: el cuadro no puede quedar debajo. */
+const ES_TELEFONO = '(max-width: 767px)'
+
+const ANCHO_DEL_PANEL = 320
 const DEMORA_AL_SALIR = 150
 
 export function PuntoConHistorial({ celda, lectura, children }: {
@@ -70,7 +86,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
     const r = boton.current.getBoundingClientRect()
     setLugar(ubicarPanel({
       ancla: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
-      ventana: { ancho: window.innerWidth, alto: window.innerHeight },
+      ventana: { ancho: window.innerWidth, alto: window.innerHeight, reservaAbajo: window.matchMedia(ES_TELEFONO).matches ? ALTO_BARRA : 0 },
       panel: { ancho: ANCHO_DEL_PANEL, alto: panel.current?.scrollHeight ?? 160 },
     }))
   }, [])
@@ -104,7 +120,14 @@ export function PuntoConHistorial({ celda, lectura, children }: {
     }
   }, [abierto, cerrar, ubicar])
 
-  const entradas = lectura.historial?.[claveDeCelda(celda.grupo, celda.personaId, celda.campo)]?.entradas ?? []
+  const clave = claveDeCelda(celda.grupo, celda.personaId, celda.campo)
+  const entradas = lectura.historial?.[clave]?.entradas ?? []
+  const pago = esPagoEnEfectivo(celda)
+    ? detalleDePagoEnEfectivo({
+      persona: celda.persona ?? null, quincena: lectura.quincena, valor: celda.valor ?? null,
+      cuentaActual: celda.cuenta ?? null, anotaciones: lectura.detallesDePago[clave],
+    })
+    : null
 
   return (
     <>
@@ -115,7 +138,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
         data-testid="marca-manual-historial"
         aria-expanded={abierto}
         aria-controls={abierto ? id : undefined}
-        aria-label="Escrito a mano: ver historial de cargas"
+        aria-label={pago ? 'Pagado en efectivo, escrito a mano: ver qué pagos se anotaron' : 'Escrito a mano: ver historial de cargas'}
         onPointerEnter={(e) => { if (e.pointerType === 'mouse') { cancelarCierre(); setAbierto(true) } }}
         onPointerLeave={(e) => { if (e.pointerType === 'mouse') cierraSiNoEstaFijo() }}
         onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) setAbierto(true) }}
@@ -133,7 +156,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
           ref={panel}
           id={id}
           role="dialog"
-          aria-label="Historial de cargas de esta celda"
+          aria-label={pago ? pago.titulo : 'Historial de cargas de esta celda'}
           data-testid="historial-de-manuales"
           onPointerEnter={cancelarCierre}
           onPointerLeave={(e) => { if (e.pointerType === 'mouse') cierraSiNoEstaFijo() }}
@@ -143,7 +166,7 @@ export function PuntoConHistorial({ celda, lectura, children }: {
           }}
           className="overflow-y-auto rounded-card border border-line bg-canvas p-3 text-left text-[12px] leading-4 tabular-nums text-ink shadow-card"
         >
-          <CuerpoDelHistorial entradas={entradas} error={lectura.error} />
+          {pago && !lectura.error ? <DetalleDePagoEnEfectivo detalle={pago} /> : <CuerpoDelHistorial entradas={entradas} error={lectura.error} />}
         </div>,
         document.body,
       )}

@@ -34,3 +34,16 @@ test('si no entra ni arriba ni abajo, se queda abajo y el panel scrollea: nunca 
   assert.ok(u.top >= MARGEN)
   assert.ok(u.top + u.altoMaximo <= 500 - MARGEN + 0.001, 'el alto máximo cabe en lo que queda de pantalla')
 })
+
+test('en el teléfono el panel no baja bajo la barra inferior: esa franja no cuenta como lugar', () => {
+  const sin = ubicarPanel({ ancla: celda(100, 500), ventana: { ancho: 390, alto: 800 }, panel: { ancho: 320, alto: 190 } })
+  const con = ubicarPanel({ ancla: celda(100, 500), ventana: { ancho: 390, alto: 800, reservaAbajo: 64 }, panel: { ancho: 320, alto: 190 } })
+  assert.equal(sin.arriba, false)
+  assert.equal(con.altoMaximo, sin.altoMaximo - 64)
+  // un punto donde SIN barra el panel entra abajo y CON barra quedaría tapado: tiene que subir
+  const sinBarra = ubicarPanel({ ancla: celda(100, 560), ventana: { ancho: 390, alto: 800 }, panel: { ancho: 320, alto: 190 } })
+  const conBarra = ubicarPanel({ ancla: celda(100, 560), ventana: { ancho: 390, alto: 800, reservaAbajo: 64 }, panel: { ancho: 320, alto: 190 } })
+  assert.equal(sinBarra.arriba, false)
+  assert.equal(conBarra.arriba, true)
+  assert.ok(conBarra.top + 190 <= 560, 'el panel queda arriba del punto')
+})

@@ -159,23 +159,32 @@ const minuto = (iso: string): string => iso.length >= 16 ? new Date(iso).toISOSt
  * «anterior al registro (30/09)»; (2) se actualizó después y UN solo usuario hizo POST a Liquidación ese minuto: se lo
  * nombra «según el registro de la app»; (3) se actualizó después y el registro no alcanza a decidir: se dice que no.
  */
+/**
+ * QUIÉN Y CUÁNDO ESCRIBIÓ EL VALOR PREVIO, EN ESTRUCTURA (la leen el panel genérico y el detalle del pago en efectivo).
+ * `cuando: null` = anterior al inicio del registro, o sin fecha: no hay nada que afirmar. `quien: null` con `cuando`
+ * = se sabe el minuto pero no se pudo atribuir a UNA persona (`motivo` dice por qué).
+ */
+export function atribucionDelPrevio(
+  f: CambioCrudo, nombres: ReadonlyMap<string, string>, cruce: CruceConElRegistro | null,
+): { cuando: string | null; quien: string | null; motivo: 'sin_dato' | 'atribuido' | 'sin_post' | 'varios' } {
+  const act = cruce?.actualizadoEn.get(`${f.liquidacion_id}|${f.persona_id}`) ?? null
+  if (!act || Date.parse(act) < Date.parse(INICIO_DEL_REGISTRO)) return { cuando: null, quien: null, motivo: 'sin_dato' }
+  const cuando = fechaDicha(act).completa
+  const perfiles = new Set((cruce?.posts ?? []).filter((p) => p.perfil_id && minuto(p.en) === minuto(act)).map((p) => p.perfil_id as string))
+  if (perfiles.size === 1) return { cuando, quien: nombres.get([...perfiles][0]) ?? 'sin identificar', motivo: 'atribuido' }
+  return { cuando, quien: null, motivo: perfiles.size === 0 ? 'sin_post' : 'varios' }
+}
+
 function valorPrevio(
   f: CambioCrudo, campo: CampoEditable, nombres: ReadonlyMap<string, string>, cruce: CruceConElRegistro | null,
 ): EntradaDeHistorial {
   const despues = aNumero(f.despues)
-  const anteriorAlRegistro = `anterior al registro (${diaCorto(INICIO_DEL_REGISTRO)})`
-  const act = cruce?.actualizadoEn.get(`${f.liquidacion_id}|${f.persona_id}`) ?? null
-  let cuando: string | null = null
-  let quien = anteriorAlRegistro
-  if (act && Date.parse(act) >= Date.parse(INICIO_DEL_REGISTRO)) {
-    cuando = fechaDicha(act).completa
-    const perfiles = new Set((cruce?.posts ?? []).filter((p) => p.perfil_id && minuto(p.en) === minuto(act)).map((p) => p.perfil_id as string))
-    quien = perfiles.size === 1
-      ? `${nombres.get([...perfiles][0]) ?? 'sin identificar'}, según el registro de la app`
-      : perfiles.size === 0 ? 'sin POST de Liquidación en el registro a esa hora' : 'varios usuarios en el registro de ese minuto: no se atribuye'
-  }
+  const a = atribucionDelPrevio(f, nombres, cruce)
+  const quien = a.motivo === 'sin_dato' ? `anterior al registro (${diaCorto(INICIO_DEL_REGISTRO)})`
+    : a.motivo === 'atribuido' ? `${a.quien}, según el registro de la app`
+      : a.motivo === 'sin_post' ? 'sin POST de Liquidación en el registro a esa hora' : 'varios usuarios en el registro de ese minuto: no se atribuye'
   return {
-    id: String(f.id), cuando, quien, antes: 'cálculo',
+    id: String(f.id), cuando: a.cuando, quien, antes: 'cálculo',
     despues: despues == null ? 'vuelve al cálculo' : (CAMPOS_EN_HORAS.has(campo) ? horas(despues) : pesos(despues)),
     cuenta: f.formula_despues, vaciado: despues == null, esBase: true, como: 'valor previo al log',
   }
