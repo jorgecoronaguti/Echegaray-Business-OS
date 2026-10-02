@@ -6,9 +6,9 @@
 // Saldo banco + Saldo efectivo = Saldo total.
 //
 // MUTACIONES QUE PONEN ESTE ARCHIVO EN ROJO:
-//   · que `restaDelEfectivo` devuelva null (la celda vuelve al negro del modelo: Agüero «333.270 − 75.000 = 203.689,52»).
+//   · restar del efectivo la resta del recibo Q1 (Agüero: saldo 203.689,52 en vez de 333.270 − 75.000 = 258.270).
+//   · que `restaDelEfectivo` devuelva null con banco 0 a mano (Tello: la celda volvería a 384.054).
 //   · recortar los dos lados en 0 cuando en total cobró de más (Maldonado «0 · 0 · −446,92»).
-//   · sumar la resta del recibo Q1 al total (la pagaría dos veces: en la Q1 ya salió en mano).
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -46,20 +46,18 @@ function linea(e: { neto: number; negro: number; pagadoBanco: number; pagadoEfec
   } as unknown as LineaConOverrides
 }
 
-test('AGÜERO, CON RESTA DEL RECIBO Q1: el importe del efectivo que se ve es 333.270 − 54.580,48, y Importe − Pagado = Saldo', () => {
+// EL NEGRO NO SE MEZCLA CON LA QUINCENA ANTERIOR (dueño, 02/10/2026, sobre esta misma fila: «no me mezcles lo de la
+// quincena pasada con esta en el negro … es valor hora por total de hs»; «la suma de q1 y q2 es solo del blanco»).
+test('AGÜERO, CON RESTA DEL RECIBO Q1: el efectivo es 52,5 h × $6.348 = 333.270 y el saldo es 333.270 − 75.000 = 258.270', () => {
   const l = conArrastre(linea({ neto: 234963.32, negro: 333270, pagadoBanco: 289543.8, pagadoEfectivo: 75000 }),
     { importe: 54580.48, motivo: 'Resta recibo Q1', periodoOrigen: 'Q1-09/2026' })
-  assert.equal(l.pago.banco, 289543.8, 'banco = neto del estudio + resta arrastrada')
+  assert.equal(l.pago.banco, 289543.8, 'banco = neto del estudio + resta arrastrada: la suma es sólo del blanco')
   assert.equal(l.pago.saldoBanco, 0, 'pagar la resta por banco NO es un exceso')
-  const r = restaDelEfectivo(l, pesos)
-  assert.ok(r, 'MUTACIÓN: sin la resta la celda dibuja 333.270 y 333.270 − 75.000 ≠ 203.689,52')
-  assert.equal(r.resultado, 278689.52)
-  assert.equal(r.operandos, '333.270 − 54.580,48')
-  assert.equal(Math.round(((importeEfectivoQueSeVe(l) ?? NaN) -l.pago.pagadoEfectivo) * 100) / 100, l.pago.saldoEfectivo)
-  assert.equal(l.pago.saldoEfectivo, 203689.52)
-  // LA RESTA YA SALIÓ EN MANO EN LA Q1 (banco 200.000 contra recibo 254.580,48; efectivo 360.909,28 contra negro 311.052):
-  // el total es el de la quincena, no se le suma otra vez.
-  assert.equal(l.pago.total, 568233.32, 'MUTACIÓN: sumar la resta al total pagaría $54.580,48 dos veces')
+  assert.equal(restaDelEfectivo(l, pesos), null, 'MUTACIÓN: restar la resta del efectivo vuelve a mezclar la quincena anterior en el negro')
+  assert.equal(importeEfectivoQueSeVe(l), 333270)
+  assert.equal(l.pago.negro, 333270)
+  assert.equal(l.pago.saldoEfectivo, 258270, 'MUTACIÓN: 203.689,52 es el saldo que el dueño marcó como mal calculado')
+  assert.equal(l.pago.total, 622813.8, 'banco con la resta + negro entero')
   cierraALaVista(l.pago, importeEfectivoQueSeVe(l))
 })
 
@@ -115,5 +113,5 @@ test('EL PIE SUMA LO QUE SE VE: saldo banco + saldo efectivo = saldo total tambi
   ]
   const t = totalesDePago(filas)
   assert.equal(Math.round((t.saldoBanco + t.saldoEfectivo) * 100) / 100, t.saldoTotal)
-  assert.equal(t.saldoTotal, Math.round((-276 + 45031.41 + 203689.52) * 100) / 100)
+  assert.equal(t.saldoTotal, Math.round((-276 + 45031.41 + 258270) * 100) / 100)
 })

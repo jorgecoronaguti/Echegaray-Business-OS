@@ -193,9 +193,9 @@ test('con arrastre: un renglón con el neto del recibo del estudio y OTRO con el
   assert.match(delSaldo.rotulo, /^Saldo 1ª quincena de septiembre$/)
   assert.equal(delRecibo.importe! + delSaldo.importe!, banco.importe, 'el subtotal del banco es la suma de los dos')
   assert.equal(efectivo.rotulo, ROTULO.efectivo)
-  assert.equal(efectivo.importe, 380000)
+  assert.equal(efectivo.importe, 435000)
   assert.equal(efectivo.detalle, undefined, "ninguna cuenta escrita junto al importe")
-  assert.equal(r.total, 669543.8, 'el efectivo se muestra redondeado; el banco no cambia')
+  assert.equal(r.total, 724543.8, 'el efectivo se muestra redondeado; el banco no cambia')
   assert.equal(r.estimado, false)
 })
 
@@ -229,8 +229,8 @@ test('la quincena CERRADA desglosa igual que la abierta: mismos renglones, mismo
   const a = armarRecibo(abierta, eleccion, pesosAR)
   const c = armarRecibo(cerrada, eleccion, pesosAR)
   assert.deepEqual(c.medios.map((m) => [m.rotulo, m.importe]), a.medios.map((m) => [m.rotulo, m.importe]))
-  assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380000])
-  assert.equal(c.total, 669543.8)
+  assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 435000])
+  assert.equal(c.total, 724543.8)
   assert.equal(a.total, c.total)
 })
 
@@ -266,7 +266,7 @@ test('el renglón Efectivo es el «Efect. red.» del cuadro, un número redondo,
   const ef = r.medios.find((m) => m.rotulo === ROTULO.efectivo)!
   assert.equal(ef.importe, delCuadro, 'misma fuente que la celda del cuadro')
   assert.equal(ef.importe! % 1000, 0, 'bajo «redondeado» no puede haber centavos')
-  assert.equal(ef.importe, 380000)
+  assert.equal(ef.importe, 435000)
   assert.equal(ef.detalle, undefined)
   assert.equal(r.total, r.medios.find((m) => m.rotulo === ROTULO.banco)!.importe! + ef.importe!, 'Total = banco + efectivo mostrado')
 })
