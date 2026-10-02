@@ -16,6 +16,8 @@ import { diaMes, diaMesAnio } from '../../clientes/services/cobranzaFormato'
 import { agendaDeCobro, cuando, proximoPorCliente, type AgendaDeCobro, type CobroProximo } from '../services/cobrosProximos'
 import { ancho, Cabecera, ENCABEZADO, FilaDeCifras, rotuloMes, Seccion, SinLectura, Valor } from './Piezas'
 import { Torta } from './Torta'
+import { ColumnaConDetalle } from './ColumnaConDetalle'
+import { detalleDeColumna } from '../services/detalleColumna'
 
 /**
  * Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo.
@@ -45,7 +47,13 @@ import { Torta } from './Torta'
  */
 export function Columnas({ meses, compacto = false }: {
   meses: {
-    mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string
+    mes: string; valor: string | null; color?: string; nota?: string
+    /** `nombre` y `monto` alimentan el detalle al pasar el mouse: cada tramo dice qué es y cuánto vale. */
+    partes: { alto: number; clase: string; nombre?: string; monto?: number | null }[]
+    /** El total para el detalle (número, no el texto de arriba de la barra). `null` = sin dato. */
+    total?: number | null
+    /** Sellos del mes para el detalle cuando no se dibujan bajo la barra. */
+    notasDetalle?: string[]
     /** Rótulos bajo el mes. `corto` es el que entra en una columna de ~32 px (teléfono, con `compacto`). */
     sellos?: { largo: string; corto: string }[]
     /** Valor abreviado para el teléfono con `compacto` («33,2», sin «$» ni «M»: la unidad va en la leyenda). */
@@ -65,11 +73,19 @@ export function Columnas({ meses, compacto = false }: {
     <div className={compacto ? '' : 'overflow-x-auto lg:overflow-visible'}>
       <div className={`grid h-[220px] items-end lg:gap-4 ${compacto ? 'gap-1' : 'gap-2'}`}
         style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(${compacto ? 0 : 56}px, 1fr))` }}>
-        {meses.map((m) => (
-          <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+        {meses.map((m, i) => {
+          const detalle = detalleDeColumna({
+            titulo: rotuloMes(m.mes, true), total: m.total === undefined ? (m.valor == null ? null : m.partes.reduce((n, p) => n + (p.monto ?? 0), 0)) : m.total,
+            tramos: m.partes.filter((p) => p.nombre).map((p) => ({ nombre: p.nombre!, monto: p.monto ?? null })),
+            sellos: [...(m.sellos?.map((t) => t.largo) ?? []), ...(m.notasDetalle ?? [])], sinDato: m.nota,
+          })
+          const posicion = i < meses.length / 3 ? 'inicio' : i >= (meses.length * 2) / 3 ? 'fin' : 'medio'
+          return (
+          <ColumnaConDetalle key={m.mes} detalle={detalle} posicion={posicion}
+            colores={m.partes.filter((p) => p.nombre).map((p) => p.clase.split(' ')[0])}>
             <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor == null ? m.nota : compacto && m.valorCorto ? <><span className="lg:hidden">{m.valorCorto}</span><span className="hidden lg:inline">{m.valor}</span></> : m.valor}</div>
             <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
-              {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
+              {m.partes.map((p, j) => <div key={j} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
             </div>
             <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
             {m.sellos?.map((t) => (
@@ -77,8 +93,9 @@ export function Columnas({ meses, compacto = false }: {
                 {compacto ? <><span className="lg:hidden">{t.corto}</span><span className="hidden lg:inline">{t.largo}</span></> : t.largo}
               </div>
             ))}
-          </div>
-        ))}
+          </ColumnaConDetalle>
+          )
+        })}
       </div>
     </div>
   )
@@ -144,7 +161,7 @@ export function VistaNomina({ pagado, costo, personas, filtros, mes, hoy }: {
             if (c?.costo == null) return { mes: x.mes, valor: null, nota: 'sin medir', partes: [] }
             const apagado = c.parcial ? ' opacity-60' : ''
             return {
-              mes: x.mes, valor: millones(c.costo), color: c.parcial ? 'text-muted' : undefined,
+              mes: x.mes, valor: millones(c.costo), total: c.costo, color: c.parcial ? 'text-muted' : undefined,
               valorCorto: (c.costo / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
               sellos: [
                 ...(c.parcial ? [{ largo: 'parcial', corto: 'parc.' }] : []),
@@ -153,8 +170,8 @@ export function VistaNomina({ pagado, costo, personas, filtros, mes, hoy }: {
                   : c.etiqueta ? [{ largo: 'mixto', corto: 'mixto' }] : []),
               ],
               partes: [
-                { alto: (c.negro / max) * 130, clase: `bg-serie-2${apagado}` },
-                { alto: (c.blanco / max) * 130, clase: `bg-serie-1${apagado}` },
+                { alto: (c.negro / max) * 130, clase: `bg-serie-2${apagado}`, nombre: 'Negro (en mano)', monto: c.negro },
+                { alto: (c.blanco / max) * 130, clase: `bg-serie-1${apagado}`, nombre: 'Blanco (con cargas)', monto: c.blanco },
               ],
             }
           })} />

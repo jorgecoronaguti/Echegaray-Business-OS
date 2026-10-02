@@ -329,7 +329,10 @@ function Gasto({ egresos, criterio, periodo, rango }: { egresos: unknown[] | nul
             leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
             <Columnas meses={c.meses.map((m) => ({
               mes: m.mes, valor: millones(m.aObra + m.estructura),
-              partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
+              partes: [
+                { alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia', nombre: 'Estructura', monto: m.estructura },
+                { alto: (m.aObra / max) * 170, clase: 'bg-accent', nombre: 'A una obra', monto: m.aObra },
+              ],
             }))} />
           </Seccion>
           {/* POR ÁREA ES LA TORTA DEL DISEÑO v9: el total al centro y cada área con su parte. */}

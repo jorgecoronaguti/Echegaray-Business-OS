@@ -200,9 +200,9 @@ function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {
       <Columnas meses={conMes.map((m) => ({
         mes: m.mes, valor: millones(total(m)),
         partes: [
-          { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales' },
-          { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted' },
-          { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent' },
+          { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales', nombre: 'Materiales', monto: m.materiales },
+          { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted', nombre: 'Subcontratos', monto: m.subcontratos },
+          { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent', nombre: 'Mano de obra', monto: m.manoObra },
         ],
       }))} />
       {sinFecha > 0 ? <p className="mt-3 text-[11.5px] text-faint">{millones(sinFecha)} en comprobantes sin fecha: no tienen mes.</p> : null}
