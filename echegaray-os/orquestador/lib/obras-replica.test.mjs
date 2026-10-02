@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   PESTANA_REPLICA, REPLICA_COL, REPLICA_COLUMNAS, REPLICA_DESDE, REPLICA_HASTA, formulaCostoProyectado,
+  obrasSinPlan,
 } from './obras-replica.mjs'
 import { problemaDeSintaxis } from './obras-grilla.mjs'
 
@@ -51,4 +52,16 @@ test('las letras del contrato apuntan a las columnas que la réplica escribe', (
   assert.equal(letra(nombres.indexOf('Monto')), REPLICA_COL.monto)
   assert.equal(letra(nombres.indexOf('Obra (clave)')), REPLICA_COL.obraClave)
   assert.equal(letra(nombres.indexOf('Tipo')), REPLICA_COL.tipo)
+})
+
+test('la obra con costo declarado y sin plan en la tabla se nombra; la que declara no tener costo, no', () => {
+  const obras = [
+    { clave: 'a', obra: 'CON PLAN' },
+    { clave: 'b', obra: 'SIN PLAN' },
+    { clave: 'c', obra: 'SIN COSTO', sinCosto: 'sin archivo de costo' },
+    { clave: 'sin-nombre' },
+  ]
+  assert.deepEqual(obrasSinPlan(obras, ['CON PLAN', 'OTRA QUE NO ESTÁ EN EL CATÁLOGO']), ['SIN PLAN', 'sin-nombre'])
+  assert.deepEqual(obrasSinPlan(obras, new Map([['CON PLAN', 1], ['SIN PLAN', 2], ['sin-nombre', 3]]).keys()), [])
+  assert.deepEqual(obrasSinPlan(undefined, []), [])
 })

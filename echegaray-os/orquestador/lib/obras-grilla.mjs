@@ -1262,13 +1262,23 @@ export function grillaObras(ctx = {}) {
     // suma que ignora texto depende de una conducta de Sheets que no puedo VERIFICAR desde acá sin
     // escribir en el archivo. Citando sólo las filas con número, el resultado es el mismo en Sheets y
     // en el evaluador en frío, y el test puede afirmarlo.
+    //
+    // ═══ Y CADA CELDA DE COSTO VA ENVUELTA EN `N()` (02/10/2026) ═══
+    //
+    // «Con número» se decide acá, al generar; el número lo pone `_OBRAS_RAW`, al calcular. Una obra con
+    // costo declarado en el catálogo y SIN filas en la réplica publica el guion por el `IFNA` de su
+    // fila, y `=H10+…+H20` sobre un guion es `#VALUE!` en las tres columnas: pasó el 01/10 con OB-0072
+    // y OB-0073, que entraron al catálogo con su costo y no a `public.obra_egreso_proyectado`. `N()`
+    // vale el número si lo hay y cero si es texto —conducta documentada, y la misma en el evaluador en
+    // frío—: el hueco se sigue viendo en la fila de la obra y el cierre suma lo que sí está.
     const conCosto = bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
+    const sumaN = (col, filas) => `=${filas.map((f) => `N(${col}${f})`).join('+')}`
     h.push([ROTULO_TOTAL_OBRAS, '', '',
       suma('D', filasObra),
       suma('E', filasObra), suma('F', filasObra), suma('G', filasObra),
-      conCosto.length ? suma('H', conCosto) : SIN_COSTO,
-      conCosto.length ? suma('I', conCosto) : SIN_COSTO,
-      conCosto.length ? suma('J', conCosto) : SIN_COSTO, ''],
+      conCosto.length ? sumaN('H', conCosto) : SIN_COSTO,
+      conCosto.length ? sumaN('I', conCosto) : SIN_COSTO,
+      conCosto.length ? sumaN('J', conCosto) : SIN_COSTO, ''],
     ['rotulo', null, null, 'monedaTotal', 'monedaTotal', 'monedaTotal', 'alertaTotal', 'monedaTotal',
       'monedaTotal', 'monedaTotal', 'rotulo'])
   }

@@ -31,7 +31,8 @@ import { query, closePool } from '../lib/db.mjs'
 // EL CONTRATO DE LA RÉPLICA NO SE ESCRIBE DOS VECES. Las letras de columna y el tope del rango los
 // usa también la fórmula del cuadro 4 de OBRAS: dos definiciones se desincronizan sin dar error y la
 // fórmula se quedaría sumando hasta una fila que ya no es la última.
-import { PESTANA_REPLICA, REPLICA_COLUMNAS, REPLICA_COL, REPLICA_DESDE, REPLICA_HASTA } from '../lib/obras-replica.mjs'
+import { PESTANA_REPLICA, REPLICA_COLUMNAS, REPLICA_COL, REPLICA_DESDE, REPLICA_HASTA, obrasSinPlan } from '../lib/obras-replica.mjs'
+import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = PESTANA_REPLICA
@@ -82,6 +83,11 @@ async function main() {
   console.log(`fuente: public.obra_egreso_proyectado — ${datos.length} fila(s)`)
   for (const [o, v] of [...porObra.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${o.padEnd(24)} $${Math.round(v).toLocaleString('es-AR')}`)
+  }
+  // EL HUECO SE DICE CON NOMBRE: una obra con costo en el catálogo y sin una fila acá publica el guion
+  // en OBRAS y deja sus materiales fuera del Cash Flow. Es aviso y no corte: el resto de la réplica vale.
+  for (const o of obrasSinPlan(OBRAS_FUTURAS, porObra.keys())) {
+    console.log(`  ⚠ ${o}: declara costo en el catálogo y NO tiene plan en public.obra_egreso_proyectado — OBRAS publica «—» y el Cash Flow no proyecta sus materiales`)
   }
   if (datos.length > FILA_FIN - FILA0) {
     console.log(`  ⚠ ${datos.length} filas no entran en el rango que citan las fórmulas (hasta la ${FILA_FIN}): hay que subir FILA_FIN y regenerar OBRAS`)

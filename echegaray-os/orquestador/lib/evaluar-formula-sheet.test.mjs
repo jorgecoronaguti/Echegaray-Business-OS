@@ -286,3 +286,13 @@ test('la guarda real de una obra sin plan da #N/A, no cero', () => {
   assert.equal(evaluarFormula(f('BSA'), { hoja, hojas }), 999)
   assert.throws(() => evaluarFormula(f('MAMPOSTERÍA'), { hoja, hojas }), /N\/A/)
 })
+
+test('IFNA absorbe el #N/A y NADA más', () => {
+  // La separa de IFERROR exactamente eso: si absorbiera un #VALUE! o un #REF!, la columna de costo de
+  // OBRAS dibujaría el guion sobre una fórmula rota y el test que la evalúa daría verde.
+  const hoja = hojaDeGrilla([['texto', 5]])
+  assert.equal(evaluarFormula('=IFNA(NA();"—")', { hoja }), '—')
+  assert.equal(evaluarFormula('=IFNA(B1*2;"—")', { hoja }), 10)
+  assert.throws(() => evaluarFormula('=IFNA(A1+1;"—")', { hoja }), /#VALUE!/)
+  assert.throws(() => evaluarFormula('=IFNA(Otra!A1;"—")', { hoja }), /#REF!/)
+})

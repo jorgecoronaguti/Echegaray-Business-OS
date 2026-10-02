@@ -39,6 +39,7 @@ import { formulaCostoProyectado, TIPO } from './obras-replica.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
+import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 
 const COLS = 'ABCDEFGHIJK'
 const g = grillaObras({ obras: OBRAS_FUTURAS })
@@ -185,7 +186,7 @@ test('EL COSTO SE ABRE EN MANO DE OBRA Y MATERIALES, y las dos partes suman el t
   // desglose publica un desglose que no explica su total.
   const conCosto = g.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
   for (const c of ['H', 'I', 'J']) {
-    assert.equal(cel(g, `${c}${g.fTotObras}`), `=${conCosto.map((n) => `${c}${n}`).join('+')}`)
+    assert.equal(cel(g, `${c}${g.fTotObras}`), `=${conCosto.map((n) => `N(${c}${n})`).join('+')}`)
   }
 })
 
@@ -290,7 +291,7 @@ test('el cierre cita TODAS las obras en el contratado y SÓLO las que tienen cos
   const conCosto = g.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
   assert.equal(cel(g, `D${g.fTotObras}`), `=${filasObra.map((n) => `D${n}`).join('+')}`)
   assert.equal(cel(g, `H${g.fTotObras}`),
-    conCosto.length ? `=${conCosto.map((n) => `H${n}`).join('+')}` : SIN_COSTO)
+    conCosto.length ? `=${conCosto.map((n) => `N(H${n})`).join('+')}` : SIN_COSTO)
   // EL CASO SIN COSTO SE FABRICA, NO SE ESPERA DEL DATO VIVO (08/09/2026). Hasta hoy el test exigía
   // que alguna obra real siguiera sin costo cargado: el día que Pisos 120 + Rampa lo tuvo, el test
   // se puso rojo sin que ninguna regla se rompiera. Una obra sintética sin costo prueba lo mismo.
@@ -307,7 +308,38 @@ test('el cierre cita TODAS las obras en el contratado y SÓLO las que tienen cos
   assert.equal(conCosto2.length, conCosto.length, 'la sintética no suma a las que tienen costo')
   assert.equal(filas2.length, filasObra.length + 1)
   assert.equal(cel(g2, `D${g2.fTotObras}`), `=${filas2.map((n) => `D${n}`).join('+')}`)
-  assert.equal(cel(g2, `H${g2.fTotObras}`), `=${conCosto2.map((n) => `H${n}`).join('+')}`)
+  assert.equal(cel(g2, `H${g2.fTotObras}`), `=${conCosto2.map((n) => `N(H${n})`).join('+')}`)
+})
+
+test('el cierre del COSTO da un número aunque a una obra le falte su plan en la réplica', () => {
+  // EL DEFECTO DEL 01/10/2026, EVALUADO Y NO COMPARADO COMO TEXTO. OB-0072 y OB-0073 entraron al
+  // catálogo con su costo y no a `public.obra_egreso_proyectado`: `_OBRAS_RAW` no las tenía, sus
+  // filas publicaron el guion del `IFNA` y `=H10+…+H20` dio #VALUE! en H, I y J — con la pestaña ya
+  // escrita. La forma de la fórmula no podía verlo: lo ve calcularla sobre una réplica a la que le
+  // falta una obra.
+  const conCosto = g.bloques.filter((b) => !b.sinCosto)
+  assert.ok(conCosto.length >= 2, 'hacen falta dos obras con costo para que una falte y otra no')
+  const [ausente, ...presentes] = conCosto
+  const obraDe = (b) => OBRAS_FUTURAS.find((o) => o.clave === b.clave).obra
+  // La réplica: una fila de mano de obra y una de material por obra presente, desde la fila 4.
+  const replica = {}
+  presentes.forEach((b, i) => {
+    const [mo, mat] = [4 + i * 2, 5 + i * 2]
+    Object.assign(replica, {
+      [`B${mo}`]: obraDe(b), [`C${mo}`]: TIPO.mo, [`H${mo}`]: 1000 * (i + 1),
+      [`B${mat}`]: obraDe(b), [`C${mat}`]: TIPO.material, [`H${mat}`]: 10 * (i + 1),
+    })
+  })
+  const val = (ref) => evaluarFormula(cel(g, ref), { hoja: hojaDeGrilla(g.filas), hojas: { _OBRAS_RAW: replica } })
+  for (const c of ['H', 'I', 'J']) assert.equal(val(`${c}${ausente.fProt}`), SIN_COSTO, `${c}${ausente.fProt}: sin plan, el guion`)
+  const n = presentes.length
+  const [mo, mat] = [1000 * n * (n + 1) / 2, 10 * n * (n + 1) / 2]
+  assert.equal(val(`I${g.fTotObras}`), mo, 'la mano de obra de las que sí están')
+  assert.equal(val(`J${g.fTotObras}`), mat, 'los materiales de las que sí están')
+  assert.equal(val(`H${g.fTotObras}`), mo + mat, 'y el total es la suma de sus dos partes')
+  // EL CONTROL PUEDE DAR ROJO: la suma pelada sobre las mismas celdas es #VALUE!, que es lo que se publicó.
+  const pelada = `=${conCosto.map((b) => `H${b.fProt}`).join('+')}`
+  assert.throws(() => evaluarFormula(pelada, { hoja: hojaDeGrilla(g.filas), hojas: { _OBRAS_RAW: replica } }), /#VALUE!/)
 })
 
 test('el cierre NO afirma una población que sólo tienen algunas de sus columnas', () => {

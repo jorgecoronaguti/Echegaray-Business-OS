@@ -576,7 +576,10 @@ export const OBRAS_FUTURAS = [
     inicio: '2026-10-15',
     fin: '2026-11-30',
     // COSTO COTIZADO (presupuestos-cotizados.mjs v1 aprobado): $548.209,99 directo. Estuvo cargado el
-    // 29/09 y se retiró porque sin fechas el TOTAL de la grilla daba #VALUE!; con fechas vuelve.
+    // 29/09 y se retiró porque el TOTAL de la grilla daba #VALUE!. LA CAUSA NO ERAN LAS FECHAS (02/10):
+    // era que el costo declarado acá no tiene su plan en `public.obra_egreso_proyectado`, de donde
+    // sale `_OBRAS_RAW`. El cierre ya no se rompe por eso (`N()` en obras-grilla) y la réplica lo avisa
+    // con el nombre de la obra; el plan se carga en la tabla, no acá.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
     // MO $212.051,65 + cargas $300.747,30 (Presupuesto, col. O + Q). AL PESO, como todo el catálogo: la
     // grilla suma pesos enteros y un centavo suelto rompe la identidad con `_OBRAS_RAW`.

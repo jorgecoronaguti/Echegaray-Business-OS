@@ -81,3 +81,20 @@ export function formulaCostoPorTipo(obra, tipo, { pestana = PESTANA_REPLICA, des
   const porTipo = `${pestana}!$${REPLICA_COL.tipo}$${desde}:$${REPLICA_COL.tipo}$${hasta};"${String(tipo ?? '')}"`
   return `=IF(COUNTIFS(${porObra})=0;NA();SUMIFS(${pestana}!$${REPLICA_COL.monto}$${desde}:$${REPLICA_COL.monto}$${hasta};${porObra};${porTipo}))`
 }
+
+/**
+ * LAS OBRAS QUE DECLARAN COSTO Y NO TIENEN PLAN EN LA TABLA — el hueco que el 01/10/2026 nadie avisó.
+ *
+ * El catálogo (`obras-datos.mjs`) y `public.obra_egreso_proyectado` se cargan por caminos distintos.
+ * OB-0072 y OB-0073 entraron al primero con su costo y no a la segunda: su fila de OBRAS publicó el
+ * guion, el Cash Flow salió sin sus materiales, y lo único que lo delató fue un #VALUE! en el cierre.
+ * Esto lo dice ANTES, con el nombre de la obra, cada vez que se escribe la réplica.
+ *
+ * @param {Array<{obra?:string, clave:string, sinCosto?:unknown}>} obras el catálogo
+ * @param {Iterable<string>} rotulosConPlan los `obra_rotulo` que la tabla sí tiene
+ * @returns {string[]} los rótulos que faltan, en el orden del catálogo
+ */
+export function obrasSinPlan(obras, rotulosConPlan) {
+  const hay = new Set(rotulosConPlan)
+  return (obras ?? []).filter((o) => !o.sinCosto).map((o) => o.obra ?? o.clave).filter((r) => !hay.has(r))
+}

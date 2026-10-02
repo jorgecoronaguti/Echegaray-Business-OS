@@ -267,6 +267,15 @@ function llamar(n, args, ev) {
     return num(c) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
   }
   if (n === 'IFERROR') { try { return ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return ev(args[1] ?? { k: 'num', v: 0 }) ; throw e } }
+  // IFNA ABSORBE SÓLO EL #N/A, y eso es todo lo que la separa de IFERROR: un #REF! o un #VALUE! la
+  // atraviesan igual que en Sheets. Entró el 02/10/2026 para poder EVALUAR la columna de costo de
+  // OBRAS —`IFNA(IF(COUNTIFS(…)=0;NA();SUMIFS(…));"—")`— y con ella su cierre.
+  if (n === 'IFNA') {
+    try { return ev(args[0]) } catch (e) {
+      if (e instanceof ErrorHoja && e.message.startsWith('#N/A')) return ev(args[1] ?? { k: 'str', v: '' })
+      throw e
+    }
+  }
   // ═══ ROW(rango) DEVUELVE LOS NÚMEROS DE FILA, NO LOS VALORES (11/09/2026) ═══
   //
   // Es la mitad del idioma con el que este repo busca «el último»:
