@@ -298,6 +298,8 @@ export const DOCUMENTOS = [
   d('messina-pisos-120-rampa', '1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6', 'Cotizacion piso 120m2.xlsm', 'cotizacion_interna', XLSM),
   d('messina-pisos-120-rampa', '1QioaEfc-FDbareikGjc2W0TzJ8wPclWr', 'Rampa 19:2.pdf', 'cotizacion', PDF),
   d('messina-platea-tanque-gasoil', '17dBCoxeABj4ZvDKr7PFrzL6RiOMcjGX8', 'Platea para tanque de combustible .xlsm', 'cotizacion_interna', XLSM),
+  // La que recibió el cliente: mail de Rodrigo a Messina del 28/08/2026, PDF fechado 29/08 ($1.209.118,58 + IVA).
+  d('messina-platea-tanque-gasoil', '1Au4y6gOJ9gIrCXS_77TiX1dYFpMMsVAM', 'Platea para tanque de combustible.pdf', 'cotizacion', PDF),
   d('messina-adicional-playon-dilucion', '1VfYsn3fWgp7F-G_OwqaqqYqIsdkxJvoJ', 'Adicional.xlsm', 'cotizacion_interna', XLSM),
   d('messina-adicional-playon-dilucion', '1iFqSI9beFR_9-zAr0J5XofaJ_uZSgRME', 'Adicional - Excavaciones y ampliaciond de platea.pdf', 'cotizacion', PDF),
   d('messina-adicional-playon-dilucion', '168y1ULRYcx1052wkwMmiYpc2EEgJQVAh', 'Costo - ADICIONAL Playon para dilucion de acidos.pdf', 'cotizacion_interna', PDF),

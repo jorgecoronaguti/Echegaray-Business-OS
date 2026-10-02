@@ -88,8 +88,15 @@ export type CifraEnLinea = {
 /** Los estados que la ficha conoce, con su rótulo y su color. El cierre es uno solo y se lee «Archivada», igual que en la cartera (dueño 23/09). */
 export const ESTADOS_TERMINADA: readonly string[] = ['cerrada', 'terminada', 'archivada']
 
-export function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
+/**
+ * LA OBRA QUE TODAVÍA NO ARRANCÓ SE LEE «Previo», IGUAL QUE EN LA CARTERA (02/10/2026).
+ * La cartera ya lo decía (`estadoDeCartera` → `esPrevio`: etapa «previo») y la ficha decía «En
+ * ejecución» de la misma obra: OB-0072 y OB-0073, con orden de compra y arranque al 15/10. El orden
+ * es el de la cartera: terminada → previo → pausada → en ejecución.
+ */
+export function pastillaDeEstado(estado: string, etapa?: string | null): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
   if (ESTADOS_TERMINADA.includes(estado)) return { t: 'Archivada', tono: 'pos' }
+  if (etapa === 'previo') return { t: 'Previo', tono: 'neutro' }
   if (estado === 'activa') return { t: 'En ejecución', tono: 'curso' }
   if (estado === 'pausada') return { t: 'Pausada', tono: 'neutro' }
   // UN ESTADO QUE ESTA PANTALLA NO CONOCE SE MUESTRA COMO VINO: un default de «en ejecución»
@@ -154,7 +161,7 @@ export async function CabeceraDeObra({
    *  nodo existe para las hijas que quieran algo chico a la derecha del título en 390. */
   accionTelefono?: ReactNode
 }) {
-  const est = pastillaDeEstado(obra.estado)
+  const est = pastillaDeEstado(obra.estado, obra.etapa)
   const terminada = ESTADOS_TERMINADA.includes(obra.estado)
   // EL CLIENTE ES UN LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
   // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.

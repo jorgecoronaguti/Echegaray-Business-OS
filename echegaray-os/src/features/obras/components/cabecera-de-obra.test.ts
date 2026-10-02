@@ -118,3 +118,17 @@ test('la cabecera no inventa: un KPI sin dato dice su palabra, nunca 0', () => {
     'la cabecera dejó de distinguir «no lo sé» de «es cero» en sus KPI',
   )
 })
+
+test('la obra que no arrancó se lee «Previo» en la ficha, con la misma regla y el mismo orden que la cartera', () => {
+  // 02/10/2026: OB-0072 y OB-0073 (orden de compra del 25/09, arranque al 15/10) decían «Previo» en la
+  // cartera y «En ejecución» en su ficha. La regla es una: etapa «previo», después de terminada y antes
+  // de activa. Si la ficha deja de mirar la etapa, o la mira después de `activa`, este test cae.
+  const cabecera = readFileSync(join(RAIZ, 'src/features/obras/components/CabeceraDeObra.tsx'), 'utf8')
+  const cartera = readFileSync(join(RAIZ, 'src/features/obras/services/carteraCanon.ts'), 'utf8')
+  assert.match(cartera, /o\.etapa === 'previo'/, 'la cartera define «previo» por la etapa')
+  assert.match(cabecera, /pastillaDeEstado\(obra\.estado, obra\.etapa\)/, 'la cabecera le pasa la etapa a la pastilla')
+  const cuerpo = cabecera.slice(cabecera.indexOf('export function pastillaDeEstado'))
+  const [iTerm, iPrevio, iActiva] = ["ESTADOS_TERMINADA.includes(estado)", "etapa === 'previo'", "estado === 'activa'"].map((x) => cuerpo.indexOf(x))
+  assert.ok(iTerm >= 0 && iPrevio > iTerm && iActiva > iPrevio, 'orden: terminada → previo → en ejecución')
+  assert.match(cuerpo, /etapa === 'previo'\) return \{ t: 'Previo', tono: 'neutro' \}/)
+})
