@@ -507,3 +507,61 @@ test('sueltos: el papel declarado en una fila que ya no lo recibe VUELVE a la li
   assert.equal(filas[0].tiene_adjunto, false)
   assert.deepEqual(papelesSinFila([delCargador], new Set(filas.flatMap((f) => f.adjuntos))).map((a) => a.nombre), ['cargador.jpg'])
 })
+
+// ── EL PAPEL QUE LLEGÓ CON OTRA CLAVE (02/10/2026, filas 1055 y 1057) ──────────────────────────────
+
+const papelC = (clave: string, fila: number | null, p: Record<string, unknown> = {}) =>
+  ({ compra_clave: clave, fila_compras: fila, vinculado_por: 'registro', tipo: 'factura', nombre: `${clave}.pdf`, ...p })
+
+test('fila 1055: el papel `c:CUIT|nro` cuelga de la fila `p:proveedor|nro` del mismo comprobante', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 1055, clave: 'p:rsv - a.c sat srl|0011-00089768' }],
+    [papelC('c:30710965044|0011-00089768', 1055)],
+  )
+  assert.equal(r[0].tiene_adjunto, true)
+})
+
+test('conciliado: el MISMO número en otra fila (otro proveedor) NO recibe el papel', () => {
+  const r = papelesDeCadaFila(
+    [
+      { fila: 1055, clave: 'p:rsv - a.c sat srl|0011-00089768' },
+      { fila: 1060, clave: 'p:otro proveedor|0011-00089768' },
+    ],
+    [papelC('c:30710965044|0011-00089768', 1055)],
+  )
+  assert.deepEqual(r.map((f) => f.tiene_adjunto), [true, false])
+})
+
+test('conciliado: la fila declarada con OTRO número de comprobante no recibe el papel', () => {
+  const r = papelesDeCadaFila([{ fila: 1055, clave: 'p:rsv - a.c sat srl|0011-00000001' }], [papelC('c:30710965044|0011-00089768', 1055)])
+  assert.equal(r[0].tiene_adjunto, false)
+})
+
+test('conciliado: un papel que nadie declaró (`sin_vincular`/`match_numero`) no se cuelga por conciliación', () => {
+  const filas = [{ fila: 1055, clave: 'p:rsv - a.c sat srl|0011-00089768' }]
+  for (const vinculado_por of ['sin_vincular', 'match_numero']) {
+    assert.equal(papelesDeCadaFila(filas, [papelC('c:30710965044|0011-00089768', 1055, { vinculado_por })])[0].tiene_adjunto, false)
+  }
+})
+
+test('conciliado: un papel cuya clave exacta es de otra fila no se roba para la declarada', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 1, clave: 'p:x|0001-00000005' }, { fila: 2, clave: 'c:30710965044|0011-00089768' }],
+    [papelC('c:30710965044|0011-00089768', 1)],
+  )
+  assert.deepEqual(r.map((f) => f.adjuntos.length), [0, 1])
+})
+
+test('conciliado: una fila que ya tiene su papel exacto no cambia', () => {
+  const exacto = papelC('p:rsv|0011-00000007', null, { nombre: 'exacto.pdf' })
+  const r = papelesDeCadaFila([{ fila: 9, clave: 'p:rsv|0011-00000007' }], [exacto, papelC('c:30710965044|0011-00000007', 9)])
+  assert.deepEqual(r[0].adjuntos.map((a) => a.nombre), ['exacto.pdf'])
+})
+
+test('conciliado: cada papel cuelga de UNA sola fila', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 1055, clave: 'p:rsv|0011-00089768' }, { fila: 1056, clave: 'p:rsv|0011-00089768' }],
+    [papelC('c:30710965044|0011-00089768', 1055)],
+  )
+  assert.equal(r.reduce((n, f) => n + f.adjuntos.length, 0), 1)
+})

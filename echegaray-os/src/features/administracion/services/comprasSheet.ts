@@ -21,6 +21,8 @@
 // pastilla de «A pagar» la presentaría como un hecho, que es exactamente lo que las reglas de este
 // sistema prohíben. Lleva pastilla propia, apagada, y no suma en «A pagar».
 
+import { mismoComprobante, partesDeClave } from '../../../../orquestador/lib/comprobantes/clave-conciliada.mjs'
+
 /** La paleta del canónico `24`, líneas 195-197. */
 const TONO = {
   pagado: { color: '#067647', fondo: '#F1F9F4', borde: '#D6EBDF' },
@@ -428,10 +430,11 @@ export function recorteDeLista<T extends { fila: number }>(
  * en una de ellas —la fila 932, Lliteras, CUIT 30708390557— el papel colgado era un comprobante
  * leído con CUIT 20349213347. La pantalla mostraba, con cara de hecho, el comprobante de otro.
  *
- * La conciliación de claves (`c:<cuit>|…` contra `p:<proveedor>|…` del mismo comprobante) NO se hace
- * acá: se hace una sola vez, en el sync, contra el espejo recién escrito
- * (`orquestador/lib/comprobantes/reconciliar-adjuntos.mjs`). Dos definiciones de «este papel es de
- * esta compra» serían dos verdades, y la pantalla no es el lugar donde se decide una identidad.
+ * La conciliación de claves (`c:<cuit>|…` contra `p:<proveedor>|…` del mismo comprobante) la ESCRIBE el
+ * sync, una sola vez, contra el espejo recién escrito
+ * (`orquestador/lib/comprobantes/reconciliar-adjuntos.mjs`). Entre un sync y el siguiente, la pantalla
+ * sólo la LEE con la misma regla y una prueba más estricta (`papelesConciliadosPorFila`, 02/10/2026):
+ * nunca decide una identidad por su cuenta.
  *
  * ═══ LA FILA SIN NÚMERO DE COMPROBANTE (dueño, 01/10/2026) ═══
  *
@@ -465,10 +468,62 @@ export function papelesDeCadaFila<
       porFila.set(a.fila_compras as number, l)
     }
   }
+  const claves = new Set(filas.map((f) => f.clave).filter(Boolean))
+  const filaPorNumero = new Map(filas.map((f) => [f.fila, f]))
+  const conciliados = papelesConciliadosPorFila(adjuntos, claves, filaPorNumero)
   return filas.map((c) => {
-    const suyos = (c.clave ? porClave.get(c.clave) : porFila.get(c.fila)) ?? []
+    const exactos = (c.clave ? porClave.get(c.clave) : porFila.get(c.fila)) ?? []
+    // El papel conciliado sólo ocupa una fila que NO tiene ya el suyo por clave exacta.
+    const suyos = exactos.length ? exactos : conciliados.get(c.fila) ?? []
     return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
   })
+}
+
+/**
+ * EL PAPEL QUE LLEGÓ CON OTRA CLAVE — `c:<cuit>|nro` contra `p:<proveedor>|nro` (02/10/2026).
+ *
+ * El dueño: «no estás subiendo todos los comprobantes que subo vía canal comprobantes». Filas 1055 y
+ * 1057 de hoy: el papel está guardado con `c:30710965044|0011-00089768` y la fila volvió del Sheet con
+ * `p:rsv - a.c sat srl|0011-00089768` (la columna CUIT quedó vacía). Mismo comprobante, dos claves: el
+ * cruce exacto no lo ve y la pantalla gritaba «sin comprobante» hasta que el sync siguiente reescribiera
+ * la clave del adjunto. Ese sync sigue siendo el que ARREGLA la clave; esto sólo evita mentir mientras
+ * tanto.
+ *
+ * LA REGLA ES LA DEL ORQUESTADOR (`mismoComprobante`, una sola definición): número y tipo iguales, y
+ * identidad sólo entre `c:` y `p:` si el nombre coincide. El nombre del proveedor que leyó el bot no
+ * llega a la pantalla (vive en los fajos), así que el papel tiene que traer OTRA prueba de que es de
+ * esta fila: que la haya DECLARADO el cargador o una persona (`papelDeclaradoEnSuFila`, con la clave
+ * puesta) y que esa fila sea la que declaró. El número solo no alcanza —dos proveedores repiten
+ * número— y la posición sola tampoco —se corre—: se exigen las dos, más el tipo.
+ *
+ * Un papel cuya clave ya es la EXACTA de alguna fila no entra acá, y cada papel cuelga de una sola fila.
+ */
+function papelesConciliadosPorFila<A extends PapelParaColgar>(
+  adjuntos: A[],
+  clavesDeFilas: Set<string | null>,
+  filaPorNumero: Map<number, { fila: number; clave: string | null }>,
+): Map<number, A[]> {
+  const out = new Map<number, A[]>()
+  for (const a of adjuntos) {
+    if (!a.compra_clave || clavesDeFilas.has(a.compra_clave)) continue
+    if (!Number.isInteger(a.fila_compras)) continue
+    if (a.vinculado_por !== 'registro' && a.vinculado_por !== 'match_manual') continue
+    const f = filaPorNumero.get(a.fila_compras as number)
+    if (!f?.clave) continue
+    // El nombre de la fila es lo único que hay: lo que prueba la identidad es la declaración de arriba,
+    // y lo que prueba que es el mismo comprobante es `mismoComprobante` (número y tipo).
+    if (!mismoComprobante(a.compra_clave, f.clave, { proveedorA: nombreDeClave(f.clave), proveedorB: nombreDeClave(f.clave) })) continue
+    const l = out.get(f.fila) ?? []
+    l.push(a)
+    out.set(f.fila, l)
+  }
+  return out
+}
+
+/** El nombre de proveedor dentro de una clave `p:`; vacío si la clave es por CUIT. */
+function nombreDeClave(clave: string): string | null {
+  const p = partesDeClave(clave)
+  return p?.por === 'proveedor' ? p.identidad : null
 }
 
 /** Lo que `papelesDeCadaFila` necesita de un adjunto. Los tres últimos son opcionales: sin ellos, sólo cruza por clave. */
