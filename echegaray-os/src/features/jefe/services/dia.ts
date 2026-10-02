@@ -93,6 +93,8 @@ export interface FrenteDelDia {
   /** Personas que imputaron horas hoy a alguna tarea del frente. Es el único vínculo real. */
   personasHoy: number
   hhHoy: number
+  /** Parte de `hhHoy` es reparto de asistencia entre participantes del avance: se rotula «calculado». */
+  hhCalculada: boolean
   /**
    * Alguien cargó HOY un parte contra alguna tarea del frente (`ultimo_parte`).
    *
@@ -121,7 +123,9 @@ export function frentesDelDia(
   const porId = new Map(actividades.map((a) => [a.actividad_id, a]))
   const personasPorActividad = new Map<string, Set<string>>()
   const horasPorActividad = new Map<string, number>()
+  const calculadas = new Set<string>()
   for (const h of hh) {
+    if (h.calculada) calculadas.add(h.actividad_id)
     const s = personasPorActividad.get(h.actividad_id) ?? new Set<string>()
     s.add(h.persona_id)
     personasPorActividad.set(h.actividad_id, s)
@@ -152,6 +156,7 @@ export function frentesDelDia(
         abiertas.map((t) => ({ fin_plan: t.fin_plan, fin_real: t.fin_real })), hoy),
       personasHoy: gente.size,
       hhHoy: Math.round(hhHoy * 100) / 100,
+      hhCalculada: tareas.some((t) => calculadas.has(t.actividad_id)),
       // `ultimo_parte` llega como fecha o como marca de tiempo según la vista: se compara por los
       // diez primeros caracteres, que es el día. Comparar la cadena entera daba siempre `false`.
       parteHoy: tareas.some((t) => t.ultimo_parte?.slice(0, 10) === hoy),

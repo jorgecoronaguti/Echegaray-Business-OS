@@ -46,9 +46,10 @@ import {
   getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
-  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
+  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas,
   getRegistrosHH,
 } from '@/features/obras/services/personalService'
+import { getActividadHHConParticipacion, getPersonasDeHoyConParticipacion } from '@/features/obras/services/participacionService'
 import {
   archivarActividad, archivarObra, crearImpedimento, editarObra, liberarImpedimento, sellarBaseline,
 } from '@/features/obras/services/actions'
@@ -217,7 +218,8 @@ export default async function ObraPage({
     necesita.equipo || esParte ? getRegistrosHH(supabase, obraId) : null,
     // Plan contra real por actividad: la publica Personal. El cronograma dejó de pedirla el 24/08
     // junto con el panel de la actividad — la 07 dibuja plazo, y las HH son de Personal.
-    necesita.personal ? getActividadHH(supabase, obraId) : null,
+    // Con los participantes del avance APARTE de lo cargado (dueño, 02/10/2026).
+    necesita.personal ? getActividadHHConParticipacion(supabase, obraId, hoyISO) : null,
     necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
     necesita.partes ? getPartes(supabase, obraId) : null,
@@ -235,7 +237,7 @@ export default async function ObraPage({
     // dependen de ese puente.
     vista === 'operacion' ? getOperacionObra(supabase, obraId) : null,
     // PERSONAS del Resumen (§25): asignadas vigentes y presentes HOY. Dos conteos con cabeza.
-    vista === 'resumen' ? getPersonasDeHoy(supabase, obraId) : null,
+    vista === 'resumen' ? getPersonasDeHoyConParticipacion(supabase, obraId, hoyISO) : null,
     // LAS ÓRDENES QUE MANDÓ EL CLIENTE PARA ESTA OBRA. Viven en `cliente_orden` —bajadas de Gmail
     // al bucket— y hasta hoy sólo se veían desde `/clientes`: quien abría la ficha de la obra no
     // tenía forma de saber que la OC que la encargó estaba en el OS. La cerradura es la RLS de la

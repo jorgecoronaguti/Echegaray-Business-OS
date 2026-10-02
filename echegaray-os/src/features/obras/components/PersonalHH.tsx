@@ -57,9 +57,12 @@ const PROD_GRILLA = 'grid gap-x-5 gap-y-0.5 py-2 md:py-0 min-h-[52px] md:min-h-[
   + "md:grid-cols-[minmax(0,1fr)_72px_82px_82px_150px] md:[grid-template-areas:'n_a_p_r_x']"
 const PROD_CABECERA = "hidden md:grid gap-x-5 md:grid-cols-[minmax(0,1fr)_72px_82px_82px_150px]"
 
-export function TablaProductividad({ actividades }: { actividades: ActividadHH[] }) {
+/** Lo que agrega la participación en avances (`participacionService`): va APARTE de `hh_real`. */
+type ConParticipacion = ActividadHH & { hh_participacion?: number | null; hh_participacion_calculada?: boolean }
+
+export function TablaProductividad({ actividades }: { actividades: ConParticipacion[] }) {
   // Las que no tienen ni plan ni horas no dicen nada y ensucian la lectura de las que sí.
-  const conAlgo = actividades.filter((a) => a.hh_plan != null || a.hh_real != null)
+  const conAlgo = actividades.filter((a) => a.hh_plan != null || a.hh_real != null || a.hh_participacion != null)
   if (conAlgo.length === 0) {
     return (
       <div style={{ padding: '14px 0', fontSize: '12.5px', color: C.tintaSuave }} data-testid="productividad-vacia">
@@ -89,6 +92,12 @@ export function TablaProductividad({ actividades }: { actividades: ActividadHH[]
             </div>
             <div className="[grid-area:r]" style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', ...(a.hh_real == null ? NULO : {}) }}>
               {a.hh_real == null ? <span data-nulo="" style={{ fontWeight: 400 }}>sin imputar</span> : hh(a.hh_real)}
+              {/* Participantes del avance sin horas en `registros_hh`. Aparte: el desvío sigue midiendo lo cargado. */}
+              {a.hh_participacion != null && (
+                <span data-testid="hh-participacion" style={{ display: 'block', fontSize: 11, fontWeight: 400, color: C.tenue }}>
+                  +{hh(a.hh_participacion)} {a.hh_participacion_calculada ? 'calculado' : 'del parte'}
+                </span>
+              )}
             </div>
             {/* En el teléfono avance y plan bajan a la sublínea: son contexto, la cifra es la real. */}
             <div className="md:hidden [grid-area:s]" style={SUBLINEA}>

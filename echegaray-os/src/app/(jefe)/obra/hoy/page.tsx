@@ -22,6 +22,7 @@ import {
 import { aspectoDeFrente, dotacionDeFrente, parteDeFrente } from '@/features/jefe/services/aspecto'
 import { conObra, hrefFichaDeObra, hrefParteDiario } from '@/features/jefe/services/navegacion'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
+import { getCuadrillaDeObra } from '@/features/obras/services/participacionService'
 import { EfectivoEnHoyJefe } from '@/features/efectivo/campo/components/EfectivoEnHoyJefe'
 import { agrupar } from '@/features/administracion/services/presencia'
 
@@ -57,7 +58,7 @@ export default async function JefeHoyPage({
   if (!obra) return <SinObra error={error} />
 
   const hoy = hoyEnObra()
-  const [actividades, arbol, impedimentos, hh, presencia, esperados, acopioTaller] = await Promise.all([
+  const [actividades, arbol, impedimentos, hh, presencia, esperados, acopioTaller, cuadrilla] = await Promise.all([
     getActividades(supabase, obra.id),
     getArbol(supabase, obra.id),
     getImpedimentos(supabase, obra.id),
@@ -65,6 +66,8 @@ export default async function JefeHoyPage({
     getPresencia(supabase, hoy, obra.id),
     getEsperados(supabase, obra.id),
     leerAcopioDeObra(supabase, obra.id),
+    // La cuadrilla del día: asignados MÁS quien participó hoy de un avance de la obra (dueño, 02/10).
+    getCuadrillaDeObra(supabase, obra.id, hoy, hoy),
   ])
 
   const grupos = agrupar(presencia.data ?? [], esperados.data ?? [])
@@ -76,10 +79,12 @@ export default async function JefeHoyPage({
   })
   const frentes = frentesAbiertos(frentesDelDia(arbol.data ?? [], actividades.data ?? [], hh.data ?? [], hoy))
   const resumen = resumenDeFrentes(frentes)
-  const asignados = (esperados.data ?? []).length
+  // «Sin registrar» sigue mirando sólo a los asignados: el que vino de otra obra a una tarea marca
+  // donde está asignado, y contarlo acá como faltante sería una alarma falsa.
+  const asignados = (cuadrilla.data ?? esperados.data ?? []).length
   const enObra = grupos.enObra.length
   const primerError = error ?? actividades.error ?? arbol.error ?? impedimentos.error
-    ?? presencia.error ?? esperados.error ?? hh.error ?? null
+    ?? presencia.error ?? esperados.error ?? hh.error ?? cuadrilla.error ?? null
 
   return (
     <>

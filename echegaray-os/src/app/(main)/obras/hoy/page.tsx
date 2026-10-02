@@ -301,7 +301,10 @@ function FilaTarea({ t, obraId }: { t: TareaEnCurso; obraId: string }) {
         </span>
       </Td>
       <Td num>{t.personasHoy}</Td>
-      <Td num>{t.hhHoy.toLocaleString('es-AR', { maximumFractionDigits: 1 })}</Td>
+      <Td num>
+        {t.hhHoy.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
+        {t.hhCalculada && <span className="block text-[11px] font-normal text-faint" data-testid="hh-calculada">calculado</span>}
+      </Td>
       <Td>{t.parteHoy ? <span className="text-pos">cargado</span> : <span className="text-faint">sin parte</span>}</Td>
       <Td num>{t.pct == null ? <span className="text-faint">sin medir</span> : `${t.pct < 100 ? Math.floor(t.pct) : Math.round(t.pct)}%`}</Td>
     </Tr>

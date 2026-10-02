@@ -11,7 +11,7 @@ import {
   avanceEsperado, avancePorFrente, causasDeAtraso, finProyectado, hhDeLaObra,
 } from '@/features/jefe/services/progreso'
 import { soloTareas } from '@/features/jefe/services/dia'
-import { getEsperados } from '@/features/administracion/services/presenciaService'
+import { getCuadrillaDeObra } from '@/features/obras/services/participacionService'
 import { registrarAvance } from '@/features/jefe/services/actionsAvance'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { semanaISO } from '@/features/jefe/services/tarea'
@@ -52,7 +52,9 @@ export default async function JefeAvancePage({
   const [actividad, pasos, plantel, arbol, partes, impedimentos] = await Promise.all([
     getActividad(supabase, actividadId),
     getPasos(supabase, actividadId),
-    getEsperados(supabase, obra.id),
+    // La cuadrilla del día, no sólo los asignados: quien ya figura hoy en un avance de la obra
+    // aparece para cargarle horas aunque esté asignado a otra (dueño, 02/10/2026).
+    getCuadrillaDeObra(supabase, obra.id, hoyEnObra(), hoyEnObra()),
     getArbol(supabase, obra.id),
     getUltimosPartes(supabase, actividadId),
     getImpedimentos(supabase, obra.id),

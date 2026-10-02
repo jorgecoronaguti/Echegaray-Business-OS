@@ -209,7 +209,7 @@ function mPersonas(obraId: string, hoy: PersonasDeHoy | null): PropsMetrica {
     return {
       ...base,
       v: String(hoy.presentes),
-      contra: `de ${hoy.asignadas} asignadas`,
+      contra: `de ${hoy.asignadas} asignadas${hoy.por_participacion ? ` +${hoy.por_participacion} por avance` : ''}`,
       sub: 'presentes hoy, por marca de asistencia',
     }
   }

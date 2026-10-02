@@ -216,7 +216,7 @@ test('las cuatro lecturas propias de Personal pasan por la matriz, no por la vis
     fuente, /vista === 'personal' \?/,
     'una lectura de Personal volvió a decidirse sola, fuera de lecturasDeVista',
   )
-  for (const lectura of ['getCausasDesvio', 'getActividadHH']) {
+  for (const lectura of ['getCausasDesvio', 'getActividadHHConParticipacion']) {
     assert.match(fuente, new RegExp(`necesita\\.personal \\? ${lectura}\\(`), `${lectura} no pasa por la matriz`)
   }
   // Asignaciones y HH también las lee el Resumen (cifras HH y Asignados, 23/09/2026): `equipo`.

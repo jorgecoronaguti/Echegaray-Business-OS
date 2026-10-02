@@ -23,6 +23,8 @@ import type { NodoArbol } from './frentes.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
 import { obrasAsignadasVigentes } from '../../../shared/utils/obraRecordada.ts'
+import { getParticipacionDeObra } from '@/features/obras/services/participacionService'
+import { hhQueAgregaLaParticipacion } from '@/features/obras/services/participacion'
 
 /** Una obra en el selector del encabezado. Sin un solo importe. */
 export interface ObraDelJefe {
@@ -318,6 +320,9 @@ export interface HHDelDia {
   actividad_id: string
   horas: number
   tipo_hora: string
+  /** La hora no la cargó nadie: es el reparto de la asistencia entre las tareas en que la persona
+   *  figura como participante (`obras/services/participacion.ts`). La pantalla lo dice. */
+  calculada?: boolean
 }
 
 export async function getHHDelDia(
@@ -328,14 +333,20 @@ export async function getHHDelDia(
     .eq('obra_canonica_id', obraId).eq('fecha', fecha)
     .not('persona_id', 'is', null).not('actividad_id', 'is', null)
   if (error) return { data: null, error: error.message }
-  return {
-    data: (data ?? []).map((h) => {
-      const f = h as Record<string, unknown>
-      return {
-        persona_id: String(f.persona_id), actividad_id: String(f.actividad_id),
-        horas: Number(f.horas ?? 0), tipo_hora: String(f.tipo_hora ?? 'normal'),
-      }
-    }),
-    error: null,
-  }
+  const cargadas: HHDelDia[] = (data ?? []).map((h) => {
+    const f = h as Record<string, unknown>
+    return {
+      persona_id: String(f.persona_id), actividad_id: String(f.actividad_id),
+      horas: Number(f.horas ?? 0), tipo_hora: String(f.tipo_hora ?? 'normal'),
+    }
+  })
+  // QUIEN PARTICIPÓ DEL AVANCE TAMBIÉN TRABAJÓ EN LA TAREA (dueño, 02/10/2026). Sólo se agrega lo que
+  // `registros_hh` no tiene: lo cargado a mano ya vino arriba y gana.
+  const part = await getParticipacionDeObra(supabase, obraId, fecha, fecha)
+  if (part.error || !part.data) return { data: null, error: part.error }
+  const agregadas: HHDelDia[] = hhQueAgregaLaParticipacion(part.data.horas, obraId).map((p) => ({
+    persona_id: p.persona_id, actividad_id: p.actividad_id, horas: p.horas ?? 0,
+    tipo_hora: 'normal', calculada: p.origen === 'calculada',
+  }))
+  return { data: [...cargadas, ...agregadas], error: null }
 }

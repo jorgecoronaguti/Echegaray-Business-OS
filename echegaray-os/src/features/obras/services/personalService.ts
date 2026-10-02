@@ -243,6 +243,8 @@ export async function getIntegrantesPorCuadrilla(
 export interface PersonasDeHoy {
   asignadas: number | null
   presentes: number | null
+  /** Participaron HOY de un avance de la obra sin estar asignados a ella (`participacionService`). */
+  por_participacion?: number
 }
 
 export async function getPersonasDeHoy(

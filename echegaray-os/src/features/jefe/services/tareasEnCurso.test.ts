@@ -23,3 +23,13 @@ test('los frentes en curso son tareas andando, no contenedores ni terminadas', (
   assert.deepEqual(filas.map((f) => [f.id, f.estado.palabra]), [['parada', 'parada'], ['b0', 'atrasada'], ['hoy', 'en curso']])
   assert.equal(filas[2].hhHoy, 8)
 })
+
+test('el participante sin horas cargadas pone a la tarea en curso y su HH sale marcada como calculada', () => {
+  const filas = tareasEnCurso([act({ actividad_id: 't' })], [
+    { persona_id: 'cargada', actividad_id: 't', horas: 4, tipo_hora: 'normal' },
+    { persona_id: 'participante', actividad_id: 't', horas: 4.5, tipo_hora: 'normal', calculada: true },
+  ], '2026-10-01')
+  assert.deepEqual([filas[0].hhHoy, filas[0].personasHoy, filas[0].hhCalculada], [8.5, 2, true])
+  const sinCalculo = tareasEnCurso([act({ actividad_id: 't' })], [{ persona_id: 'a', actividad_id: 't', horas: 4, tipo_hora: 'normal' }], '2026-10-01')
+  assert.equal(sinCalculo[0].hhCalculada, false)
+})

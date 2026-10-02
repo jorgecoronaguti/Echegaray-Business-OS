@@ -70,7 +70,11 @@ export default async function JefePersonasPage({
   const r = resumenDelDia(grupos, esperados.data ?? [])
   const cuadrillas = porCuadrilla(grupos.enObra, esperados.data ?? [])
   const hhPorPersona = new Map<string, number>()
-  for (const x of hh.data ?? []) hhPorPersona.set(x.persona_id, (hhPorPersona.get(x.persona_id) ?? 0) + x.horas)
+  const conCalculadas = new Set<string>()
+  for (const x of hh.data ?? []) {
+    hhPorPersona.set(x.persona_id, (hhPorPersona.get(x.persona_id) ?? 0) + x.horas)
+    if (x.calculada) conCalculadas.add(x.persona_id)
+  }
   const primerError = error ?? presencia.error ?? esperados.error ?? hh.error ?? null
 
   const cuenta = conteoPersonas(r.enObra, r.sinRegistrar)
@@ -216,7 +220,7 @@ export default async function JefePersonasPage({
                         {/* HH NO ES PRESENCIA. El reloj dice cuánto hace que está; las HH, cuánto se
                             imputó a una tarea. Sin imputar no es cero: nadie cargó todavía. */}
                         <span style={{ ...mono, display: 'block', fontSize: 11, color: C.faint }}>
-                          {horas == null ? 'sin imputar' : `${n1(horas)} HH`}
+                          {horas == null ? 'sin imputar' : `${n1(horas)} HH${conCalculadas.has(p.persona_id) ? ' calculado' : ''}`}
                         </span>
                       </span>
                       {enlace && (

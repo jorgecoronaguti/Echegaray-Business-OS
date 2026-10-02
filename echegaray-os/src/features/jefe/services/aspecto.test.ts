@@ -18,7 +18,7 @@ import type { FrenteDelDia } from './dia.ts'
 const frente = (p: Partial<FrenteDelDia> = {}): FrenteDelDia => ({
   frente: { id: 'f1', nombre: 'Eje 1–4', camino: '', nivel: 1, tareas: [] },
   pct: 40, medidas: 2, total: 4, abiertas: 2, atrasoDias: null,
-  personasHoy: 0, hhHoy: 0, parteHoy: false, impedimentos: 0, sinCuadrilla: false,
+  personasHoy: 0, hhHoy: 0, hhCalculada: false, parteHoy: false, impedimentos: 0, sinCuadrilla: false,
   ...p,
 })
 

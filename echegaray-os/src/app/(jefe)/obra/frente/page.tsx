@@ -178,7 +178,7 @@ export default async function JefeFrentePage({
           <Azulejo
             icono="cuadrilla" rotulo="HH HOY" tamanoValor={17} colorIcono={C.faint}
             valor={f.hhHoy === 0 ? '—' : n1(f.hhHoy)}
-            detalle={f.personasHoy === 0 ? 'nadie imputó' : `${f.personasHoy} personas`}
+            detalle={f.personasHoy === 0 ? 'nadie imputó' : `${f.personasHoy} personas${f.hhCalculada ? ' · calculado' : ''}`}
           />
           <Azulejo
             icono="fecha" rotulo="ATRASO" tamanoValor={17} colorIcono={C.faint}

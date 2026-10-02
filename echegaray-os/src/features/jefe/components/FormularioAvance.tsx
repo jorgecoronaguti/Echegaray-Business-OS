@@ -365,7 +365,7 @@ export function FormularioAvance({
                   </span>
                 </span>
                 <input
-                  name={`hh_${p.id}`}
+                  name={`horas_${p.id}`}
                   inputMode="decimal"
                   value={gente[p.id] ?? ''}
                   onChange={(e) => setGente({ ...gente, [p.id]: e.target.value })}

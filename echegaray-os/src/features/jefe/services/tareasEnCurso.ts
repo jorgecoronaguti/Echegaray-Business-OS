@@ -14,6 +14,8 @@ export interface TareaEnCurso {
   pct: number | null
   personasHoy: number
   hhHoy: number
+  /** Parte de `hhHoy` es reparto de asistencia entre participantes, no carga: la pantalla lo marca. */
+  hhCalculada: boolean
   parteHoy: boolean
   estado: { palabra: string; tono: 'neg' | 'warn' | 'ink' | 'faint' }
 }
@@ -21,7 +23,9 @@ export interface TareaEnCurso {
 export function tareasEnCurso(actividades: readonly ActividadDelJefe[], hh: readonly HHDelDia[], hoy: string): TareaEnCurso[] {
   const personas = new Map<string, Set<string>>()
   const horas = new Map<string, number>()
+  const calculadas = new Set<string>()
   for (const h of hh) {
+    if (h.calculada) calculadas.add(h.actividad_id)
     const s = personas.get(h.actividad_id) ?? new Set<string>()
     s.add(h.persona_id)
     personas.set(h.actividad_id, s)
@@ -49,7 +53,7 @@ export function tareasEnCurso(actividades: readonly ActividadDelJefe[], hh: read
             : { palabra: 'sin horas hoy', tono: 'faint' as const }
       return {
         id: a.actividad_id, nombre: a.nombre, cuadrilla: a.cuadrilla_prevista, pct: a.avance_pct,
-        personasHoy, hhHoy: horas.get(a.actividad_id) ?? 0, parteHoy: a.ultimo_parte?.slice(0, 10) === hoy, estado,
+        personasHoy, hhHoy: horas.get(a.actividad_id) ?? 0, hhCalculada: calculadas.has(a.actividad_id), parteHoy: a.ultimo_parte?.slice(0, 10) === hoy, estado,
       }
     })
     .sort((x, y) => ORDEN[x.estado.tono] - ORDEN[y.estado.tono] || x.nombre.localeCompare(y.nombre))
