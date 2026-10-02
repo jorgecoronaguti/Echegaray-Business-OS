@@ -136,29 +136,8 @@ const Celda = ({ valor, testid, fuerte }: { valor: number | null; testid: string
 )
 
 /** Un ajuste del saldo: el texto ocupa Total y Pagado, el importe cae en la columna Saldo, debajo de lo que corrige. */
-const Ajuste = ({ testid, children, valor }: { testid: string; children: ReactNode; valor: string }) => (
-  <div data-testid={testid} className={`${GRILLA} py-1`}>
-    <span className="col-span-3 text-[11.5px] leading-4 text-muted">{children}</span>
-    <span className={`${NUMERO} text-[11.5px] leading-4 text-ink-soft`}>{valor}</span>
-  </div>
-)
-
-// UNA NOTA VISIBLE, NUNCA UN title (auditor 30/09/2026): es lo que hace que cada fila cierre a la vista. Con los
-// importes en la columna Saldo, «Total − Pagado − descontado + cobrado de más = Saldo» se lee de arriba abajo.
-function AjustesDelSaldo({ c }: { c: ConciliacionDePlata }) {
-  const lineas: ReactNode[] = []
-  for (const [k, otro] of [['banco', 'efectivo'], ['efectivo', 'banco']] as const) {
-    if (c[k].descontado > 0) lineas.push(<Ajuste key={`d-${k}`} testid={`pie-descuento-${k}`} valor={`−${pesos(c[k].descontado)}`}>{`Saldo ${k}: se descuenta lo pagado de más en ${otro}`}</Ajuste>)
-    if (c[k].sobrepasado > 0) lineas.push(<Ajuste key={`s-${k}`} testid={`pie-sobrepasado-${k}`} valor={`+${pesos(c[k].sobrepasado)}`}>{`Saldo ${k}: cobraron de más por ${k}`}</Ajuste>)
-  }
-  if (lineas.length === 0) return null
-  return (
-    <div className="mt-2 border-t border-line-hairline pt-1">
-      <span className={ROTULO}>Ajustes del saldo</span>
-      {lineas}
-    </div>
-  )
-}
+// SIN «AJUSTES DEL SALDO» (dueño, 02/10/2026: «eso realmente es una aclaración … que confunde»): el pie muestra los
+// saldos y el saldo redondeado, sin renglones que expliquen compensaciones entre banco y efectivo.
 
 /** El saldo con el efectivo en billetes: un renglón más del cuadro, con su cifra en la columna Saldo. */
 function SaldoRedondeado({ t }: { t: TotalesDeJornaleros }) {
@@ -201,7 +180,6 @@ function DetalleDePlata({ t, c }: { t: TotalesDeJornaleros; c: ConciliacionDePla
         <Celda valor={c.total.pagado} testid="pie-pagado" fuerte />
         <Celda valor={c.total.saldo} testid="pie-saldo" fuerte />
       </div>
-      <AjustesDelSaldo c={c} />
       <SaldoRedondeado t={t} />
     </div>
   )

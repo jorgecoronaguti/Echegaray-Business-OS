@@ -89,7 +89,6 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
           </a>
           <button type="button" onClick={otro} style={botonClaroGrande}>Emitir otro</button>
         </div>
-        <ConDuplicado valor={duplicado} cambiar={setDuplicado} testid="recibo-con-duplicado" />
       </aside>
     )
   }
@@ -152,6 +151,8 @@ export function PanelEmitirRecibo({ opciones, obras, cerrarHref }: {
           ))}
         </select>
       </Campo>
+
+      <ConDuplicado valor={duplicado} cambiar={setDuplicado} testid="recibo-con-duplicado" />
 
       <div style={cajaConfirmar} data-testid="recibo-al-emitir">
         <div style={{ fontSize: '12.5px', fontWeight: 600 }}>El papel dice</div>

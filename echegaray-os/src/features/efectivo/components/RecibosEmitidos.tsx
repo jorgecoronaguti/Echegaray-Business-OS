@@ -11,31 +11,28 @@ import { pesos } from '../logica/entregas'
 import { fechaImpresa, urlDelReciboPago } from '../logica/reciboPago'
 import { anularReciboPagoAction } from '../services/reciboPagoAcciones'
 import type { ReciboEmitido } from '../services/reciboPagoDatos'
-import { ConDuplicado } from './ConDuplicado'
 import { ErrorPanel } from './Piezas'
 import { MONO, V, botonClaro, botonPeligro, campo, eyebrow } from './estilo'
 
 export function RecibosEmitidos({ recibos }: { recibos: ReciboEmitido[] }) {
   // UNA CASILLA PARA TODA LA LISTA: decide cómo sale «Volver a imprimir» de cualquiera (una copia por defecto).
-  const [duplicado, setDuplicado] = useState(false)
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="recibos-emitidos">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={eyebrow}>Recibos emitidos</div>
-        {recibos.length > 0 && <ConDuplicado valor={duplicado} cambiar={setDuplicado} testid="recibos-con-duplicado" />}
       </div>
       {recibos.length === 0 ? (
         <div style={{ fontSize: '13px', color: V.apagado }}>Todavía no se emitió ningún recibo de pago.</div>
       ) : (
         <div style={{ border: `1px solid ${V.linea}`, borderRadius: 10, overflow: 'hidden' }}>
-          {recibos.map((r, i) => <Renglon key={r.id} r={r} primero={i === 0} duplicado={duplicado} />)}
+          {recibos.map((r, i) => <Renglon key={r.id} r={r} primero={i === 0} />)}
         </div>
       )}
     </section>
   )
 }
 
-function Renglon({ r, primero, duplicado }: { r: ReciboEmitido; primero: boolean; duplicado: boolean }) {
+function Renglon({ r, primero }: { r: ReciboEmitido; primero: boolean }) {
   const router = useRouter()
   const [anulando, setAnulando] = useState(false)
   const [motivo, setMotivo] = useState('')
@@ -59,7 +56,7 @@ function Renglon({ r, primero, duplicado }: { r: ReciboEmitido; primero: boolean
         <span style={{ fontFamily: MONO, ...tachado }}>{pesos(r.importe)}</span>
         <span style={{ color: V.tintaSuave, flex: '1 1 180px', minWidth: 0, ...tachado }}>{r.concepto}</span>
         <span style={{ display: 'inline-flex', gap: 8, marginLeft: 'auto' }}>
-          <a href={urlDelReciboPago(r.id, duplicado)} target="_blank" rel="noopener" style={botonClaro} data-testid="recibo-reimprimir">
+          <a href={urlDelReciboPago(r.id, false)} target="_blank" rel="noopener" style={botonClaro} data-testid="recibo-reimprimir">
             Volver a imprimir
           </a>
           {!r.anulado && !anulando && (
