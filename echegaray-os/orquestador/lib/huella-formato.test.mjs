@@ -94,8 +94,10 @@ test('el formato que dejé sigue igual: se re-aplica y se vuelve a sellar', asyn
   const r = await filtrarFormato(cliente(lecturaCon(negrita)), 'FILE', [PINTAR], id2tab)
   assert.deepEqual(r.requests, [PINTAR])
   await r.sellar()
-  assert.equal(estado.guardadas.length, 1)
-  assert.deepEqual(estado.guardadas[0].slice(0, 4), ['FILE', TAB, 'A1:B2', TIPO.CELDA])
+  // Desde el 01/10 viaja además UN upsert con los sellos por celda (tipo `celda1`); éste mira el de rango.
+  const deRango = estado.guardadas.filter((p) => p[3] === TIPO.CELDA)
+  assert.equal(deRango.length, 1)
+  assert.deepEqual(deRango[0].slice(0, 4), ['FILE', TAB, 'A1:B2', TIPO.CELDA])
 })
 
 test('primera pasada sobre una pestaña sin huellas de formato: aplica y siembra', async () => {
