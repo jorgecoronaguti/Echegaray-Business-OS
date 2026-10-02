@@ -79,7 +79,7 @@ export function Columnas({ meses, compacto = false }: {
             tramos: m.partes.filter((p) => p.nombre).map((p) => ({ nombre: p.nombre!, monto: p.monto ?? null })),
             sellos: [...(m.sellos?.map((t) => t.largo) ?? []), ...(m.notasDetalle ?? [])], sinDato: m.nota,
           })
-          const posicion = i < meses.length / 3 ? 'inicio' : i >= (meses.length * 2) / 3 ? 'fin' : 'medio'
+          const posicion = i < meses.length / 2 ? 'inicio' : 'fin'
           return (
           <ColumnaConDetalle key={m.mes} detalle={detalle} posicion={posicion}
             colores={m.partes.filter((p) => p.nombre).map((p) => p.clase.split(' ')[0])}>

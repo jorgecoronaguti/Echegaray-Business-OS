@@ -13,53 +13,60 @@
 //
 // ═══ DÓNDE SE DIBUJA ═══
 //
-// Dentro de la caja del gráfico (arriba, sobre la columna), no fuera: la caja puede desplazarse de costado
-// y `overflow-x: auto` recorta lo que sobresale hacia arriba. Las primeras columnas alinean el panel a la
-// izquierda, las últimas a la derecha y las del medio lo centran, para que no se corte contra el borde.
-// Tapa parte de las barras vecinas mientras está abierto; se cierra al sacar el mouse o tocar otra cosa.
+// Dentro de la caja del gráfico y al COSTADO de su columna: las de la primera mitad lo abren a la derecha, las
+// de la segunda a la izquierda. No tapa la cifra ni la barra propia; sí parte de las vecinas mientras está
+// abierto. Se cierra al sacar el mouse, tocar fuera o con Esc. La regla de apertura vive en
+// `aperturaDeColumna.ts`.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { DetalleDeColumna } from '../services/detalleColumna'
+import { abreConTecla, siguienteApertura, type EventoDeColumna } from '../services/aperturaDeColumna'
 
 export function ColumnaConDetalle({ detalle, colores, posicion, children }: {
   detalle: DetalleDeColumna
   /** La clase de fondo de cada tramo, en el orden de `detalle.filas`: el cuadradito que une fila y barra. */
   colores: string[]
   /** Dónde cae la columna en la fila, para no cortar el panel contra el borde. */
-  posicion: 'inicio' | 'medio' | 'fin'
+  posicion: 'inicio' | 'fin'
   /** La barra: valor, tramos y rótulo del mes. */
   children: ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
+  const evento = (e: EventoDeColumna) => setAbierto((a) => siguienteApertura(a, e))
   const raiz = useRef<HTMLDivElement>(null)
   // TOCAR FUERA CIERRA: sin hover no hay «mouseleave» que lo haga.
   useEffect(() => {
     if (!abierto) return
-    const fuera = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) setAbierto(false) }
+    const fuera = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) evento('fuera') }
     document.addEventListener('pointerdown', fuera)
     return () => document.removeEventListener('pointerdown', fuera)
   }, [abierto])
-  const lado = posicion === 'inicio' ? 'left-0' : posicion === 'fin' ? 'right-0' : 'left-1/2 -translate-x-1/2'
+  // AL COSTADO DE SU PROPIA COLUMNA, hacia el lado con más lugar: así no tapa la cifra ni la barra que se
+  // está mirando (QA producción: arriba-izquierda las tapaba). Tapa las vecinas más lejanas, no la propia.
+  const lado = posicion === 'inicio' ? 'left-full ml-2' : 'right-full mr-2'
   return (
     <div ref={raiz} className="relative flex h-full min-w-0 flex-col items-center justify-end gap-2"
-      onMouseEnter={() => setAbierto(true)} onMouseLeave={() => setAbierto(false)}>
+      onMouseEnter={() => evento('entra')} onMouseLeave={() => evento('sale')}>
       <div role="button" tabIndex={0} aria-label={detalle.aria} aria-expanded={abierto}
-        onClick={() => setAbierto((a) => !a)} onFocus={() => setAbierto(true)} onBlur={() => setAbierto(false)}
-        onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false) }}
+        onClick={() => evento('toque')} onFocus={() => evento('foco')} onBlur={() => evento('desenfoco')}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') evento('esc')
+          else if (abreConTecla(e.key)) { e.preventDefault(); evento('tecla_abrir') }
+        }}
         className="flex h-full w-full min-w-0 cursor-default flex-col items-center justify-end gap-2 rounded-[2px] outline-none focus-visible:ring-1 focus-visible:ring-line-strong">
         {children}
       </div>
       {abierto ? (
-        <div role="tooltip" className={`pointer-events-none absolute top-0 z-20 w-[200px] rounded-[4px] border border-line bg-canvas p-3 text-[11.5px] shadow-card ${lado}`}>
+        <div role="tooltip" className={`pointer-events-none absolute top-0 z-20 w-[160px] rounded-[4px] border border-line bg-canvas p-3 text-[11.5px] shadow-card lg:w-[208px] ${lado}`}>
           <div className="flex items-baseline justify-between gap-3">
             <span className="font-medium text-ink">{detalle.titulo}</span>
-            <span className="font-semibold tabular-nums text-ink">{detalle.total ?? 'sin medir'}</span>
+            <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-ink">{detalle.total ?? 'sin medir'}</span>
           </div>
           {detalle.filas.length ? (
             <ul className="mt-2 flex flex-col gap-1">
               {detalle.filas.map((f, i) => (
                 <li key={f.nombre} className="flex items-baseline justify-between gap-3 text-muted">
-                  <span className="flex items-center gap-2"><span aria-hidden className={`h-2 w-2 shrink-0 rounded-[1px] ${colores[i] ?? ''}`} />{f.nombre}</span><span className="tabular-nums text-ink-soft">{f.importe}</span>
+                  <span className="flex min-w-0 items-center gap-2"><span aria-hidden className={`h-2 w-2 shrink-0 rounded-[1px] ${colores[i] ?? ''}`} />{f.nombre}</span><span className="shrink-0 whitespace-nowrap tabular-nums text-ink-soft">{f.importe}</span>
                 </li>
               ))}
             </ul>
