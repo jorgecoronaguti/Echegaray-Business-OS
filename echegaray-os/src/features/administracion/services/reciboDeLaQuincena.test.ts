@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarRecibo, conceptosDisponibles, desglosarBancoSellado, eleccionInicial, ROTULO } from './reciboDeLaQuincena.ts'
+import { efectivoMostrado } from './efectivoRedondeado.ts'
+import { efectivoDelRedondeo } from './liquidacionPorTipo.ts'
 import { conArrastre, conArrastres } from './liquidacionArrastre.ts'
 import { sellarRecibo } from './reciboEmitido.ts'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
@@ -191,10 +193,10 @@ test('con arrastre: un renglón con el neto del recibo del estudio y OTRO con el
   assert.match(delSaldo.rotulo, /saldo del recibo de la 1ª quincena de septiembre/)
   assert.equal(delRecibo.importe! + delSaldo.importe!, banco.importe, 'el subtotal del banco es la suma de los dos')
   assert.equal(efectivo.rotulo, ROTULO.efectivo)
-  assert.equal(efectivo.importe, 380257.52)
+  assert.equal(efectivo.importe, 380000)
   assert.match(efectivo.detalle ?? '', /669801\.32/)
   assert.match(efectivo.detalle ?? '', /289543\.80/)
-  assert.equal(r.total, TOTAL, 'lo pagado no cambia: sólo cómo se muestra')
+  assert.equal(r.total, 669543.8, 'el efectivo se muestra redondeado; el banco no cambia')
   assert.equal(r.estimado, false)
 })
 
@@ -205,8 +207,8 @@ test('el papel nunca dice blanco ni negro, ni siquiera en el desglose', () => {
 
 test('sin arrastre: el depósito en banco ES el neto del estudio y no se agrega ningún renglón', () => {
   const r = armarRecibo(lineaDelEstudio('recibo', null), eleccion, pesosAR)
-  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [[ROTULO.banco, NETO_DEL_ESTUDIO], [ROTULO.efectivo, EFECTIVO_SIN_ARRASTRE]])
-  assert.equal(r.total, TOTAL)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [[ROTULO.banco, NETO_DEL_ESTUDIO], [ROTULO.efectivo, 435000]])
+  assert.equal(r.total, 669963.32)
 })
 
 test('sin el recibo del estudio el banco va rotulado ESTIMADO y el recibo no es sellable', () => {
@@ -228,8 +230,8 @@ test('la quincena CERRADA desglosa igual que la abierta: mismos renglones, mismo
   const a = armarRecibo(abierta, eleccion, pesosAR)
   const c = armarRecibo(cerrada, eleccion, pesosAR)
   assert.deepEqual(c.medios.map((m) => [m.rotulo, m.importe]), a.medios.map((m) => [m.rotulo, m.importe]))
-  assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380257.52])
-  assert.equal(c.total, TOTAL)
+  assert.deepEqual(c.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380000])
+  assert.equal(c.total, 669543.8)
   assert.equal(a.total, c.total)
 })
 
@@ -250,8 +252,40 @@ test('de punta a punta: `conArrastres` en la cerrada carga `arrastreIncluido`, n
   assert.equal(l.enEfectivo, cerradaOriginal.enEfectivo)
   assert.deepEqual(l.pago, cerradaOriginal.pago)
   const r = armarRecibo(l, eleccion, pesosAR)
-  assert.deepEqual(r.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380257.52])
-  assert.equal(r.total, TOTAL)
+  assert.deepEqual(r.medios.map((m) => m.importe), [289543.8, 234963.32, 54580.48, 380000])
+  assert.equal(r.total, 669543.8)
+})
+
+// ═══ EL EFECTIVO DEL RECIBO ES EL «EFECT. RED.» DEL CUADRO (dueño, 02/10/2026) ═══
+//
+// *«necesito que los recibos muestren el efectivo redondeado»*. No hay redondeo nuevo: el renglón toma el MISMO valor
+// que la celda «Efect. red.» (`efectivoMostrado`, sobre `efectivoDelRedondeo`): el guardado por el dueño, o el sugerido.
+test('el renglón Efectivo es el «Efect. red.» del cuadro, un número redondo, y el Total suma lo que se ve', () => {
+  const l = lineaDelEstudio('recibo', ARRASTRE)
+  const delCuadro = efectivoMostrado({ efectivoRedondeado: null, enEfectivo: efectivoDelRedondeo({ linea: l, celdas: [] } as never) }).valor
+  const r = armarRecibo(l, eleccion, pesosAR)
+  const ef = r.medios.find((m) => m.rotulo === ROTULO.efectivo)!
+  assert.equal(ef.importe, delCuadro, 'misma fuente que la celda del cuadro')
+  assert.equal(ef.importe! % 1000, 0, 'bajo «redondeado» no puede haber centavos')
+  assert.equal(ef.importe, 380000)
+  assert.match(ef.detalle ?? '', /380257\.52.*se paga redondeado/)
+  assert.equal(r.total, r.medios.find((m) => m.rotulo === ROTULO.banco)!.importe! + ef.importe!, 'Total = banco + efectivo mostrado')
+})
+
+test('el efectivo redondeado GUARDADO por el dueño manda, aunque difiera del sugerido', () => {
+  const l = { ...lineaDelEstudio('recibo', ARRASTRE), efectivoRedondeado: 381000 } as unknown as LineaConOverrides
+  const r = armarRecibo(l, eleccion, pesosAR)
+  assert.equal(r.medios.find((m) => m.rotulo === ROTULO.efectivo)!.importe, 381000)
+  assert.equal(r.total, 289543.8 + 381000)
+})
+
+test('sin efectivo no aparece nada de redondeo', () => {
+  const base = { personaId: 'p3', porBanco: 100000, enEfectivo: 0, sueldo: null, pago: pagoDeLaLinea({ banco: 100000, negro: 0 }) } as unknown as LineaConOverrides
+  const r = armarRecibo(base, eleccion, pesosAR)
+  const ef = r.medios.find((m) => m.rotulo === ROTULO.efectivo)!
+  assert.equal(ef.importe, 0)
+  assert.equal(ef.detalle, undefined)
+  assert.equal(r.total, 100000)
 })
 
 test('con banco 0 nada se rotula ESTIMADO', () => {

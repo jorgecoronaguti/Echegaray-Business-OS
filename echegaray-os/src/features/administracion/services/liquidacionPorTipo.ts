@@ -118,8 +118,13 @@ export function pagoDelMensual(l: LineaDelMensual): PagoDelMensual {
  * `aPagarEfectivo` y el pie `enEfectivo`: con un adelanto cargado los dos números no coincidían.
  */
 export function efectivoDelRedondeo(f: FilaDelEspejo): number | null {
-  if (tipoDeLiquidacion(f) === 'mensual') return pagoDelMensual(f.linea).aPagarEfectivo
-  return f.linea.pago.aPagarEfectivo ?? f.linea.enEfectivo
+  return efectivoParaRedondear(f.linea, tipoDeLiquidacion(f) === 'mensual')
+}
+
+/** La misma cuenta sobre la línea sola: la usa el recibo, que no tiene la fila entera. Una sola definición. */
+export function efectivoParaRedondear(l: FilaDelEspejo['linea'], mensual: boolean): number | null {
+  if (mensual) return pagoDelMensual(l).aPagarEfectivo
+  return l.pago.aPagarEfectivo ?? l.enEfectivo
 }
 
 const redondeoDe = (filas: readonly FilaDelEspejo[]): number =>

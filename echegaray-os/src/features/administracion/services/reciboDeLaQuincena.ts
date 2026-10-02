@@ -17,7 +17,8 @@
 // «sin dato» no se imprime como $ 0.
 
 import type { LineaConOverrides } from './liquidacionOverrides'
-import { pagoDelMensual } from './liquidacionPorTipo.ts'
+import { efectivoParaRedondear, pagoDelMensual } from './liquidacionPorTipo.ts'
+import { efectivoMostrado } from './efectivoRedondeado.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
@@ -236,8 +237,21 @@ function netoDelEstudio(l: LineaConOverrides): number | null {
 }
 
 /** La cuenta del efectivo a la vista: lo que cobra menos lo que sale por banco. */
-const cuentaDelEfectivo = (banco: number, efectivo: number, fmt: (n: number) => string): string =>
-  `total ${fmt(r2(banco + efectivo))} − depósito en banco ${fmt(banco)}`
+const cuentaDelEfectivo = (banco: number | null, efectivo: number, fmt: (n: number) => string, redondeado = false): string =>
+  `${banco == null ? `efectivo ${fmt(efectivo)}` : `total ${fmt(r2(banco + efectivo))} − depósito en banco ${fmt(banco)} = ${fmt(efectivo)}`}${redondeado ? ' · se paga redondeado' : ''}`
+
+/**
+ * EL EFECTIVO QUE ENTREGA EL DUEÑO: el «Efect. red.» del cuadro, sin una cuenta nueva (`efectivoMostrado` sobre
+ * `efectivoParaRedondear`, las mismas funciones de la celda): el guardado, o el sugerido al $1.000. Sólo cuando el
+ * efectivo del papel es el que queda por pagar (nada pagado aparte): si ya hubo pagos, el redondeado del cuadro es de
+ * OTRA cifra (lo que resta) y mezclarlo con el total exacto sería inventar. `null` = se muestra el exacto.
+ */
+function efectivoRedondeadoDelCuadro(l: LineaConOverrides, mensual: boolean, exacto: number | null): number | null {
+  if (exacto == null || !(exacto > 0)) return null
+  const aRedondear = efectivoParaRedondear(l, mensual)
+  if (aRedondear == null || r2(aRedondear) !== r2(exacto)) return null
+  return efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado ?? null, enEfectivo: aRedondear }).valor
+}
 
 /**
  * ¿El neto del banco es estimado? Sólo lo es cuando la línea lo dice (`origenNeto` conceptos/estimado): un neto
@@ -302,13 +316,16 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)
     if (estimadoAca) estimado = true
-    const efectivoAbierto = clave === 'efectivo' && e.banco && restaDelBanco(l) != null && m.banco.total != null && x.total != null
+    // Con «ya pagado / resta» a la vista los renglones de abajo son exactos: el redondeado se queda afuera.
+    const red = clave === 'efectivo' && !(e.pagado && x.pagado != null) ? efectivoRedondeadoDelCuadro(l, mensual, x.total) : null
+    const importe = red ?? x.total
+    const abrirCuenta = clave === 'efectivo' && x.total != null && (red != null || (e.banco && restaDelBanco(l) != null && m.banco.total != null))
     renglones.push({
-      rotulo, importe: x.total,
+      rotulo, importe,
       ...(estimadoAca ? { detalle: 'ESTIMADO: todavía no hay recibo del estudio' } : {}),
-      ...(efectivoAbierto ? { detalle: cuentaDelEfectivo(m.banco.total as number, x.total as number, fmt) } : {}),
+      ...(abrirCuenta ? { detalle: cuentaDelEfectivo(e.banco ? m.banco.total : null, x.total as number, fmt, red != null) } : {}),
     })
-    elegidos.push(x.total)
+    elegidos.push(importe)
     if (clave === 'banco' && x.total != null) {
       const estudio = netoDelEstudio(l)
       const neto = estudio ?? r2(x.total - resta)
