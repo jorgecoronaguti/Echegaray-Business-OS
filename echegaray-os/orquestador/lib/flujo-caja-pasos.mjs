@@ -67,6 +67,11 @@ export const PASOS = [
   // EFECTIVO A RENDIR (22/09/2026): la réplica de entregas y devoluciones. ANTES que `_CAJA_ANEXO`, que
   // la lee por fórmula: si el anexo nuevo corriera sin la pestaña, el efectivo de CAJA daría #REF!.
   ['efectivo-raw-pestana.mjs', '_EFECTIVO_RAW — entregas y devoluciones de efectivo a rendir', ['_EFECTIVO_RAW']],
+  // HABERES MARCADOS EN LA WEB (02/10/2026): lo pagado por banco y en efectivo en Liquidación de horas, un
+  // pago por fila. El generador es ensayo por defecto: el pipeline le pasa --aplicar. Ninguna fórmula la lee
+  // todavía — CAJA y los Cash Flow siguen por Nómina «Pagado el» hasta que el dueño apruebe el enganche
+  // (leer las dos a la vez restaría la misma quincena dos veces).
+  ['haberes-pagados-raw-pestana.mjs', '_HABERES_PAGADOS_RAW — los pagos de haberes marcados en la web', ['_HABERES_PAGADOS_RAW'], ['--aplicar']],
   ['arca-raw-pestana.mjs', '_ARCA_RAW — los comprobantes de ARCA dentro del Sheet', ['_ARCA_RAW']],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // ═══ EL CRUCE CONTRA ARCA NUNCA ESTUVO EN ESTA LISTA (14/08/2026) ═══
