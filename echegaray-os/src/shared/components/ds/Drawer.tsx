@@ -25,7 +25,7 @@ import { useEffect, type ReactNode } from 'react'
 // fondo sí se tiñe: no hay nada visible detrás que proteger.
 
 export function Drawer({
-  titulo, subtitulo, onCerrar, ancho = 400, pie, children, testid = 'drawer',
+  titulo, subtitulo, onCerrar, ancho = 400, pie, children, testid = 'drawer', barraEstable = false,
 }: {
   titulo: ReactNode
   subtitulo?: ReactNode
@@ -36,6 +36,13 @@ export function Drawer({
   pie?: ReactNode
   children: ReactNode
   testid?: string
+  /**
+   * EL LUGAR DE LA BARRA DE SCROLL SE RESERVA SIEMPRE (02/10/2026). Para un contenido que se ESCALA al
+   * ancho del panel: sin esto, la barra aparece, le saca 15 px al ancho, el contenido se achica, deja de
+   * desbordar, la barra se va, el ancho vuelve y el contenido crece otra vez — un bucle en cada cuadro.
+   * Pasó con la vista previa de recibos entre 791 y 800 px de alto de ventana: el panel «se tildaba».
+   */
+  barraEstable?: boolean
 }) {
   // ESCAPE CIERRA. Se escucha en `keydown` del documento porque el foco puede estar en cualquier
   // campo del panel o incluso fuera de él, y un `onKeyDown` en el `aside` sólo lo vería si el foco
@@ -79,7 +86,8 @@ export function Drawer({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-testid="drawer-cuerpo"
+          style={barraEstable ? { scrollbarGutter: 'stable' } : undefined}>{children}</div>
 
         {pie && (
           <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3" data-testid={`${testid}-pie`}>

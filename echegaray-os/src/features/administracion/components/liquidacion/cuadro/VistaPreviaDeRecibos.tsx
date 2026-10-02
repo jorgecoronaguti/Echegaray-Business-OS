@@ -90,6 +90,8 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   }
 
   // LA HOJA ENTRA ENTERA EN EL ANCHO DEL PANEL, sea el costado del escritorio o la pantalla del teléfono.
+  // El ancho que se mide NO puede depender del alto de lo que se dibuja con él: por eso el panel reserva el
+  // lugar de la barra de scroll (`barraEstable`). Sin eso el zoom y la barra se persiguen sin parar.
   useLayoutEffect(() => {
     const el = caja.current
     if (!el) return
@@ -177,7 +179,7 @@ export function VistaPreviaDeRecibos({ filas, marcados, quincena, onCerrar }: {
   const nada = lote.listos.length === 0
   return (
     <Drawer testid="vista-previa-recibos" titulo={textoDelLote(lote.listos.length)} subtitulo="A4 horizontal · 4 por hoja"
-      ancho={760} onCerrar={onCerrar}
+      ancho={760} onCerrar={onCerrar} barraEstable
       pie={(
         <>
           <button type="button" onClick={imprimir} disabled={Boolean(tarea) || nada} data-testid="recibos-lote-imprimir"

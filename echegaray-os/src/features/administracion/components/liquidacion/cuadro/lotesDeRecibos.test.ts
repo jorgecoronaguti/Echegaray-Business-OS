@@ -182,3 +182,16 @@ test('el panel de una persona y la vista previa del lote ofrecen EL MISMO checkl
   assert.match(previa, /armarLote\(filas, marcados, quincena, pesos, rotuloCategoria, cambios\)/)
   assert.deepEqual(OPCIONES_DEL_RECIBO.map((o) => o.clave), ['horas', 'horasRecibo', 'horasFuera', 'banco', 'efectivo', 'pagado'])
 })
+
+test('la vista previa escala la hoja al ancho de un panel que RESERVA el lugar de la barra de scroll', () => {
+  // 02/10/2026, reproducido en producción con barras reales: entre 791 y 800 px de alto de ventana el zoom de
+  // la hoja cambiaba en cada cuadro (0,683 ↔ 0,669; 90 cambios en 1,5 s) porque la barra aparecía y se iba.
+  // El ancho que se mide no puede depender del alto de lo que se dibuja con él.
+  const aqui = new URL('.', import.meta.url).pathname
+  const previa = readFileSync(`${aqui}VistaPreviaDeRecibos.tsx`, 'utf8')
+  const drawer = readFileSync(`${aqui}../../../../../shared/components/ds/Drawer.tsx`, 'utf8')
+  assert.match(previa, /zoom: escala/, 'la hoja sigue escalándose al ancho medido')
+  assert.match(previa, /<Drawer[^>]*\bbarraEstable\b/, 'la vista previa pide la barra estable')
+  assert.match(drawer, /barraEstable \? \{ scrollbarGutter: 'stable' \}/, 'y el panel la reserva en el cuerpo que scrollea')
+  assert.match(drawer, /overflow-y-auto[^\n]*data-testid="drawer-cuerpo"/, 'en el mismo nodo que tiene el scroll')
+})
