@@ -69,6 +69,8 @@ const FUERA_DEL_MODULO: Record<string, string> = {
     'mapa id → puesto para auditar el legajo: mirar a todos es lo que la auditoría tiene que hacer',
   'features/administracion/services/lecturasCompartidasDeQuincena.ts':
     'quién es de un subcontrato: un mapa por id, no una lista de personas',
+  'features/obras/services/participacionService.ts':
+    'nombre y cuadrilla de quienes participaron de un avance, pedidos por id: ERP Obras, no una lista del módulo Personal',
   'features/analiticas/services/analiticasService.ts':
     'mapa id → nombre de Analíticas, que es otro módulo y cuenta cabezas de la empresa entera',
 }
