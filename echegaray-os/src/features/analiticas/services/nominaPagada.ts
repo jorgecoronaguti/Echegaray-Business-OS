@@ -1,5 +1,6 @@
 import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.ts'
 // LO QUE SE LE PAGÓ A LA GENTE EN EL AÑO, EN BLANCO Y EN NEGRO, SIN CARGAS SOCIALES.
+// (Desde el 02/10/2026 es la lectura SECUNDARIA de la solapa Nómina: el costo de MO vive en `costoNomina.ts`.)
 //
 // Dueño, 22/09/2026: *«la sección "nómina" del módulo de analíticas no es de utilidad así como está;
 // tiene que salir lo pagado en conceptos negro y blanco de todo el año, sin cargas sociales»*.
@@ -57,8 +58,10 @@ import { claveDeOrden, nombreDePersona } from '../../../shared/personas/nombre.t
 //   NEGRO  (mes en curso)  `pagado_efectivo` — la plata en mano.
 //
 // ESO ES UNA INFERENCIA, NO EL MISMO BLANCO DE LOS MESES CERRADOS: el reparto sale del CANAL, no del
-// recibo del estudio, que para 09/2026 todavía no cargó ninguna línea. La fila lo marca (`medida`) y
-// la pantalla lo escribe. Por la misma razón el mes en curso NO se suma al total del año: son dos
+// recibo del estudio: los recibos de Q1-09 y Q2-09 YA están cargados (verificado el 02/10/2026), pero
+// la quincena sigue abierta y su `cobra` sin sellar, así que el neto no se cruza con lo cobrado. La fila
+// lo marca (`medida`) y la pantalla lo escribe. El COSTO de ese mes no pasa por acá: sale de
+// `costoNomina.ts`, que sí usa esos recibos. Por la misma razón el mes en curso NO se suma al total del año: son dos
 // criterios distintos y mezclarlos rompería la serie que ya está verificada.
 //
 // LAS LIQUIDACIONES FINALES QUEDAN AFUERA (período `FINAL-MM/AAAA`): no son quincena y el dueño ya

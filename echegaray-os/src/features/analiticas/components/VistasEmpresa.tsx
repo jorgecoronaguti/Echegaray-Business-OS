@@ -7,7 +7,8 @@
 import Link from 'next/link'
 import { millones, pctEntero } from '../services/formato'
 import { bandasDeCobranza, cifrasCobranza, cobranza, legajos, type FilaCobranza } from '../services/empresa'
-import type { MesPagado, NominaPagada, PersonaPagada } from '../services/nominaPagada'
+import type { NominaPagada, PersonaPagada } from '../services/nominaPagada'
+import type { LineaDeNomina, NominaConCosto } from '../services/costoNomina'
 import { aUrl, type Filtros } from '../services/filtros'
 import type { ClaveBanda } from '../../clientes/services/reglasCobranza'
 import { documentosDeCobranzas } from '../../clientes/services/documentoDeCobranza'
@@ -42,7 +43,9 @@ import { Torta } from './Torta'
  * Límite conocido: `overflow-x: auto` computa la `y` en `auto` por spec, así que algo que sobresalga
  * POR ARRIBA de la grilla se recortaría. Hoy el contenido mide exactamente el alto de la caja.
  */
-export function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
+export function Columnas({ meses }: {
+  meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string; sellos?: string[] }[]
+}) {
   const cruza = new Set(meses.map((m) => m.mes.slice(0, 4))).size > 1
   return (
     <div className="overflow-x-auto lg:overflow-visible">
@@ -54,6 +57,7 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
               {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
             </div>
             <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
+            {m.sellos?.filter(Boolean).map((t) => <div key={t} className={`-mt-1 whitespace-nowrap text-[10px] leading-[14px] ${t === 'parcial' ? 'text-warn' : 'text-muted'}`}>{t}</div>)}
           </div>
         ))}
       </div>
@@ -62,19 +66,22 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
 }
 
 /**
- * NÓMINA — LO PAGADO A LA GENTE EN EL AÑO, EN BLANCO Y EN NEGRO, SIN CARGAS SOCIALES.
+ * NÓMINA — EL COSTO DE MANO DE OBRA POR MES Y, AL LADO, LO PAGADO A LA GENTE.
  *
- * Dueño, 22/09/2026: *«la sección "nómina" no es de utilidad así como está; tiene que salir lo pagado
- * en conceptos negro y blanco de todo el año, sin cargas sociales»*. Antes mostraba el COSTO de
- * nómina de `nomina_por_mes` —jornales + cargas, y desde agosto un factor 2,04 en vez de pesos—: ni
- * separaba blanco de negro, ni sacaba las cargas, ni llegaba a hoy.
+ * Dueño, 02/10/2026: *«eso no está leyendo bien los costos de MO de personal»*. La solapa medía lo PAGADO
+ * sin cargas (pedido del 22/09/2026) y por eso quedaba 31 % abajo del costo de MO de Obras: le faltaban
+ * contribuciones, FCL y ART. Ahora el número principal y la barra son el COSTO —el de `costo_mo_quincena`,
+ * el mismo de Obras, con su etiqueta «real» o «estimado» por mes— y lo pagado en blanco y en negro sigue,
+ * como lectura secundaria rotulada «pagado» (lo pedido por el dueño no se quita). La diferencia entre las
+ * dos —cargas, FCL y ART— tiene cifra propia para que el total cierre a la vista.
  *
- * La cuenta entera vive en `nominaPagada.ts` y se prueba sin base; acá no se suma ni un peso. El año
- * es CALENDARIO y fijo: el control de período no aplica a esta vista (`razonNoAplica`), porque «todo
- * el año» fue el pedido y una serie recortada a un mes no se lee contra el resto.
+ * Ninguna suma se hace acá: el costo sale de `costoNomina.ts` y lo pagado de `nominaPagada.ts`, y ambos
+ * se prueban sin base. El año es CALENDARIO y fijo: el control de período no aplica a esta vista.
  */
-export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
+export function VistaNomina({ pagado, costo, personas, filtros, mes, hoy }: {
   pagado: NominaPagada | null
+  /** El costo de MO por mes junto a lo pagado. `null` = la función de costo no se pudo leer. */
+  costo: NominaConCosto | null
   personas: unknown[] | null
   filtros: Filtros
   /** El mes que abre el detalle por persona, ya elegido por la página. */
@@ -84,38 +91,49 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
 }) {
   if (!pagado) return <SinLectura que="la liquidación de sueldos" />
   const l = personas ? legajos(personas) : null
+  // Con sellos bajo el mes la barra mide 130 y no 170, para que la caja siga midiendo 220.
   const { total, meses, avisos, enCurso } = pagado
   const alDia = `${hoy.slice(8, 10)}/${hoy.slice(5, 7)}`
-  const max = Math.max(1, ...meses.map((m) => m.total ?? 0))
+  // SIN LA FUNCIÓN DE COSTO la tabla sigue mostrando lo pagado: perder el costo no borra lo que ya se leía.
+  const lineas: LineaDeNomina[] = costo?.lineas ?? meses.map((m) => ({ mes: m.mes, costo: null, pagado: m, diferencia: null }))
+  const max = Math.max(1, ...lineas.map((x) => x.costo?.costo ?? 0))
   const detalle = mes ? pagado.porPersona.get(mes) ?? [] : []
   const maxPersona = Math.max(1, ...detalle.map((p) => p.total))
+  const anio = costo?.costoAnio
+  const sinTarifa = lineas.reduce((n, x) => n + (x.costo?.sinDato ?? 0), 0)
   return (
     <>
-      <Cabecera titulo="Nómina" detalle={`año ${pagado.anio} · lo pagado a la gente, sin cargas sociales`}
+      <Cabecera titulo="Nómina" detalle={`año ${pagado.anio} · costo de mano de obra y lo pagado a la gente`}
         cifras={[
-          { rotulo: 'pagado en el año', valor: millones(total?.total), falta: 'sin quincena cerrada',
-            nota: total ? `${total.meses} ${total.meses === 1 ? 'mes' : 'meses'} con quincena cerrada` : null },
-          { rotulo: 'en blanco', valor: millones(total?.blanco), nota: 'neto de los recibos' },
-          { rotulo: 'en negro', valor: millones(total?.negro), nota: 'lo que el recibo no paga' },
-          { rotulo: 'en negro', valor: pctEntero(pagado.pctNegro), falta: '—', tono: (pagado.pctNegro ?? 0) > 0.5 ? 'warn' : undefined,
-            nota: 'del total pagado' },
-          // EL MES EN CURSO NO ENTRA ACÁ: la cabecera tiene CINCO columnas fijas por diseño y, sobre
-          // todo, se mide con otra vara. Va en su propia sección, abajo, con su fecha de corte.
+          { rotulo: 'costo de mano de obra', valor: millones(anio?.total), falta: 'sin leer',
+            nota: anio ? `${anio.meses} ${anio.meses === 1 ? 'mes completo' : 'meses completos'} · ${anio.estimado > 0 ? `${millones(anio.estimado)} estimado` : 'todo real'}` : null },
+          { rotulo: 'pagado en blanco', valor: millones(total?.blanco), falta: 'sin quincena cerrada', nota: 'neto de los recibos' },
+          { rotulo: 'pagado en negro', valor: millones(total?.negro), falta: '—', tono: (pagado.pctNegro ?? 0) > 0.5 ? 'warn' : undefined,
+            nota: pagado.pctNegro == null ? null : `${pctEntero(pagado.pctNegro)} del pagado` },
+          { rotulo: 'cargas, FCL y ART', valor: millones(costo?.diferenciaAnio?.total), falta: '—',
+            nota: costo?.diferenciaAnio ? `costo menos pagado · ${costo.diferenciaAnio.meses} meses` : null },
+          // EL MES EN CURSO NO ENTRA ACÁ: la cabecera tiene CINCO columnas fijas por diseño.
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia' },
         ]} />
-      <Seccion titulo="Lo pagado, mes a mes" arriba="pt-8"
-        aclaracion="neto de recibo y plata en mano; ninguna carga social, ninguna liquidación final"
-        detalle="Blanco: el neto del recibo del estudio (recibo_sueldo_linea). Negro: lo cobrado en la quincena cerrada menos ese neto. EL MES EN CURSO se mide distinto porque su quincena todavía no cerró y `cobra` vale 0 hasta el cierre: ahí blanco es lo depositado (pagado_banco) y negro la plata en mano (pagado_efectivo), el reparto sale del canal de pago y no del recibo, y por eso no se suma al total del año. Las contribuciones patronales, el F931 y las cargas sociales no entran en ninguna de las dos."
-        leyenda={[{ color: 'bg-serie-1', rotulo: 'blanco (recibo)' }, { color: 'bg-serie-2', rotulo: 'negro (en mano)' }]}>
-        <Columnas meses={meses.map((m) => (m.total == null ? { mes: m.mes, valor: null, nota: 'sin medir', partes: [] } : {
-          mes: m.mes, valor: millones(m.total),
-          // El mes en curso se dibuja apagado: es la misma serie, medida con otra vara y a medio mes.
-          color: m.medida === 'registro_por_canal' ? 'text-muted' : undefined,
-          partes: [
-            { alto: ((m.negro ?? 0) / max) * 170, clase: m.medida === 'registro_por_canal' ? 'bg-serie-2 opacity-60' : 'bg-serie-2' },
-            { alto: ((m.blanco ?? 0) / max) * 170, clase: m.medida === 'registro_por_canal' ? 'bg-serie-1 opacity-60' : 'bg-serie-1' },
-          ],
-        }))} />
+      <Seccion titulo="El costo, mes a mes" arriba="pt-8"
+        aclaracion="mano de obra con cargas, FCL y ART; cada mes dice si es real o estimado"
+        detalle="Sale de costo_mo_quincena, la misma función que usa Obras. Real: costo total del empleador que figura en el recibo (desde julio). Estimado: bruto del recibo por un factor, porque los recibos de enero a junio no traen contribuciones cargadas. Blanco: lo que cuesta la parte registrada; negro: lo cobrado en mano. Un mes incompleto va atenuado y dice «parcial». Las personas sin tarifa no suman y no valen 0."
+        leyenda={[{ color: 'bg-serie-1', rotulo: 'blanco (con cargas)' }, { color: 'bg-serie-2', rotulo: 'negro (en mano)' }]}>
+        {costo == null ? <SinLectura que="el costo de mano de obra por quincena" /> : (
+          <Columnas meses={lineas.map((x) => {
+            const c = x.costo
+            if (c?.costo == null) return { mes: x.mes, valor: null, nota: 'sin medir', partes: [] }
+            const apagado = c.parcial ? ' opacity-60' : ''
+            return {
+              mes: x.mes, valor: millones(c.costo), color: c.parcial ? 'text-muted' : undefined,
+              sellos: [...(c.parcial ? ['parcial'] : []), c.etiqueta === 'en parte estimado' ? 'mixto' : c.etiqueta ?? ''],
+              partes: [
+                { alto: (c.negro / max) * 130, clase: `bg-serie-2${apagado}` },
+                { alto: (c.blanco / max) * 130, clase: `bg-serie-1${apagado}` },
+              ],
+            }
+          })} />
+        )}
       </Seccion>
       {/* ═══ EL MES EN CURSO TIENE SECCIÓN PROPIA PORQUE TIENE OTRA VARA ═══
           Dueño, 22/09/2026: la sección «no muestra nada en el mes en curso». Mostraba «en curso» y
@@ -124,7 +142,7 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
           sería sumar dos definiciones de «pagado» en una cifra sola. */}
       {enCurso ? (
         <Seccion titulo={`El mes en curso · ${rotuloMes(enCurso.mes, true)}`} filo
-          aclaracion={`al ${alDia} · mes incompleto: ${enCurso.quincenasAbiertas} ${enCurso.quincenasAbiertas === 1 ? 'quincena abierta' : 'quincenas abiertas'}, ninguna cerrada`}
+          aclaracion={`al ${alDia} · pagado a medias: ${enCurso.quincenasAbiertas} ${enCurso.quincenasAbiertas === 1 ? 'quincena abierta' : 'quincenas abiertas'}, ninguna cerrada`}
           detalle="La quincena abierta no selló `cobra` todavía, así que este mes no se puede medir como los cerrados. Lo que se publica es lo ENTREGADO y registrado por canal: blanco = depositado (pagado_banco), negro = plata en mano (pagado_efectivo). El reparto sale del canal de pago y no del recibo del estudio, que para este mes no tiene ninguna línea cargada. Por eso no se suma al total del año.">
           <FilaDeCifras cifras={[
             { rotulo: 'entregado', valor: millones(enCurso.total), falta: '—', nota: 'no suma al año' },
@@ -139,11 +157,12 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
       <Seccion titulo="Cada mes, en números" filo
         aclaracion={mes ? 'el mes elegido abre el detalle de abajo' : 'ningún mes con quincena cerrada todavía'}>
         <div className="flex flex-col">
-          <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] ${ENCABEZADO}`}>
-            <div>Mes</div><div className="text-right">Blanco</div><div className="text-right">Negro</div>
-            <div className="text-right">Total</div><div className="text-right">% negro</div>
+          <div className={`hidden h-9 items-center gap-4 border-b border-line lg:grid lg:grid-cols-[110px_repeat(5,minmax(0,1fr))_72px] ${ENCABEZADO}`}>
+            <div>Mes</div><div className="text-right">Costo MO</div><div className="text-right">Pagado blanco</div>
+            <div className="text-right">Pagado negro</div><div className="text-right">Pagado total</div>
+            <div className="text-right">Cargas, FCL, ART</div><div className="text-right">% negro</div>
           </div>
-          {meses.map((m) => <FilaMes key={m.mes} m={m} elegido={m.mes === mes} href={aUrl(filtros, { mes: m.mes })} alDia={alDia} />)}
+          {lineas.map((x) => <FilaMes key={x.mes} x={x} elegido={x.mes === mes} href={aUrl(filtros, { mes: x.mes })} alDia={alDia} />)}
         </div>
       </Seccion>
       {mes ? (
@@ -176,7 +195,7 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
             porque="líneas abiertas sin pago registrado" destraba="no es «cobró 0»: no consta el pago" />
           <Hueco que={l ? `${l.sinCategoria} de ${l.plantel}` : null} falta="sin registrar"
             porque="legajos sin categoría" destraba="sin categoría no hay jornal" />
-          <Hueco que="0" porque="cargas sociales incluidas" destraba="ninguna cifra las lleva adentro" />
+          <Hueco que={String(sinTarifa)} falta="ninguna" porque="personas sin tarifa en el costo" destraba="no suman al costo ni valen 0" />
         </div>
       </Seccion>
     </>
@@ -184,40 +203,40 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
 }
 
 /**
- * Una fila del cuadro mensual.
- *
- * El mes EN CURSO publica lo entregado y dice con qué vara —«al 22/09 · lo entregado, no la quincena
- * cerrada»— y cuánta gente quedó sin pago registrado. Un mes que no se pudo medir con NINGUNA de las
- * dos varas sigue sin publicar cifra: «sin medir», nunca un 0 que se lee como «no se le pagó a nadie».
+ * Una fila del cuadro mensual: el costo primero (con su sello real/estimado y «parcial» si el mes está
+ * incompleto) y lo pagado después, con su rótulo. La diferencia sólo existe donde las dos medidas son
+ * comparables; en un mes pagado «por canal» no se resta (sería llamar «cargas» a lo que falta registrar).
+ * Un mes que no se pudo medir sigue sin publicar cifra: «sin medir», nunca un 0.
  */
-function FilaMes({ m, elegido, href, alDia }: { m: MesPagado; elegido: boolean; href: string; alDia: string }) {
-  const pct = m.total ? m.negro! / m.total : null
-  const enCurso = m.medida === 'registro_por_canal'
+function FilaMes({ x, elegido, href, alDia }: { x: LineaDeNomina; elegido: boolean; href: string; alDia: string }) {
+  const c = x.costo
+  const m = x.pagado
+  const pct = m?.total ? (m.negro ?? 0) / m.total : null
+  const porCanal = m?.medida === 'registro_por_canal'
+  const sello = c?.costo == null ? null : c.etiqueta === 'en parte estimado' ? 'en parte estimado' : c.etiqueta
   return (
     <Link href={href} scroll={false}
-      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 hover:bg-surface-quiet lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] lg:gap-6 lg:py-3 ${elegido ? 'bg-surface-quiet' : ''}`}>
-      {/* EN EL TELÉFONO SÓLO EL MES Y EL TOTAL, y el reparto baja una línea con su palabra al lado:
-          cinco columnas de números sin encabezado —el encabezado es `lg:grid`— son cinco cifras que
-          nadie puede nombrar. El dueño y los jefes entran desde el teléfono. */}
+      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 hover:bg-surface-quiet lg:grid-cols-[110px_repeat(5,minmax(0,1fr))_72px] lg:gap-4 lg:py-3 ${elegido ? 'bg-surface-quiet' : ''}`}>
+      {/* EN EL TELÉFONO SÓLO EL MES Y EL COSTO, y lo pagado baja una línea con su palabra al lado:
+          cifras sin encabezado —el encabezado es `lg:grid`— son cifras que nadie puede nombrar. */}
       <div className="flex min-w-0 flex-col gap-0.5">
-        {/* LA COLUMNA DEL MES MIDE 110 px Y EL SELLO NO ENTRA AL LADO (QA visual, 22/09/2026): sin
-            `flex-wrap` el sello empujaba el año a un renglón propio y la única fila cortada era la
-            del mes en curso, que es la primera que el dueño mira. El mes no se parte; el sello baja. */}
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span className="whitespace-nowrap text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
-          {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
-          {enCurso ? <span className="whitespace-nowrap text-[11px] text-warn">en curso · al {alDia}</span> : null}
+          <span className="whitespace-nowrap text-[13px] font-medium text-ink">{rotuloMes(x.mes, true)}</span>
+          {c?.parcial ? <span className="whitespace-nowrap text-[11px] text-warn">parcial</span> : null}
+          {sello ? <span className="whitespace-nowrap text-[11px] text-muted">{sello}</span> : null}
         </div>
-        {enCurso ? (
-          <span className="text-[11px] leading-normal text-muted">lo entregado · no suma al año</span>
-        ) : null}
+        {c && c.sinDato > 0 ? <span className="text-[11px] text-warn">{c.sinDato} sin tarifa: no suman</span> : null}
+        {porCanal ? <span className="text-[11px] leading-normal text-muted">pagado al {alDia}: lo registrado por canal</span> : null}
         <span className="text-[11px] tabular-nums text-muted lg:hidden">
-          {m.total == null ? 'sin medir' : `blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
+          {m?.total == null ? 'pagado: sin medir' : `pagado ${millones(m.total)} · blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
+          {x.diferencia != null ? ` · cargas, FCL y ART ${millones(x.diferencia)}` : ''}
         </span>
       </div>
-      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.blanco)} falta="sin medir" /></div>
-      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.negro)} falta="" /></div>
-      <div className="text-right text-[13px] font-semibold tabular-nums text-ink"><Valor v={millones(m.total)} falta="" /></div>
+      <div className={`text-right text-[13px] font-semibold tabular-nums ${c?.parcial ? 'text-muted' : 'text-ink'}`}><Valor v={millones(c?.costo)} falta="sin medir" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m?.blanco)} falta="sin medir" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m?.negro)} falta="" /></div>
+      <div className={`hidden text-right text-[13px] tabular-nums lg:block ${porCanal ? 'text-muted' : 'text-ink-soft'}`}><Valor v={millones(m?.total)} falta="" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(x.diferencia)} falta="—" /></div>
       <div className={`hidden text-right text-[13px] tabular-nums lg:block ${(pct ?? 0) > 0.5 ? 'text-warn' : 'text-muted'}`}><Valor v={pctEntero(pct)} falta="" /></div>
     </Link>
   )

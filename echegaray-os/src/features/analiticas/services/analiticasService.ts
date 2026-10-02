@@ -13,6 +13,7 @@ import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
 import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
 import { pagoDeNomina, type FilaLinea, type FilaPersona, type FilaQuincena, type FilaRecibo, type NominaPagada } from './nominaPagada'
+import { costoPorMes, leerCostoNomina, nominaConCosto, type NominaConCosto } from './costoNomina'
 import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
 import { totalesDeuda, type TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 
@@ -48,6 +49,8 @@ export interface DatosAnaliticas {
    * pudo leer la liquidación (la puerta de sueldos es `liquida_sueldos()`, no `ve_economia()`).
    */
   nominaPagada: NominaPagada | null
+  /** El costo de MO por mes (el de Obras) junto a lo pagado. `null` = no se pudo leer la función de costo. */
+  nominaCosto: NominaConCosto | null
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null
@@ -114,14 +117,14 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
-  const [egresos, nominaPagada, personas, documentos, cajaSheet, deuda] = await Promise.all([
+  const [egresos, nomina, personas, documentos, cajaSheet, deuda] = await Promise.all([
     // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
     // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
     f.vista === 'caja' ? leerEgresosDeCaja(supabase, rango) : null,
-    // LA NÓMINA ES LO PAGADO A LA GENTE, NO EL COSTO DE NÓMINA (dueño, 22/09/2026). Se arma en
-    // `nominaPagada.ts` sobre la liquidación sellada y los recibos del estudio: `nomina_por_mes` ya no
-    // se lee — mezclaba cargas sociales y publicaba un factor en vez de pesos desde agosto.
-    f.vista === 'nomina' ? leerNominaPagada(supabase, Number(hoy.slice(0, 4))) : null,
+    // LA NÓMINA MUESTRA EL COSTO DE MO (el de Obras, 02/10/2026) Y, AL LADO, LO PAGADO A LA GENTE (pedido del
+    // 22/09/2026). Lo pagado se arma en `nominaPagada.ts`; el costo sale de `costo_mo_quincena`.
+    // `nomina_por_mes` no se lee: mezclaba cargas y publicaba un factor en vez de pesos desde agosto.
+    f.vista === 'nomina' ? leerNominaPagada(supabase, Number(hoy.slice(0, 4)), hoy) : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
     // mismo recorte por emisión que la cuenta corriente. Se lee de `cliente_cobranza`, la vista canónica
@@ -145,7 +148,8 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.filas ?? null,
     criterioEgresos: egresos?.criterio ?? 'percibido',
-    nominaPagada: nominaPagada ?? null,
+    nominaPagada: nomina?.pagado ?? null,
+    nominaCosto: nomina?.costo ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
     documentosParaAgenda: documentosParaAgenda ?? null,
@@ -227,7 +231,7 @@ export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: s
 }
 
 /**
- * LO PAGADO A LA GENTE EN EL AÑO: la liquidación sellada y los recibos del estudio, sin una sola carga social.
+ * LO PAGADO A LA GENTE EN EL AÑO (la liquidación sellada y los recibos del estudio, sin cargas) Y SU COSTO DE MO.
  *
  * ═══ POR QUÉ `null` CUANDO NO HAY QUINCENAS ═══
  *
@@ -242,7 +246,9 @@ export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: s
  * Paginado: `liquidacion_linea` va por 348 filas en 2026 y crece ~25 por quincena; el corte de 1.000 de
  * PostgREST llega en 2028 sin avisar.
  */
-export async function leerNominaPagada(supabase: SupabaseClient, anio: number): Promise<NominaPagada | null> {
+export async function leerNominaPagada(
+  supabase: SupabaseClient, anio: number, hoy: string,
+): Promise<{ pagado: NominaPagada; costo: NominaConCosto | null } | null> {
   const [quincenas, lineas, recibos, personas] = await Promise.all([
     supabase.from('liquidacion_quincena').select('id, desde, estado'),
     leerPaginado((a, b) => supabase.from('liquidacion_linea')
@@ -253,13 +259,18 @@ export async function leerNominaPagada(supabase: SupabaseClient, anio: number): 
     supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar'),
   ])
   if (quincenas.error || !quincenas.data?.length || !lineas || !recibos) return null
-  return pagoDeNomina({
+  const filasQuincena = quincenas.data as FilaQuincena[]
+  const pagado = pagoDeNomina({
     anio,
-    quincenas: quincenas.data as FilaQuincena[],
+    quincenas: filasQuincena,
     lineas: lineas as FilaLinea[],
     recibos: recibos as FilaRecibo[],
     personas: (personas.data ?? []) as FilaPersona[],
   })
+  // EL COSTO, POR LAS MISMAS QUINCENAS QUE EXISTEN EN LIQUIDACIÓN: un mes sin quincena no se inventa.
+  const desdes = filasQuincena.filter((q) => q.desde?.slice(0, 4) === String(anio)).map((q) => q.desde)
+  const costos = costoPorMes(await leerCostoNomina(supabase, desdes), hoy)
+  return { pagado, costo: costos.length ? nominaConCosto(costos, pagado.meses) : null }
 }
 
 /** «No existe la relación» en PostgREST (schema cache) o en Postgres: la migración del espejo no está aplicada. */
