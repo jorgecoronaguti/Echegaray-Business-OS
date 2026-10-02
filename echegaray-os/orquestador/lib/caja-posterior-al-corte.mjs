@@ -730,10 +730,11 @@ const ventanaPagada = (corte, j, esConteo = false) => (esConteo
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  * @returns {string} fórmula, separador es-AR
  */
-export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
-  // Planilla para las quincenas anteriores al corte + web desde el corte: una fuente por quincena.
+export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR, sello = arqueo) {
+  // Planilla para las quincenas anteriores al corte + web desde el corte: una fuente por quincena. La web
+  // compara contra el ancla CRUDA (`sello`): ella sí sabe la hora (ver `despuesDelSello`, caja-haberes-web.mjs).
   return `(SUMPRODUCT(${ventanaPagada(arqueo, j, true)}*(N(${j.adelanto})+N(${j.recibo})))`
-    + `+${formulaHaberesWebEfectivo(arqueo, 'obreros')})`
+    + `+${formulaHaberesWebEfectivo(sello, 'obreros')})`
 }
 
 /**
@@ -795,12 +796,13 @@ export function formulaOficinaBancoPosteriores(corte, o = OFI) {
  * NÚCLEO PURO: los sueldos de administración pagados en EFECTIVO después del arqueo.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  */
-export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
+export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI, sello = arqueo) {
   // POR DIFERENCIA, no por una segunda columna: lo que no salió por transferencia salió en billetes.
   // Así los dos canales suman SIEMPRE lo pagado y no puede existir un mes donde las partes no cierren.
   // ISNUMBER exige que el canal esté DECLARADO: con la celda vacía no se asume "todo efectivo".
+  // `sello`: la web compara contra el ancla CRUDA (ver `despuesDelSello` en caja-haberes-web.mjs).
   return `(SUMPRODUCT(${ventanaOfi(arqueo, o, true)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
-    + `+${formulaHaberesWebEfectivo(arqueo, 'oficina')})`
+    + `+${formulaHaberesWebEfectivo(sello, 'oficina')})`
 }
 
 /**
@@ -1000,18 +1002,18 @@ function maxComprasEfectivo(arqueo, c) {
 }
 
 /** 3/6 · la última QUINCENA pagada en efectivo. Granularidad quincenal: es la fecha del lote. */
-function maxJornalesEfectivo(arqueo, j = JOR) {
+function maxJornalesEfectivo(arqueo, j = JOR, sello = arqueo) {
   const f = fechaNumerica(j.pagado)
   return `MAX(${maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
-    + `*${antesDelCorte(j.desde)}*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)};${maxHaberesWebEfectivo(arqueo, 'obreros')})`
+    + `*${antesDelCorte(j.desde)}*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)};${maxHaberesWebEfectivo(sello, 'obreros')})`
 }
 
 /** 4/6 · el último MES de OFICINA pagado en efectivo. `ISNUMBER(banco)` es el mismo requisito que el
  *  importe: sin el canal declarado no se resta de ningún lado, así que tampoco fecha nada. */
-function maxOficinaEfectivo(arqueo, o = OFI) {
+function maxOficinaEfectivo(arqueo, o = OFI, sello = arqueo) {
   const f = fechaNumerica(o.pago)
   return `MAX(${maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
-    + `*${antesDelCorte(o.pago)}*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)};${maxHaberesWebEfectivo(arqueo, 'oficina')})`
+    + `*${antesDelCorte(o.pago)}*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)};${maxHaberesWebEfectivo(sello, 'oficina')})`
 }
 
 /** 5/6 · la última EXTRACCIÓN del banco (entra al cajón: ventana exclusiva, igual que su importe). */
@@ -1074,8 +1076,9 @@ export function formulaFechaUltimoEfectivo(arqueo, { conteo = `INT(${arqueo})`, 
     conteo,
     maxCobrosEfectivo(arqueo, cob),
     maxComprasEfectivo(salida, cmp),
-    maxJornalesEfectivo(salida),
-    maxOficinaEfectivo(salida),
+    // La web, contra el ancla CRUDA: ver `despuesDelSello` en caja-haberes-web.mjs.
+    maxJornalesEfectivo(salida, JOR, arqueo),
+    maxOficinaEfectivo(salida, OFI, arqueo),
     maxExtraccionesEfectivo(arqueo),
     maxDepositosEfectivo(salida),
     maxEntregasARendir(salida),

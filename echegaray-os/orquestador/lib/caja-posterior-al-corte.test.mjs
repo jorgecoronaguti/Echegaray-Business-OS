@@ -269,7 +269,9 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
   // ventana de todos se corre junta y lo viejo colapsa. Si un canal quedara anclado a otra celda,
   // este número lo delata.
   // + 2 desde el 02/10/2026: los haberes en efectivo de la web (obreros y oficina) miran el MISMO ancla.
-  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 10)
+  // Y cada uno la cita 6 veces desde «de conteo a conteo» (¿el sello tiene hora? ×2, «Anotado el» > sello,
+  // día > día del sello): 8 de los otros canales + 2 × 6 = 20.
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 20)
 })
 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {

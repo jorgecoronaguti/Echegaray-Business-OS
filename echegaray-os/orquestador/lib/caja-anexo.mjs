@@ -161,10 +161,12 @@ export const HISTORICO_EFECTIVO_BASE = [
     fn: (A, m) => `=-(${formulaComprasEfectivoPosteriores(A, m.cmp)})`,
     origen: 'Compras en efectivo: el MONTO PAGADO, parcial o total' },
   { rotulo: '      · (−) jornales pagados en efectivo — desde el conteo', entra: false,
-    fn: (A) => `=-(${formulaJornalesEfectivoPosteriores(A)})`,
+    // `sello` = el ancla CRUDA: la parte de la web compara contra el instante del sello, no contra el día de
+    // gracia (de conteo a conteo, 02/10/2026 — ver `despuesDelSello` en caja-haberes-web.mjs).
+    fn: (A, m, sello) => `=-(${formulaJornalesEfectivoPosteriores(A, undefined, sello)})`,
     origen: 'Jornales por Quincena, columnas Adelanto y Total recibo' },
   { rotulo: '      · (−) sueldos de OFICINA en efectivo — desde el conteo', entra: false,
-    fn: (A) => `=-(${formulaOficinaEfectivoPosteriores(A)})`,
+    fn: (A, m, sello) => `=-(${formulaOficinaEfectivoPosteriores(A, undefined, sello)})`,
     origen: 'Oficina: lo pagado menos lo que salió por banco' },
   // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
   // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
@@ -240,7 +242,7 @@ export function historicoEfectivo(ancla = '0', mapas = {}) {
   // vez del día de gracia — ver el comentario en `HISTORICO_EFECTIVO_BASE`.
   return HISTORICO_EFECTIVO_BASE.map((l) => {
     const A = l.horaPropia ? ancla : (l.entra ? ancla : desdeElDia)
-    return { ...l, formula: l.fn(A, mapas), diagnosticoFormula: l.diagnostico ? l.diagnostico(A) : '' }
+    return { ...l, formula: l.fn(A, mapas, ancla), diagnosticoFormula: l.diagnostico ? l.diagnostico(A) : '' }
   })
 }
 

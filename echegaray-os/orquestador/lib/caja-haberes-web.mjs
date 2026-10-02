@@ -30,12 +30,11 @@
 // `B2` de la réplica, escrito por su generador desde `CORTE_QUINCENA` (lib/haberes-pagados.mjs), con rótulo en A2.
 // Si la celda no es una fecha (una réplica vieja, anterior a este enganche) el corte cae en 31/12/9999: la web no
 // suma nada y la planilla suma todo — el comportamiento de antes, sin duplicar en ningún sentido.
-import { ventanaDelConteo } from './caja-ancla-por-instante.mjs'
 
 /** La réplica: hoja, primera fila de datos, columnas (el contrato de `haberes-pagados-raw-pestana.mjs`). */
 export const HAB = Object.freeze({
   hoja: "'_HABERES_PAGADOS_RAW'", desde: 4, corte: '$B$2',
-  fecha: 'A', quincena: 'C', grupo: 'E', medio: 'G', importe: 'I',
+  fecha: 'A', quincena: 'C', grupo: 'E', medio: 'G', importe: 'I', anotado: 'K',
 })
 
 /** Los grupos de la web que tienen su propio renglón en CAJA. `obreros` = todo lo que no es oficina. */
@@ -58,15 +57,33 @@ function filasDesdeElCorte(medio, grupo, h) {
 
 const importe = (h) => `IF(ISNUMBER(${col(h, h.importe)});${col(h, h.importe)};0)`
 
+// ═══ DE CONTEO A CONTEO: UN PAGO ANOTADO ANTES DEL SELLO YA ESTÁ ADENTRO DEL CONTEO (02/10/2026) ═══
+//
+// Esto usaba `ventanaDelConteo`, la de las demás salidas: inclusiva por DÍA (fecha ≥ día del conteo). El dueño
+// marcó $6.080.000 de haberes en efectivo en la web a la mañana, contó el cajón a las ~15:15 ($26.946.000, con
+// esos billetes ya afuera) y el anexo publicó $20.866.000: el mismo pago restado otra vez. La web, a diferencia
+// de Compras o la planilla, SÍ guarda la hora (`Anotado el`, columna K de la réplica), así que el empate del
+// mismo día no hace falta resolverlo a ciegas:
+//   · sello con hora y pago con «Anotado el» → resta sólo si se anotó DESPUÉS del sello;
+//   · si falta cualquiera de las dos horas → resta sólo si el pago es de un día POSTERIOR al del conteo.
+// Es el criterio de `efectivo_caja_saldo` en Postgres (lo del día del conteo queda adentro): las dos caras dicen
+// lo mismo. Recibe el ANCLA CRUDA (el instante del sello), no el día de gracia de `anclaDeSalida`: con el día
+// de gracia, un sello sin hora haría restar justamente lo del día del conteo.
+const despuesDelSello = (sello, h) => {
+  const f = col(h, h.fecha); const k = col(h, h.anotado)
+  const conHora = `ISNUMBER(${k})*(INT(${sello})<>${sello})`
+  return `(${conHora}*(${k}>${sello})+(1-${conHora})*(${f}>INT(${sello})))*(${f}<=TODAY())`
+}
+
 /**
- * NÚCLEO PURO: los haberes pagados en EFECTIVO desde el conteo, según la web. DESCARGA de la caja física.
- * Misma ventana que todas las salidas del cajón (`ventanaDelConteo`, inclusiva, con techo en hoy).
- * @param {string} arqueo referencia al ancla del conteo (la que reciben las demás salidas)
+ * NÚCLEO PURO: los haberes pagados en EFECTIVO después del sello del conteo, según la web. DESCARGA de la caja
+ * física. Ver `despuesDelSello`: de conteo a conteo, lo anotado antes del sello no resta.
+ * @param {string} sello referencia al ancla CRUDA del conteo (el instante del sello, sin día de gracia)
  * @param {'obreros'|'oficina'} grupo
  */
-export function formulaHaberesWebEfectivo(arqueo, grupo, h = HAB) {
+export function formulaHaberesWebEfectivo(sello, grupo, h = HAB) {
   const f = col(h, h.fecha)
-  return `SUMPRODUCT(${filasDesdeElCorte('efectivo', grupo, h)}*ISNUMBER(${f})*${ventanaDelConteo(f, arqueo, false)}*${importe(h)})`
+  return `SUMPRODUCT(${filasDesdeElCorte('efectivo', grupo, h)}*ISNUMBER(${f})*${despuesDelSello(sello, h)}*${importe(h)})`
 }
 
 /**
@@ -81,8 +98,8 @@ export function formulaHaberesWebBanco(corte, grupo, h = HAB) {
 }
 
 /** NÚCLEO PURO: la fecha del último pago en efectivo de la web dentro de la ventana (para la fecha de CAJA!D7). */
-export function maxHaberesWebEfectivo(arqueo, grupo, h = HAB) {
+export function maxHaberesWebEfectivo(sello, grupo, h = HAB) {
   const f = col(h, h.fecha)
-  return `SUMPRODUCT(MAX(${filasDesdeElCorte('efectivo', grupo, h)}*ISNUMBER(${f})*${ventanaDelConteo(f, arqueo, false)}`
+  return `SUMPRODUCT(MAX(${filasDesdeElCorte('efectivo', grupo, h)}*ISNUMBER(${f})*${despuesDelSello(sello, h)}`
     + `*(${importe(h)}<>0)*IF(ISNUMBER(${f});${f};0)))`
 }

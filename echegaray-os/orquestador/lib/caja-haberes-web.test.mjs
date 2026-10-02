@@ -18,8 +18,8 @@ const RAW = (x) => `'_HABERES_PAGADOS_RAW'!$${x}$4:$${x}`
 const cuenta = (s, sub) => s.split(sub).length - 1
 
 test('el contrato de columnas es el de la réplica: si el generador mueve una columna, esto se pone rojo', () => {
-  assert.deepEqual([HAB.fecha, HAB.quincena, HAB.grupo, HAB.medio, HAB.importe, HAB.desde],
-    [COL.fecha, COL.desde, COL.grupo, COL.medio, COL.importe, FILA0])
+  assert.deepEqual([HAB.fecha, HAB.quincena, HAB.grupo, HAB.medio, HAB.importe, HAB.anotado, HAB.desde],
+    [COL.fecha, COL.desde, COL.grupo, COL.medio, COL.importe, COL.instante, FILA0])
   assert.equal(HAB.corte, '$B$2')
 })
 
@@ -33,8 +33,9 @@ test('jornales en efectivo: planilla con quincena < corte + web (obreros, efecti
   assert.ok(f.includes(`(JORNALES_REAL_DESDE<${CORTE})`), 'la planilla deja de leer las quincenas ≥ corte')
   assert.ok(f.includes(`(${RAW('C')}>=${CORTE})`), 'la web lee exactamente las quincenas ≥ corte')
   assert.ok(f.includes(`(${RAW('G')}="efectivo")`) && f.includes(`(${RAW('E')}<>"oficina")`))
-  // La ventana del conteo, inclusiva y con techo en hoy — la misma de todas las salidas del cajón.
-  assert.ok(f.includes(`(${RAW('A')}>=INT($F$9))*(${RAW('A')}>0)*(${RAW('A')}<=TODAY())`))
+  // De conteo a conteo (02/10/2026): «Anotado el» contra el instante del sello; sin hora, sólo días POSTERIORES.
+  assert.ok(f.includes(`(${RAW('K')}>$F$9)`) && f.includes(`(${RAW('A')}>INT($F$9))`) && f.includes(`(${RAW('A')}<=TODAY())`))
+  assert.ok(!f.includes(`${RAW('A')}>=INT(`), 'la ventana inclusiva por día restaba lo que el conteo ya tenía adentro')
   assert.ok(!f.includes('"caja"'), 'no filtra «Sale de»: el adelanto desde una entrega ya vuelve por _EFECTIVO_RAW')
   assert.equal(cuenta(f, '_HABERES_PAGADOS_RAW'), cuenta(formulaHaberesWebEfectivo('$F$9', 'obreros'), '_HABERES_PAGADOS_RAW')
     + cuenta(antesDelCorte('X'), '_HABERES_PAGADOS_RAW'), 'la web entra UNA vez')
@@ -68,4 +69,56 @@ test('la fecha del último movimiento de efectivo (CAJA!D7) y el neto del cajón
 
 test('el corte del código es el aprobado por el dueño', () => {
   assert.equal(CORTE_QUINCENA, '2026-09-16')
+})
+
+// ═══ DE CONTEO A CONTEO, EVALUADO (02/10/2026) ═══
+//
+// El dueño marcó $6.080.000 de haberes en efectivo a la mañana y contó el cajón a las ~15:15 con esos billetes
+// ya afuera: el anexo restó otra vez y publicó $20.866.000 contra un conteo de $26.946.000. Acá la fórmula se
+// EVALÚA fila por fila (un intérprete mínimo de lo que la fórmula usa), no se mira su texto: si vuelve la
+// ventana inclusiva por día, el pago anotado antes del sello vuelve a restar y estos tests se ponen rojos.
+const HOY = 46297 // 02/10/2026
+function evaluar(formula, filas, corte = 46281) {
+  const js = formula
+    .replace(/'_HABERES_PAGADOS_RAW'!\$B\$2/g, 'CORTE')
+    .replace(/'_HABERES_PAGADOS_RAW'!\$([A-Z])\$4:\$[A-Z]/g, 'r.$1')
+    .replace(/;/g, ',').replace(/<>/g, '!=').replace(/([^<>!=])=([^=])/g, '$1==$2')
+  const fn = new Function('r', 'CORTE', 'SUMPRODUCT', 'IF', 'ISNUMBER', 'INT', 'NOT', 'TODAY', 'DATE', `return ${js}`)
+  const lib = [(x) => Number(x), (c, a, b) => (c ? a : b), (x) => typeof x === 'number', Math.floor, (x) => !x, () => HOY, () => 2958465]
+  return filas.reduce((t, r) => t + fn(r, corte, ...lib), 0)
+}
+const pago = (A, K, I = 1_000_000, G = 'efectivo', E = 'obreros') => ({ A, C: 46281, E, G, I, K })
+const SELLO_1515 = 46297 + 15.25 / 24
+
+test('pago ANOTADO antes del sello, el mismo día: ya está adentro del conteo, no resta', () => {
+  const f = formulaHaberesWebEfectivo(`${SELLO_1515}`, 'obreros')
+  assert.equal(evaluar(f, [pago(46297, 46297 + 11 / 24)]), 0)
+})
+
+test('pago anotado DESPUÉS del sello, el mismo día: resta', () => {
+  const f = formulaHaberesWebEfectivo(`${SELLO_1515}`, 'obreros')
+  assert.equal(evaluar(f, [pago(46297, 46297 + 16 / 24)]), 1_000_000)
+})
+
+test('sin «Anotado el» (réplica vieja) el pago del día del conteo NO resta; el del día siguiente sí', () => {
+  const f = formulaHaberesWebEfectivo(`${SELLO_1515}`, 'obreros')
+  assert.equal(evaluar(f, [pago(46297, '')]), 0)
+  const ayer = formulaHaberesWebEfectivo(`${46296 + 15.25 / 24}`, 'obreros')
+  assert.equal(evaluar(ayer, [pago(46297, '')]), 1_000_000, 'conteo de ayer, pago de hoy: resta')
+})
+
+test('sello SIN hora: aunque el pago traiga hora, lo del día del conteo no resta (criterio de Postgres)', () => {
+  const f = formulaHaberesWebEfectivo('46297', 'oficina')
+  assert.equal(evaluar(f, [pago(46297, 46297 + 16 / 24, 500_000, 'efectivo', 'oficina')]), 0)
+})
+
+test('el anexo le pasa a la web el ancla CRUDA, no el día de gracia de las demás salidas', () => {
+  const f = formulaJornalesEfectivoPosteriores('IF(INT($F$9)=$F$9;$F$9-1;$F$9)', undefined, '$F$9')
+  assert.ok(f.includes(`(${RAW('K')}>$F$9)`) && !f.includes(`(${RAW('K')}>IF(`))
+})
+
+test('hoy: los $6.080.000 marcados antes del conteo de las 15:15 dejan el cajón en el conteo ($26.946.000)', () => {
+  const filas = [pago(46297, 46297 + 10 / 24, 6_080_000), pago(46296, 46296 + 9 / 24, 253_000), pago(46281, '', 1_460_200)]
+  const f = formulaHaberesWebEfectivo(`${SELLO_1515}`, 'obreros')
+  assert.equal(26_946_000 - evaluar(f, filas), 26_946_000)
 })
