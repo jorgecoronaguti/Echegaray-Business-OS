@@ -246,21 +246,15 @@ function netoDelEstudio(l: LineaConOverrides): number | null {
  * bajo un efectivo redondo. Si lo ya pagado supera lo que correspondía, no se inventa nada: se muestra lo pagado y
  * resta 0. `null` = no se puede afirmar (la cadena del panel no cierra con la del cuadro): se muestra el exacto.
  */
-function efectivoDelPapel(
-  l: LineaConOverrides, mensual: boolean, exacto: number | null, pagado: number | null, absorbido = 0,
-): { total: number; resta: number } | null {
+function efectivoDelPapel(l: LineaConOverrides, mensual: boolean, exacto: number | null, pagado: number | null): { total: number; resta: number } | null {
   const pag = pagado ?? 0
-  if (exacto == null || !(exacto > 0 || pag > 0)) return null
   const aRedondear = efectivoParaRedondear(l, mensual)
-  const saldo = r2(exacto - pag)
-  // CUÁNDO NO CIERRA: lo pagado de más por banco el cuadro lo descuenta del efectivo (`aPagarEfectivo` = saldo − exceso).
-  // Ese exceso se imprime como «menos lo pagado de más en banco» y entra en el efectivo: Efectivo = pagado + exceso + resta.
-  const cierra = aRedondear != null && (r2(saldo - absorbido) === r2(aRedondear) || (saldo - absorbido <= 0 && aRedondear <= 0))
-  // Si ni así cierra (el cuadro sin cadena completa), lo guardado es de OTRA cifra: no se usa y se aplica la MISMA función
-  // del cuadro al saldo que este papel muestra. Nunca centavos bajo un efectivo redondeado, ni una cuenta nueva.
-  const base = cierra ? aRedondear : Math.max(saldo, 0)
-  const resta = efectivoMostrado({ efectivoRedondeado: cierra ? l.efectivoRedondeado ?? null : null, enEfectivo: base }).valor ?? 0
-  return { total: r2(pag + (cierra ? absorbido : 0) + resta), resta }
+  // Sin la cifra del cuadro no hay nada que redondear: se muestra el exacto, tal cual está.
+  if (exacto == null || aRedondear == null || !(exacto > 0 || pag > 0)) return null
+  // LA REGLA ÚNICA: Efectivo = ya pagado + resta, y la resta es el «Efect. red.» del cuadro (guardado o sugerido). Lo
+  // pagado de más por banco NO entra acá: se dice en la sección del banco, donde ocurrió.
+  const resta = efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado ?? null, enEfectivo: aRedondear }).valor ?? 0
+  return { total: r2(pag + resta), resta }
 }
 
 /**
@@ -348,7 +342,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
     const resta = restaDe?.importe ?? 0
     const estimadoAca = clave === 'banco' && x.total != null && Math.abs(x.total) >= 0.005 && bancoEstimado(l)
     if (estimadoAca) estimado = true
-    const papel = clave === 'efectivo' ? efectivoDelPapel(l, mensual, x.total, x.pagado, m.absorbido?.lado === 'banco' ? m.absorbido.importe : 0) : null
+    const papel = clave === 'efectivo' ? efectivoDelPapel(l, mensual, x.total, x.pagado) : null
     const importe = papel?.total ?? x.total
     renglones.push({
       rotulo, importe,
@@ -363,13 +357,19 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, _fmt: (n
     }
     if (e.pagado && x.pagado != null) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })
-      const absorbido = absorbidoPor(m.absorbido, clave)
+      const absorbido = clave === 'banco' ? absorbidoPor(m.absorbido, clave) : null
       if (absorbido) renglones.push(absorbido)
       // COBRÓ DE MÁS: el papel lo dice, no lo esconde detrás de un «resta $ 0» (auditoría 22/09/2026).
       if (m.excedente?.lado === clave && m.excedente.importe > 0) {
         renglones.push({ rotulo: 'cobró de más', importe: m.excedente.importe, sub: true })
       }
       renglones.push({ rotulo: 'resta', importe: papel?.resta ?? x.resta, sub: true })
+    }
+    // LO PAGADO DE MÁS POR BANCO se dice donde ocurrió, exacto y al final de esa sección, y suma al total: el cuadro lo
+    // descuenta del efectivo, y así el efectivo del papel queda redondo sin perder esos centavos.
+    if (clave === 'banco' && m.absorbido?.lado === 'banco' && m.absorbido.importe > 0) {
+      renglones.push({ rotulo: 'pagado de más en banco', importe: m.absorbido.importe, sub: true })
+      elegidos.push(m.absorbido.importe)
     }
   }
   const total = elegidos.length === 0 || elegidos.some((v) => v == null)

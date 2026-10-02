@@ -342,33 +342,47 @@ test('lo ya pagado supera lo que correspondía: se muestra lo pagado y resta 0, 
   assert.equal(r.medios[i + 2].importe, 0)
 })
 
-test('banco pagado de más: el cuadro lo descuenta del efectivo y el papel lo dice; Efectivo y resta salen redondos y suman', () => {
-  // aPagarEfectivo del cuadro = 400.257,52 − 30.000 = 370.257,52 (el exceso de banco se descuenta del efectivo).
+test('banco pagado de más CON CENTAVOS: efectivo y resta redondos; el exceso se dice en el banco y el total suma lo impreso', () => {
   const l = {
     personaId: 'p5', porBanco: 300000, enEfectivo: 400257.52,
     sueldo: { horasBlanco: 45, horasNegro: 51, origenNeto: 'recibo', estado: 'recibo', neto: 300000 },
-    pago: pagoDeLaLinea({ banco: 300000, negro: 400257.52, pagadoBanco: 330000 }),
+    pago: pagoDeLaLinea({ banco: 300000, negro: 400257.52, pagadoBanco: 330000.37 }),
   } as unknown as LineaConOverrides
   const delCuadro = efectivoMostrado({ efectivoRedondeado: null, enEfectivo: l.pago.aPagarEfectivo }).valor!
   const r = armarRecibo(l, conPagado, pesosAR)
-  const i = r.medios.findIndex((m) => m.rotulo === ROTULO.efectivo)
-  const [ef, pagado, absorbido, resta] = r.medios.slice(i, i + 4)
+  const rot = r.medios.map((m) => m.rotulo)
+  assert.ok(!rot.some((x) => /menos lo pagado de más/.test(x)), 'nada de eso bajo el efectivo')
+  const iB = rot.indexOf(ROTULO.banco)
+  const iE = rot.indexOf(ROTULO.efectivo)
+  const exceso = r.medios.findIndex((m) => m.rotulo === 'pagado de más en banco')
+  assert.ok(exceso > iB && exceso < iE, 'en la sección del banco, antes del efectivo')
+  assert.equal(r.medios[exceso].importe, 30000.37)
+  assert.ok(r.medios[exceso - 1].rotulo === 'resta' || r.medios[exceso - 1].rotulo === 'ya pagado' || exceso - 1 === iB, 'después del desglose y de ya pagado / resta')
+  const ef = r.medios[iE]
+  const resta = r.medios[iE + 2]
   assert.equal(resta.rotulo, 'resta')
   assert.equal(resta.importe, delCuadro)
   assert.equal(ef.importe! % 1000, 0)
   assert.equal(resta.importe! % 1000, 0)
-  assert.equal(ef.importe, r2t(pagado.importe! + -absorbido.importe! + resta.importe!), 'lo que se ve suma')
-  assert.equal(r.total, r2t(r.medios[0].importe! + ef.importe!))
+  assert.equal(ef.importe, r2t(r.medios[iE + 1].importe! + resta.importe!), 'Efectivo = ya pagado + resta')
+  assert.equal(r.total, r2t(r.medios[iB].importe! + 30000.37 + ef.importe!), 'Total = banco + pagado de más + efectivo')
 })
 
-test('si ni así cierra la cadena del cuadro, igual se aplica su función al saldo del papel: nunca centavos', () => {
-  const base = lineaDelDueno(286000)
-  const l = { ...base, pago: { ...base.pago, aPagarEfectivo: 123456.78 } } as unknown as LineaConOverrides
+test('el «Efect. red.» guardado por el dueño manda en la resta, tal como lo muestra el cuadro', () => {
+  const l = { ...lineaDelDueno(286000), efectivoRedondeado: 130000 } as unknown as LineaConOverrides
   const r = armarRecibo(l, conPagado, pesosAR)
-  const i = r.medios.findIndex((m) => m.rotulo === ROTULO.efectivo)
-  assert.equal(r.medios[i].importe! % 1000, 0)
-  assert.equal(r.medios[i + 2].importe! % 1000, 0)
-  assert.equal(r.total, r2t(r.medios[0].importe! + r.medios[i].importe!))
+  const iE = r.medios.findIndex((m) => m.rotulo === ROTULO.efectivo)
+  assert.equal(r.medios[iE + 2].importe, 130000)
+  assert.equal(r.medios[iE].importe, 416000)
+})
+
+test('sin la cifra del cuadro no hay nada que redondear: el efectivo sale exacto, sin inventar', () => {
+  const l = {
+    personaId: 'p6', porBanco: 1000, enEfectivo: null, sueldo: { horasBlanco: 1, horasNegro: 1, origenNeto: 'recibo', estado: 'recibo', neto: 1000 },
+    pago: { ...pagoDeLaLinea({ banco: 1000, negro: 2500.5 }), aPagarEfectivo: null },
+  } as unknown as LineaConOverrides
+  const r = armarRecibo(l, eleccion, pesosAR)
+  assert.equal(r.medios.find((m) => m.rotulo === ROTULO.efectivo)!.importe, 2500.5)
 })
 
 test('reimprimir un papel sellado con los rótulos largos los limpia, sin tocar importes', () => {
