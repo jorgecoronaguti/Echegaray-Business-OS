@@ -51,6 +51,9 @@ export const RESPUESTA = Object.freeze({
   FECHA: 'fecha',
   // Es una respuesta DENTRO del hilo de la pregunta que no se pudo interpretar: se repregunta.
   NO_ENTENDIDA: 'no_entendida',
+  // 03/10/2026, el recibo del sereno: «¿a quién se le pagó?» y «¿de cuánto es?», contestados escribiendo.
+  PROVEEDOR: 'proveedor',
+  IMPORTE: 'importe',
 })
 
 // ═══ LA FECHA, CONTESTADA ESCRIBIENDO (29/09/2026) ═══
@@ -100,6 +103,51 @@ export function interpretarFecha(t, { ahora } = {}) {
     return armar(hoy.y, hoy.m, d, hoy) ?? (hoy.m === 1 ? armar(hoy.y - 1, 12, d, hoy) : armar(hoy.y, hoy.m - 1, d, hoy))
   }
   return null
+}
+
+/** Índices de los ítems a los que les falta alguno de estos códigos de faltante (política del chat). */
+function indicesQueLesFalta(items = [], codigos = []) {
+  const out = []
+  items.forEach((it, i) => {
+    let f = []
+    try { f = faltantesDe(it, POLITICA.CHAT) } catch { f = [] }
+    if (f.some((x) => codigos.includes(x.codigo))) out.push(i)
+  })
+  return out
+}
+
+// ═══ «¿A QUIÉN SE LE PAGÓ?» Y «¿DE CUÁNTO ES?», CONTESTADOS EN EL HILO (03/10/2026) ═══
+//
+// El recibo manuscrito del sereno de Quattropani: la firma no se lee, y el bot mandaba a tocar Corregir —un
+// botón que no está—. La respuesta natural es el nombre («Juan Pérez», «se le pagó a Juan Pérez») o el monto
+// («1.540.000», «de $1.540.000»). Un nombre suelto se toma SÓLO dentro del hilo de la pregunta: fuera de él,
+// cualquier palabra parecería un nombre y se le robaría el mensaje a otro especialista.
+const RE_PREFIJO_QUIEN = /^(?:(?:se )?le (?:pague|pagamos|pagaron|pago) a|(?:se )?(?:lo )?(?:pague|pago|pagamos|pagaron) a|lo cobro|cobro|se llama|es de|es|era|a)\s+/
+const RE_NO_ES_NOMBRE = /\d|^(si|no|ok|dale|listo|gracias|hola|ayuda|que|cual|como|donde|cuando|ninguno|nadie|no se)$/
+
+/** El nombre escrito, sin el «se le pagó a» de adelante, con las mayúsculas como las escribió la persona. */
+export function nombreDe(texto) {
+  const crudo = String(texto ?? '').replace(/\s+/g, ' ').trim().replace(/[.!¡?¿]+$/g, '')
+  const t = plano(crudo)
+  if (!t || t.length > 60 || RE_NO_ES_NOMBRE.test(t) || /\?/.test(String(texto))) return null
+  const m = t.match(RE_PREFIJO_QUIEN)
+  // Se corta del original la misma cantidad de PALABRAS que tenía el prefijo: así se conservan acentos y mayúsculas.
+  const palabras = crudo.split(' ')
+  const nombre = (m ? palabras.slice(m[0].trim().split(' ').length) : palabras).join(' ').trim()
+  if (!nombre || nombre.split(' ').length > 6 || !/[a-záéíóúñ]/i.test(nombre)) return null
+  return nombre
+}
+
+/** «1.540.000», «$ 1.540.000,50», «de 1540000», «1,54 millones» → número; si no, null. */
+export function importeDe(texto) {
+  const t = plano(String(texto ?? '').replace(/\$/g, ' ')).replace(/^(?:es |son |de |por |fueron )+/, '').trim()
+  let m = t.match(/^(\d+(?: \d+)?)(?: (?:m|millon|millones|palo|palos))$/)
+  if (m) return Number(m[1].replace(' ', '.')) * 1_000_000
+  // `plano` convierte «.» y «,» en espacios: «1.540.000» llega como «1 540 000», «1.540.000,50» como «1 540 000 50».
+  m = t.match(/^(\d{1,3}(?: \d{3})+)(?: (\d{2}))?$/) ?? t.match(/^(\d+)(?: (\d{2}))?$/)
+  if (!m) return null
+  const n = Number(m[1].replace(/ /g, '')) + (m[2] ? Number(m[2]) / 100 : 0)
+  return n > 0 ? n : null
 }
 
 /** Índices de los ítems a los que les falta la fecha (hueco o ilegible). */
@@ -215,7 +263,7 @@ function contienePalabra(pajar, aguja) {
  *   `null` = ESTO NO ES PARA MÍ. Es la respuesta más importante de la función: devolver algo cuando
  *   no se entendió sería robarle el mensaje a otro especialista.
  */
-export function interpretarRespuesta(fajo, texto, { ahora } = {}) {
+export function interpretarRespuesta(fajo, texto, { ahora, enHilo = false } = {}) {
   const t = plano(texto)
   if (!t || t.length > MAX_LARGO) return null
   const items = Array.isArray(fajo?.items) ? fajo.items : []
@@ -241,6 +289,15 @@ export function interpretarRespuesta(fajo, texto, { ahora } = {}) {
   if (sinFecha.length) {
     const f = interpretarFecha(t, { ahora })
     if (f) return { que: RESPUESTA.FECHA, valor: f, indices: sinFecha }
+  }
+
+  // EL IMPORTE, sólo si alguno no tiene importe leído. Va antes que el ordinal: «2» no es un importe creíble
+  // (`importeDe` lo devolvería), así que con opciones abiertas manda el ordinal — se exige un monto de 3 cifras.
+  // Y sólo en el hilo: en el canal Efectivo un número suelto puede ser una línea de la libreta o un pago.
+  const sinImporte = enHilo ? indicesQueLesFalta(items, [MOTIVO.IMPORTE, MOTIVO.TOTAL]) : []
+  if (sinImporte.length) {
+    const v = importeDe(texto)
+    if (v != null && v >= 100) return { que: RESPUESTA.IMPORTE, valor: v, indices: sinImporte }
   }
 
   // Un NÚMERO contesta la opción de esa posición, en el orden en que se le ofrecieron (el mismo de
@@ -281,7 +338,13 @@ export function interpretarRespuesta(fajo, texto, { ahora } = {}) {
   // EL EXACTO GANA SIEMPRE. "Messina" escrito tal cual no puede quedar ambiguo porque además exista
   // "Messina 2": el que escribió el nombre completo ya desambiguó.
   const elegidos = exactos.size ? exactos : parciales
-  if (!elegidos.size) return null
+  if (!elegidos.size) {
+    // A QUIÉN SE LE PAGÓ: lo último que se prueba, y sólo dentro del hilo. Una opción ofrecida (una obra) gana.
+    const sinQuien = enHilo ? indicesQueLesFalta(items, [MOTIVO.PROVEEDOR]) : []
+    const nombre = sinQuien.length ? nombreDe(texto) : null
+    if (nombre) return { que: RESPUESTA.PROVEEDOR, valor: nombre, indices: sinQuien }
+    return null
+  }
   const lista = [...elegidos.values()].map((e) => ({ campo: e.campo, valor: e.valor, indices: [...e.indices].sort((a, b) => a - b) }))
   if (lista.length > 1) return { que: RESPUESTA.AMBIGUO, candidatas: lista }
   const [u] = lista

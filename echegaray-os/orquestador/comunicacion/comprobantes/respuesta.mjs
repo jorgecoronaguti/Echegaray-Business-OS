@@ -15,7 +15,7 @@ import { ESTADO, ETIQUETA_CAMPO, imputacionPendiente } from '../../lib/comproban
 import { faltantesDe, POLITICA } from '../../lib/comprobantes/faltantes.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { RESPUESTA, ofrecidasDe } from '../../lib/comprobantes/respuesta-texto.mjs'
-import { aplicarEleccion, aplicarFecha, confirmarFajo, contestarDuplicado, RESULTADO, contestarClase } from './aplicar.mjs'
+import { aplicarDato, aplicarEleccion, aplicarFecha, confirmarFajo, contestarDuplicado, RESULTADO, contestarClase } from './aplicar.mjs'
 import * as repoReal from './repositorio.mjs'
 
 export const TEXTO = Object.freeze({
@@ -161,18 +161,26 @@ export async function atenderRespuesta(d, { fajo, respuesta } = {}) {
 
   // ── Aplicar la elección (o la fecha) ───────────────────────────────────────
   const esFecha = respuesta.que === RESPUESTA.FECHA
+  // «¿A quién se le pagó?» / «¿de cuánto es?» (03/10/2026): un dato del papel, no una opción de imputación.
+  const esDato = respuesta.que === RESPUESTA.PROVEEDOR || respuesta.que === RESPUESTA.IMPORTE
   const r = esFecha
     ? await aplicarFecha({ port, repo, log }, { fajoId: fajo.id, indices: respuesta.indices ?? [], valor: respuesta.valor })
-    : await aplicarEleccion({ port, repo, log }, {
-      fajoId: fajo.id, indices: respuesta.indices ?? [], campo: respuesta.campo, valor: respuesta.valor,
-    })
+    : esDato
+      ? await aplicarDato({ port, repo, log }, { fajoId: fajo.id, indices: respuesta.indices ?? [], campo: respuesta.que, valor: respuesta.valor })
+      : await aplicarEleccion({ port, repo, log }, {
+        fajoId: fajo.id, indices: respuesta.indices ?? [], campo: respuesta.campo, valor: respuesta.valor,
+      })
   if (r.que === RESULTADO.SIN_FAJO) return { texto: TEXTO.SIN_FAJO, estado: 'sin_fajo' }
   if (r.que === RESULTADO.CERRADO) return { texto: TEXTO.YA_CERRADO, estado: 'ya_cerrado' }
   if (r.que === RESULTADO.INVALIDA) return { texto: TEXTO.INVALIDA, estado: 'opcion_invalida' }
 
   const anotado = esFecha
     ? `✔ Anotado: **fecha = ${respuesta.valor}**${alcance(r.aplicados.length)}.`
-    : `✔ Anotado: **${etiqueta(respuesta.campo)} = ${respuesta.valor}**${alcance(r.aplicados.length)}.`
+    : respuesta.que === RESPUESTA.PROVEEDOR
+      ? `✔ Anotado: **se le pagó a ${r.conocido ?? respuesta.valor}**${alcance(r.aplicados.length)}.${r.conocido ? '' : ' No está en la lista de proveedores: la fila entra con Proveedor (E) vacío y el nombre en el concepto.'}`
+      : respuesta.que === RESPUESTA.IMPORTE
+        ? `✔ Anotado: **importe = $ ${Number(respuesta.valor).toLocaleString('es-AR')}**${alcance(r.aplicados.length)}.`
+        : `✔ Anotado: **${etiqueta(respuesta.campo)} = ${respuesta.valor}**${alcance(r.aplicados.length)}.`
 
   // CONTESTAR LO ÚLTIMO QUE FALTABA ES CONFIRMAR — la misma condición y el mismo escritor que usan el
   // botón Confirmar y la carga automática del post. No hay un tercer camino de escritura.
@@ -197,7 +205,7 @@ export async function atenderRespuesta(d, { fajo, respuesta } = {}) {
   const falta = [...new Set([...loQueFalta(r.fajo), ...rotulosSinResolver(r.fajo)])]
   return {
     texto: falta.length
-      ? `${anotado}\n\nMe falta todavía: **${falta.join('** · **')}**. Contestame acá mismo o tocá el botón arriba.`
+      ? `${anotado}\n\nMe falta todavía: **${falta.join('** · **')}**. Contestame acá mismo, en este hilo.`
       : `${anotado}\n\nNo puedo cargarlo todavía: revisá el mensaje de arriba, hay algo que no pude leer.`,
     estado: 'anotado',
   }
@@ -225,6 +233,14 @@ export function repregunta(fajo) {
     try { return faltantesDe(it, POLITICA.CHAT).some((x) => x.codigo === 'fecha' || x.codigo === 'fecha_imposible') } catch { return false }
   })
   if (sinFecha) l.push('Me falta **la fecha** del comprobante. Escribila así: **28/09/2026**, **28/09**, **ayer** u **hoy**.')
+  // Lo que se contesta con un dato del papel (el recibo del sereno, 03/10/2026): se repite LA pregunta, no un menú.
+  const preguntasDato = new Set()
+  for (const it of items) {
+    let f = []
+    try { f = faltantesDe(it, POLITICA.CHAT) } catch { f = [] }
+    for (const x of f) if ((x.codigo === 'proveedor' || x.codigo === 'importe') && /escrib/.test(x.pregunta)) preguntasDato.add(x.pregunta)
+  }
+  for (const p of preguntasDato) l.push(`Me falta saber ${p}`)
   const opciones = new Map()
   for (const it of items) for (const { campo, valor } of ofrecidasDe(it)) {
     const e = opciones.get(campo) ?? []
@@ -237,7 +253,7 @@ export function repregunta(fajo) {
     if (vals.length > 8) l.push(`_…y ${vals.length - 8} más: escribí el nombre._`)
   }
   const otros = rotulosSinResolver(fajo).filter((t) => !/fecha/i.test(t))
-  if (!sinFecha && !opciones.size && otros.length) l.push(`Me falta: ${otros.join(' · ')}`)
+  if (!sinFecha && !opciones.size && !preguntasDato.size && otros.length) l.push(`Me falta: ${otros.join(' · ')}`)
   l.push('Si no va, escribí **descartalo**.')
   return l.join('\n')
 }

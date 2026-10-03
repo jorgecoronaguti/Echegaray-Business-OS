@@ -41,6 +41,7 @@ import { aFechaAR, aNumero, normalizar, tipoComprobante } from '../carga-comprob
 import { identidadDelComprobante, fueraDeEscala, pesos, FACTOR_FUERA_DE_ESCALA } from './aritmetica.mjs'
 import { dudasDeLectura } from './plausibilidad.mjs'
 import { cuitDigitoVerificadorOk } from '../proveedor-identidad.mjs'
+import { esReciboDePago, claveDeRecibo, PREGUNTA_RECIBO } from './recibo-de-pago.mjs'
 
 /** Por qué un comprobante no está listo. El código es el contrato; los textos son presentación. */
 export const MOTIVO = Object.freeze({
@@ -252,6 +253,9 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   const p = politica ?? POLITICA.CARGADOR
   const out = []
   const falta = (codigo, texto, pregunta) => out.push({ codigo, texto, pregunta: pregunta ?? texto })
+  // EL RECIBO DE PAGO DE UN TERCERO (03/10/2026, el sereno de Quattropani): no tiene número, ni CUIT, ni lo va
+  // a tener. Pedírselos dejaba el papel trabado para siempre. Ver `recibo-de-pago.mjs`.
+  const recibo = esReciboDePago(item)
 
   // ═══ UN PRESUPUESTO NO ES UN GASTO (21/08) ═══
   //
@@ -275,7 +279,7 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // (`aFajoJson` le pasa el nombre; antes no, y el alta nunca se disparaba). Sólo frena lo que no se
   // puede crear sin inventar: el CUIT ausente, ilegible o con dígito verificador inválido. Ahí se pide
   // el dato, y el texto dice cómo contestarlo.
-  if (p.exigirProveedorConocido && item.proveedorNuevo && (EXIGIR_PROVEEDOR || !cuitAlcanzaParaAlta(c))) {
+  if (p.exigirProveedorConocido && item.proveedorNuevo && !recibo && (EXIGIR_PROVEEDOR || !cuitAlcanzaParaAlta(c))) {
     const quien = c.proveedor ?? '(ilegible)'
     const cuitLeido = String(c.cuit ?? '').replace(/\D/g, '')
     const porque = !cuitLeido ? 'no pude leer su CUIT' : `el CUIT que leí (${cuitLeido}) no es válido`
@@ -301,12 +305,14 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // (`l:<fecha>|<concepto>|<centavos>`, `libreta-texto.mjs`). Lo que se exigía no era el nombre: era la
   // clave. Con la clave puesta, exigir el nombre frenaría un gasto real por un dato que el papel —que no
   // existe— nunca va a dar.
-  const conClavePropia = Boolean(String(item?.clave ?? '').trim())
+  // El recibo de un tercero trae su clave cuando ya se sabe quién cobró (`claveDeRecibo`); mientras tanto, lo
+  // que se pregunta es justamente eso, en castellano y diciendo que se contesta escribiendo en el hilo.
+  const conClavePropia = Boolean(String(item?.clave ?? '').trim()) || Boolean(claveDeRecibo(item))
   if (!normalizar(c.proveedor) && (EXIGIR_PROVEEDOR || (!identidadFuerte(c) && !conClavePropia))) {
-    falta(MOTIVO.PROVEEDOR, 'sin proveedor', 'no pude leer el proveedor')
+    falta(MOTIVO.PROVEEDOR, recibo ? 'sin saber a quién se le pagó' : 'sin proveedor', recibo ? PREGUNTA_RECIBO.PROVEEDOR : 'no pude leer el proveedor')
   }
   if (aNumero(c.neto) == null && aNumero(c.total) == null) {
-    falta(MOTIVO.IMPORTE, 'sin importe numérico', 'no pude leer el total')
+    falta(MOTIVO.IMPORTE, 'sin importe numérico', recibo ? PREGUNTA_RECIBO.IMPORTE : 'no pude leer el total')
   } else if (p.exigirTotal && aNumero(c.total) == null) {
     falta(MOTIVO.TOTAL, 'sin total (sólo el neto)', 'no pude leer el total')
   }
@@ -382,8 +388,22 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
     falta(MOTIVO.TIPO, `tipo de comprobante no reconocido: "${c.tipo}"`,
       `no reconozco el tipo de comprobante "${c.tipo}"`)
   }
-  if (p.exigirNumero && !c.numero) falta(MOTIVO.NUMERO, 'sin número de comprobante', 'no pude leer el número de comprobante')
+  if (p.exigirNumero && !c.numero && !recibo) falta(MOTIVO.NUMERO, 'sin número de comprobante', 'no pude leer el número de comprobante')
   return out
+}
+
+/**
+ * ¿Todo lo que le falta a este ítem se contesta ESCRIBIENDO en el hilo? (03/10/2026)
+ *
+ * Los botones están apagados en producción: mandar a «tocar Corregir» por algo que se contesta escribiendo es
+ * mandar a la persona a un callejón. Se contesta escribiendo: la fecha, el duplicado, la clase de papel y —en
+ * un recibo de pago— a quién se le pagó y de cuánto es (`respuesta-texto.mjs` los interpreta).
+ */
+export function seContestaEscribiendo(item = {}, politica = POLITICA.CHAT) {
+  const recibo = esReciboDePago(item)
+  const f = faltantesDe(item, politica)
+  return f.length > 0 && f.every((x) => [MOTIVO.FECHA, MOTIVO.DUPLICADO, MOTIVO.NO_ES_FACTURA].includes(x.codigo)
+    || (recibo && [MOTIVO.PROVEEDOR, MOTIVO.IMPORTE].includes(x.codigo)))
 }
 
 /**

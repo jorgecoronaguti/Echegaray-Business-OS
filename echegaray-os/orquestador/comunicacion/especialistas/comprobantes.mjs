@@ -111,7 +111,7 @@ function enElHiloDelFajo(fajo, rootId) {
   return r === fajo.root_post_id || r === fajo.aviso_post_id || (fajo.post_ids ?? []).includes(r)
 }
 
-async function reclamoDeRespuesta(texto, ctx = {}) {
+export async function reclamoDeRespuesta(texto, ctx = {}) {
   const t = String(texto ?? '').trim()
   if (!t || t.length > MAX_LARGO) return null
   const port = ctx.port
@@ -121,12 +121,14 @@ async function reclamoDeRespuesta(texto, ctx = {}) {
   try {
     const fajo = await repo.fajoAbierto(port, { plataforma: ctx.actor?.plataforma ?? 'mattermost', userId, channelId })
     if (!fajo) return null
-    const respuesta = interpretarRespuesta(fajo, t, { ahora: ctx.ahora })
+    // `enHilo` (03/10/2026): «Juan Pérez» contesta «¿a quién se le pagó?» sólo dentro del hilo de la pregunta.
+    const enHilo = enElHiloDelFajo(fajo, ctx.actor?.root_post_id)
+    const respuesta = interpretarRespuesta(fajo, t, { ahora: ctx.ahora, enHilo })
     if (respuesta) return { destino: 'responder', confianza: 1, fajo, respuesta }
     // DENTRO DEL HILO DE LA PREGUNTA, callar no es una opción (29/09/2026): «fecha de ayer» se perdió
     // sin una palabra. Si el mensaje cuelga del hilo del propio fajo y no se entiende, se repregunta
     // nombrando lo que falta. Fuera del hilo (charla suelta en el canal) sigue sin reclamarse.
-    if (enElHiloDelFajo(fajo, ctx.actor?.root_post_id)) {
+    if (enHilo) {
       return { destino: 'responder', confianza: 1, fajo, respuesta: { que: RESPUESTA.NO_ENTENDIDA } }
     }
     return null

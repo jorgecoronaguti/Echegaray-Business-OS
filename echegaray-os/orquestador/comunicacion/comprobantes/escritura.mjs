@@ -37,6 +37,7 @@ import { cuitAlcanzaParaAlta } from '../../lib/comprobantes/faltantes.mjs'
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
+import { claveDeRecibo } from '../../lib/comprobantes/recibo-de-pago.mjs'
 import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, filaEnBlanco, letrasCompletables, NOMBRE_COMPLETABLE, sinCompletar, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
 import { COMPRAS_1809 } from '../../lib/comprobantes/encabezado-vivo-compras.mjs'
 import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
@@ -803,7 +804,8 @@ export function sinQueNoHayClave(it = {}) {
 export function filaDeRegistro(it, fajo = {}) {
   const c = it.comprobante ?? {}
   return {
-    clave: it.clave ?? claveComprobante(c)?.clave ?? null,
+    // El recibo de un tercero (03/10/2026) no tiene número: su identidad es quién cobró, cuándo y cuánto.
+    clave: it.clave ?? claveComprobante(c)?.clave ?? claveDeRecibo(it) ?? null,
     cuit: c.cuit ?? null,
     tipo: c.esNotaCredito ? 'NC' : (c.tipo ?? null),
     numero: c.numero ?? null,

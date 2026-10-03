@@ -42,6 +42,8 @@ import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import { atenderVale } from './entregas-efectivo.mjs'
 import { rinde, rindePorOtro, TEXTO_NO_RINDE } from '../../lib/efectivo-quien-rinde.mjs'
+import { reclamoDeRespuesta } from './comprobantes.mjs'
+import { atenderRespuesta } from '../comprobantes/respuesta.mjs'
 
 export const AREA_RENDICION = 'rendicion'
 /** Las áreas cuyo canal oficial acepta una rendición: sólo la del canal Efectivo. */
@@ -140,14 +142,36 @@ export const especialista = {
   async reconoce(texto, ctx = {}) {
     if (!AREAS_QUE_RINDEN.includes(ctx.area)) return null
     if ((ctx.fileIds?.length ?? 0) > 0) return { destino: 'rendir', confianza: 1 }
+    // ═══ LA RESPUESTA A LO QUE EL PAPEL DEJÓ ABIERTO (03/10/2026, el recibo del sereno) ═══
+    //
+    // La foto se lee con el circuito de Compras, que deja un fajo abierto y pregunta en el hilo («¿a quién se
+    // le pagó?»). La respuesta escrita la reclamaba también Comprobantes, pero el canal es de este área y el
+    // Director desempata por canal: ganaba ESTE especialista con «ayuda», y el dueño recibía el instructivo.
+    // Ahora la reclama acá, con la misma gramática que Comprobantes (`reclamoDeRespuesta`): sólo si hay un
+    // fajo abierto de esa persona en este canal y el texto lo contesta —o cuelga del hilo de la pregunta—.
+    const respuesta = await reclamoDeRespuesta(texto, ctx)
+    if (respuesta) return respuesta
     // En su propio canal, un texto sin foto se contesta con cómo se usa: el área tiene que tener dueño.
     return { destino: 'ayuda', confianza: 0.5 }
   },
 
   // `procesar` es inyectable para que los tests prueben QUÉ se le manda al circuito (el forzado de
   // «A rendir» y del pago); en producción es siempre el circuito real.
-  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log, procesar = procesarComprobantes, vale = atenderVale }) {
-    const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: AREA_RENDICION })
+  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log, procesar = procesarComprobantes, vale = atenderVale, responder = atenderRespuesta }) {
+    const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: AREA_RENDICION, port, actor })
+
+    // La respuesta escrita al fajo de ESTE canal. LA PUERTA OTRA VEZ, pero la de este canal: la de Compras
+    // (`puedeCargarComprobantes`) pregunta por el canal de Compras y negaba el de Efectivo. Que el fajo exista
+    // prueba que la puerta se pasó al mandar la foto, no que se pase ahora: se vuelve a mirar, y falla cerrado.
+    if (ruta?.destino === 'responder' && ruta.fajo && ruta.respuesta) {
+      const r = await canalOficialDeArea({ port, channelId: actor?.channel_id, area: AREA_RENDICION })
+      if (!r.ok) return { texto: r.motivo === 'no_verificable' ? TEXTO.NO_VERIFICABLE : TEXTO.CANAL, estado: 'rechazado_canal', privado: false }
+      if (String(ruta.fajo.channel_id ?? '') !== String(actor?.channel_id ?? '')
+        || String(ruta.fajo.plataforma_user_id ?? '') !== String(actor?.plataforma_user_id ?? '')) {
+        return { texto: TEXTO.NO_VERIFICABLE, estado: 'rechazado_no_verificable', privado: false }
+      }
+      return await responder({ port, mattermost, log }, { fajo: ruta.fajo, respuesta: ruta.respuesta })
+    }
     if (!fileIds.length || ruta?.destino !== 'rendir') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
 
     // LA FOTO DE UN VALE NO ES UN TICKET: es plata SALIENDO del cajón. Se mira sólo si el mensaje dice

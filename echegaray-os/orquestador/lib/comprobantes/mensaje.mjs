@@ -53,6 +53,7 @@
 // Code tampoco los exige— así que se ofrecen, no se preguntan. Y el rubro no se ofrece siquiera: es
 // derivado de la imputación (`rubro-caja.mjs`, definición única), y se muestra como lo que es.
 
+import { seContestaEscribiendo } from './faltantes.mjs'
 import { estaCompleto, preguntasDe, rotulosDe, etiquetaComprobante, botonesFajo, PREGUNTA_OBRA, opcionesDe } from './fajo.mjs'
 import { identificar } from './identidad.mjs'
 import { dudasDeLectura } from './plausibilidad.mjs'
@@ -482,7 +483,12 @@ export function resumenFajo(fajo = {}) {
     // el bot no funciona. Cada cierre nombra la acción que de verdad resuelve lo que está trabado.
     const hayBotones = items.some((it) => opcionesDe(it?.sugerencia?.obra).length && !it?.comprobante?.obra)
     const necesitaCorregir = items.some((it) => preguntasDe(it).some((p) => !/ya esté cargado/.test(p) && p !== PREGUNTA_OBRA))
-    if (necesitaCorregir) {
+    // EL RECIBO DEL SERENO (03/10/2026): lo que falta se contesta escribiendo —a quién se le pagó, de cuánto
+    // es, la fecha—. Decir «tocá Corregir» ahí era mandar al dueño a un botón que no está.
+    const escribiendo = items.filter((it) => !estaCompleto(it)).every((it) => { try { return seContestaEscribiendo(it) } catch { return false } })
+    if (necesitaCorregir && escribiendo) {
+      l.push('**Todavía no lo cargo.** Contestame lo que te pregunto arriba escribiendo acá, en este hilo —no hace falta ningún botón— y lo cargo.')
+    } else if (necesitaCorregir) {
       l.push(hayBotones
         ? '**No hay nada que cargar todavía.** Lo de arriba con ❓ no lo pude leer del papel: tocá **Corregir** y completalo. La obra sí podés tocarla o escribírmela acá.'
         : '**No hay nada que cargar todavía.** Lo de arriba con ❓ no lo pude leer del papel: tocá **Corregir** y completalo, y lo cargo.')

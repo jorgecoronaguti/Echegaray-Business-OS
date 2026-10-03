@@ -14,6 +14,7 @@
 import { ESTADO, estaCompleto, aplicarOpcion, imputacionPendiente, resolverDuplicado, indiceDuplicadoAbierto, resolverClase, indiceClaseAbierta } from '../../lib/comprobantes/fajo.mjs'
 import { escribirFajo } from './escritura.mjs'
 import * as repoReal from './repositorio.mjs'
+import { normalizar } from '../../lib/carga-comprobantes.mjs'
 
 export const RESULTADO = Object.freeze({
   SIN_FAJO: 'sin_fajo',
@@ -88,6 +89,60 @@ export async function aplicarFecha(d, { fajoId, indices = [], valor } = {}) {
   const vivos = guardado.items ?? []
   const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
   return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo), aplicados }
+}
+
+/**
+ * El proveedor del desplegable que se llama EXACTAMENTE así (sin mayúsculas ni acentos), o null. Sólo exacto:
+ * «Juan» no es «Juan Pérez», y elegir el proveedor equivocado le imputa el pago a otro. Sin base, null —la
+ * fila entra con la columna E vacía y el nombre en el concepto, que es lo que hace el escritor con un nuevo—.
+ */
+async function proveedorConocido(port, nombre) {
+  try {
+    // Sin `unaccent` en la base (no está instalada): se compara en JS, con la misma normalización del cargador.
+    const { rows } = await port.query(
+      'select nombre, razon_social from public.proveedores where coalesce(activo, true) and not coalesce(es_prueba, false)')
+    const buscado = normalizar(nombre)
+    const iguales = (rows ?? []).filter((r) => normalizar(r.nombre) === buscado || normalizar(r.razon_social) === buscado)
+    return iguales.length === 1 ? iguales[0].nombre : null
+  } catch { return null }
+}
+
+/**
+ * «¿A quién se le pagó?» y «¿de cuánto es?» contestados escribiendo (03/10/2026, el recibo del sereno). Mismo
+ * contrato que `aplicarFecha`: guarda el dato en los ítems que lo pedían y dice si ya no queda nada por
+ * preguntar. Lo escrito por una persona se marca como tal (`proveedorVia`/`totalTipeado`): el control de escala
+ * no cuestiona un total tipeado, igual que el de Corregir.
+ *
+ * @param {object} d {port, repo?, log?}
+ * @param {{fajoId:string, indices:number[], campo:'proveedor'|'importe', valor:string|number}} p
+ */
+export async function aplicarDato(d, { fajoId, indices = [], campo, valor } = {}) {
+  const { port, repo = repoReal, log = null } = d
+  const fajo = await repo.fajoPorId(port, fajoId)
+  if (!fajo) return { que: RESULTADO.SIN_FAJO }
+  if (fajo.estado !== ESTADO.ABIERTO) return { que: RESULTADO.CERRADO, fajo }
+  if (valor == null || valor === '' || !['proveedor', 'importe'].includes(campo)) return { que: RESULTADO.INVALIDA, fajo }
+  const conocido = campo === 'proveedor' ? await proveedorConocido(port, valor) : null
+  const items = [...(fajo.items ?? [])]
+  const aplicados = []
+  for (const i of indices) {
+    const it = items[i]
+    if (!it) continue
+    const c = { ...(it.comprobante ?? {}) }
+    if (campo === 'proveedor') {
+      items[i] = { ...it, proveedorNuevo: !conocido, comprobante: { ...c, proveedor: conocido ?? String(valor), proveedorVia: 'respuesta' } }
+    } else {
+      items[i] = { ...it, comprobante: { ...c, total: Number(valor), totalTipeado: true } }
+    }
+    aplicados.push(i)
+  }
+  if (!aplicados.length) return { que: RESULTADO.INVALIDA, fajo }
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return { que: RESULTADO.CERRADO, fajo }
+  log?.info?.(`comprobantes: ${campo} contestado`, { fajo: fajo.id, indices: aplicados, conocido: Boolean(conocido) })
+  const vivos = guardado.items ?? []
+  const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
+  return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo), aplicados, conocido }
 }
 
 /**
