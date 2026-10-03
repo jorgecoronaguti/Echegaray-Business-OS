@@ -16,6 +16,7 @@ import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import { arrastreYaIncluido } from './recibosDelEstudio.ts'
 import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
+import { restaAplicada } from './esperadoDeLaFila.ts'
 
 /** Una fila de `liquidacion_arrastre`. */
 export interface ArrastreDeLinea {
@@ -135,8 +136,7 @@ export function conArrastres(l: LineaConOverrides, a: ArrastresDeLaQuincena, abi
 }
 
 /** La parte del banco de la línea que es resta de otro recibo. 0 sin arrastre. */
-export const arrastreAplicado = (l: Pick<LineaConOverrides, 'arrastre'>): number =>
-  l.arrastre?.estado === 'aplicado' ? l.arrastre.importe : 0
+export const arrastreAplicado = (l: Pick<LineaConOverrides, 'arrastre'>): number => restaAplicada(l.arrastre)
 
 /**
  * LA LÍNEA CON EL BANCO DEL RECIBO, SIN LA RESTA: lo que la celda «Neto» muestra y escribe. Si el Escribible tomara el

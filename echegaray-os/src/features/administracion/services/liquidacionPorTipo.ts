@@ -35,6 +35,7 @@
 
 import { cierreDeLaFila, cierreDeTotales } from './cuadroDeJornales.ts'
 import { efectivoMostrado, saldoRedondeado } from './efectivoRedondeado.ts'
+import { esperadoDeLaFila } from './esperadoDeLaFila.ts'
 import { totalesDelEspejo, type FilaDelEspejo, type TotalesDelEspejo } from './espejoDeJornales.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import type { GrupoLiquidacion, ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
@@ -259,7 +260,8 @@ export interface TotalGeneral {
  */
 export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales, sellada = false): TotalGeneral {
   // La resta del recibo anterior sale por banco y está en Pagado y en Saldo: sin sumarla acá, el general «no cerraba» por ella.
-  const total = r2(j.cobra + (j.arrastre?.importe ?? 0) + m.sueldo)
+  // Es la misma cuenta que la fila y la foto (`esperadoDeLaFila`); Pagado va aparte, así que adelantos no entran.
+  const total = r2(esperadoDeLaFila({ cobra: j.cobra, arrastre: j.arrastre }) + m.sueldo)
   const pagado = r2(j.pago.pagado + m.pagado)
   const saldo = r2(j.pago.saldoTotal + m.saldoTotal)
   const descuadre = r2(total - pagado - saldo)

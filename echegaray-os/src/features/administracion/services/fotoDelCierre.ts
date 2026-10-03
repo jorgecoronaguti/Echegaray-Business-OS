@@ -21,6 +21,7 @@
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
 import { pagoDelMensual, tipoDeLiquidacion } from './liquidacionPorTipo.ts'
+import { esperadoDeLaFila } from './esperadoDeLaFila.ts'
 
 /** Las cuatro columnas de plata que escribe el cierre en `liquidacion_linea`. */
 export interface PlataSellada {
@@ -77,8 +78,8 @@ function delJornalero(l: LineaDelCuadro): FotoDeLaLinea {
   // LA QUINCENA CERRADA RELEE efectivo = cobra − banco: si la fila no cierra, la foto no puede ser el cuadro.
   // LA RESTA DEL RECIBO ANTERIOR SALE POR BANCO Y NO ES DE ESTA QUINCENA (dueño, 02/10/2026): el banco la trae sumada y
   // `cobra` no. La fila cierra contra cobra + esa resta; sin esto, marcar la última pagada no podía cerrar la quincena.
-  const resta = l.arrastre?.estado === 'aplicado' ? l.arrastre.importe : 0
-  const esperado = r2(cobra + resta)
+  // Los lados todavía no descuentan lo pagado: adelanto y ya transferido no entran (`esperadoDeLaFila`).
+  const esperado = esperadoDeLaFila({ cobra, arrastre: l.arrastre })
   if (Math.abs(total - esperado) > TOLERANCIA) {
     return { ok: false, motivo: `su fila no cierra: banco + efectivo da ${total.toFixed(2)} y cobra ${esperado.toFixed(2)}` }
   }

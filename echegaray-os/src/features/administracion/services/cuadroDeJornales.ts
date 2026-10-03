@@ -14,6 +14,7 @@ import { pisoVigente, type FilaEscala, type PisoDeConvenio } from './exposicionC
 import { modalidadDe, type GrupoLiquidacion, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { RegistroLiquidable } from './liquidacionDeAusencias.ts'
 import { todoEnEfectivo } from './sueldoBlancoNegro.ts'
+import { esperadoDeLaFila, restaAplicada } from './esperadoDeLaFila.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -101,10 +102,10 @@ export interface Cierre {
  */
 export function cierreDeLaFila(c: CadenaParaCerrar): Cierre | null {
   if (c.cobra == null || c.total == null) return null
-  // LA RESTA DEL RECIBO ANTERIOR SE SUMA SÓLO AL BANCO (dueño, 02/10/2026): no es sueldo de esta quincena (`cobra` no la
-  // trae) pero sí se paga en ésta, así que lo que falta pagar es lo ganado + la resta.
-  const aplicado = c.arrastre?.estado === 'aplicado' ? c.arrastre.importe : 0
-  const esperado = r2(c.cobra - c.adelanto - c.yaTransferido + aplicado)
+  // LA RESTA DEL RECIBO ANTERIOR SE SUMA SÓLO AL BANCO (dueño, 02/10/2026): la cuenta es `esperadoDeLaFila`, la misma
+  // del total general y de la foto del cierre.
+  const aplicado = restaAplicada(c.arrastre)
+  const esperado = esperadoDeLaFila({ cobra: c.cobra, adelanto: c.adelanto, yaTransferido: c.yaTransferido, arrastre: c.arrastre })
   const repartido = r2(c.porBanco + (c.enEfectivo ?? 0))
   const diferencia = r2(c.total - esperado)
   // CON BLANCO + NEGRO TAMBIÉN: COBRA TOTAL = BANCO + NEGRO. Con celdas escritas a mano puede no dar, y se dice
