@@ -107,7 +107,7 @@ export function RecibosPorLaDiferencia({ filas, marcados, quincena, onCerrar }: 
     setError(null)
     empezar(async () => {
       const r = await emitirRecibosPorLaDiferenciaAction({
-        fecha: hoy, concepto,
+        fecha: hoy, concepto, quincenaDesde: quincena.desde,
         recibos: porEmitir.map((c) => ({ id: ids[c.personaId], personaId: c.personaId, importe: importes[c.personaId] ?? '' })),
       })
       if (!r.ok) { setError(r.error); return }

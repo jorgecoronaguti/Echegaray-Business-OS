@@ -14,7 +14,7 @@
 //  · Tokens de Tailwind, ningún estilo en línea ni hex: el pie era la única pieza del cuadro con su propia paleta.
 //  · Los dos «A pagar hoy» son la respuesta, con el mismo tamaño los dos; la tabla es el detalle y va al costado
 //    (PC) o debajo (teléfono), nunca antes.
-//  · «Cobraron de más» es un aviso del sistema (`Callout`), no una línea roja suelta entre cifras.
+//  · Los avisos («cobraron de más», «no cierra») son una línea de texto apagado: sin carteles de colores (dueño, 03/10/2026).
 //  · Lo que separa el saldo de «total − pagado» ya no cuelga pegado debajo de cada número: va en un bloque de
 //    ajustes, con el importe en la columna Saldo, para que la resta se lea en vertical.
 //  · «Saldo redondeado» es un RENGLÓN DEL CUADRO (dueño, 01/10/2026: «esas palabras y números tirados en el medio
@@ -23,7 +23,6 @@
 //    Banco, Efectivo y Total, y el título de ajustes sólo existe cuando hay un ajuste de verdad.
 
 import type { ReactNode } from 'react'
-import { Callout } from '@/shared/components/ui/Callout'
 import { pesos } from '../formato'
 import { conciliarPlata, type ConciliacionDePlata } from './conciliacionDePlata'
 import type { PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
@@ -76,9 +75,7 @@ export function ResumenJornaleros({ t, pagos, sellada = false }: { t: TotalesDeJ
         <LoQueDecide t={t} c={c} />
         <DetalleDePlata t={t} c={c} />
       </div>
-      {avisos.length > 0 && (cierre?.cierra === false
-        ? <Callout tono="neg" className="w-fit max-w-full">{avisos.join(' · ')}</Callout>
-        : <Estado>{avisos.join(' · ')}</Estado>)}
+      {avisos.length > 0 && <Estado>{avisos.join(' · ')}</Estado>}
     </div>
   )
 }
@@ -118,9 +115,7 @@ function LoQueDecide({ t, c }: { t: TotalesDeJornaleros; c: ConciliacionDePlata 
         </APagar>
       </div>
       {c.cobraronDeMas.personas > 0 && (
-        <Callout tono="warn" className="w-fit max-w-full">
-          <span data-testid="pie-cobraron-de-mas">{`${c.cobraronDeMas.personas} cobraron de más: ${pesos(c.cobraronDeMas.importe)} (banco + efectivo a pagar suman esto más que el Saldo)`}</span>
-        </Callout>
+        <Estado testid="pie-cobraron-de-mas">{`${c.cobraronDeMas.personas} cobraron de más: ${pesos(c.cobraronDeMas.importe)} (banco + efectivo a pagar suman esto más que el Saldo)`}</Estado>
       )}
     </div>
   )
@@ -233,9 +228,7 @@ export function ResumenMensuales({ t, sellada = false }: { t: TotalesDeMensuales
         <Cifra rotulo="Saldo" valor={pesos(t.saldoTotal)} testid="pie-mensuales-saldo" />
         <Cifra rotulo="Saldo red." valor={pesos(t.saldoRedondeado > 0 ? t.saldoRedondeado : null)} testid="pie-mensuales-saldo-redondeado" />
       </Tira>
-      {avisos.length > 0 && (t.noCierran > 0
-        ? <Callout tono="neg" className="w-fit max-w-full">{avisos.join(' · ')}</Callout>
-        : <Estado>{avisos.join(' · ')}</Estado>)}
+      {avisos.length > 0 && <Estado>{avisos.join(' · ')}</Estado>}
     </div>
   )
 }
@@ -275,9 +268,7 @@ export function PieTotalGeneral({ g, hayMensuales }: { g: TotalGeneral; hayMensu
             {`quincena cerrada · no se afirma saldo por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}
           </Estado>
         ) : (
-          <Callout tono="neg" className="w-fit max-w-full">
-            <span data-testid="pie-general-no-cierra">{`no cierra por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}</span>
-          </Callout>
+          <Estado testid="pie-general-no-cierra">{`no cierra por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}</Estado>
         )}
     </section>
   )

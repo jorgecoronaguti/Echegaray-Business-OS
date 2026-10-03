@@ -37,8 +37,11 @@ test('lo que acompaña a cada «A pagar hoy» cuelga del mismo componente: no qu
   assert.doesNotMatch(PIE, /<div data-testid="pie-(arrastre|redondeo)"/)
 })
 
-test('«cobraron de más» es un aviso del sistema, no una línea de color suelta', () => {
-  assert.match(PIE, /<Callout tono="warn"[^>]*>\s*<span data-testid="pie-cobraron-de-mas">/)
+// Dueño, 03/10/2026, con la captura de los dos avisos en rojo y naranja: «no quiero esos carteles de colores».
+test('los avisos del pie son texto apagado: sin carteles de colores', () => {
+  assert.doesNotMatch(PIE, /<Callout/)
+  assert.match(PIE, /<Estado testid="pie-cobraron-de-mas">/)
+  assert.match(PIE, /<Estado testid="pie-general-no-cierra">/)
 })
 
 // Dueño, 02/10/2026, con la captura de «Ajustes del saldo»: «eso realmente es una aclaración … que confunde». Los

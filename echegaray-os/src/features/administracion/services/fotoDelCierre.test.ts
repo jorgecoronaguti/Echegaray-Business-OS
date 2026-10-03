@@ -149,3 +149,17 @@ test('un cierre que falla deja rastro en app_registro con quincena, grupo y mens
   assert.match(reg, /mensaje: r\.error/)
   for (const campo of ['desde', 'hasta', 'grupo']) assert.match(reg, new RegExp(`${campo}:`))
 })
+
+// Dueño, 03/10/2026, con la captura del cierre rechazado: «al marcar el último pagado sale ese error» — once filas con la
+// resta del recibo anterior sumada al banco «no cerraban» por exactamente esa resta.
+test('la resta del recibo anterior va en el banco y no traba el cierre: la fila cierra contra cobra + resta', () => {
+  const base = { modalidad: 'quincenal', cobra: 669801.32, porBanco: 289543.8, reciboNeto: 234963.32, pagadoBanco: null, pagadoEfectivo: null,
+    manual: {}, seLiquidaEnLa2da: false, pagadoEnLa1ra: null, sello: null, pagoSinRegistrar: false } as unknown as Parameters<typeof fotoDeLaLinea>[0]
+  const conResta = { ...base, pago: { banco: 289543.8, negro: 434838 }, arrastre: { importe: 54580.48, estado: 'aplicado' } } as unknown as Parameters<typeof fotoDeLaLinea>[0]
+  const f = fotoDeLaLinea(conResta, 'obra' as GrupoLiquidacion)
+  assert.equal(f.ok, true, f.ok ? '' : f.motivo)
+  if (f.ok) assert.deepEqual(f.plata, { cobra: 669801.32, porBanco: 289543.8, enEfectivo: 434838, total: 724381.8 })
+  // MUTACIÓN: sin la resta declarada, la misma diferencia SÍ traba.
+  const sinResta = { ...conResta, arrastre: null } as unknown as Parameters<typeof fotoDeLaLinea>[0]
+  assert.equal(fotoDeLaLinea(sinResta, 'obra' as GrupoLiquidacion).ok, false)
+})

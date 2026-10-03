@@ -258,7 +258,8 @@ export interface TotalGeneral {
  * a mano que ya no da Banco + Negro. Lo que quede sin explicar se dice como tal, no se reparte entre las causas.
  */
 export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales, sellada = false): TotalGeneral {
-  const total = r2(j.cobra + m.sueldo)
+  // La resta del recibo anterior sale por banco y está en Pagado y en Saldo: sin sumarla acá, el general «no cerraba» por ella.
+  const total = r2(j.cobra + (j.arrastre?.importe ?? 0) + m.sueldo)
   const pagado = r2(j.pago.pagado + m.pagado)
   const saldo = r2(j.pago.saldoTotal + m.saldoTotal)
   const descuadre = r2(total - pagado - saldo)

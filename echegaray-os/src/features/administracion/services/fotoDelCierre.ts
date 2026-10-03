@@ -39,7 +39,7 @@ export type FotoDeLaLinea =
 /** Lo que una fila tiene que traer para que su foto salga del cuadro. */
 export type LineaDelCuadro = Pick<LineaConOverrides,
   'modalidad' | 'cobra' | 'porBanco' | 'reciboNeto' | 'pagadoBanco' | 'pagadoEfectivo' | 'manual' | 'pago'
-  | 'seLiquidaEnLa2da' | 'pagadoEnLa1ra' | 'sello' | 'pagoSinRegistrar'>
+  | 'seLiquidaEnLa2da' | 'pagadoEnLa1ra' | 'sello' | 'pagoSinRegistrar' | 'arrastre'>
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -75,8 +75,12 @@ function delJornalero(l: LineaDelCuadro): FotoDeLaLinea {
   const efectivo = r2(l.pago.negro ?? cobra - banco)
   const total = r2(banco + efectivo)
   // LA QUINCENA CERRADA RELEE efectivo = cobra − banco: si la fila no cierra, la foto no puede ser el cuadro.
-  if (Math.abs(total - cobra) > TOLERANCIA) {
-    return { ok: false, motivo: `su fila no cierra: banco + efectivo da ${total.toFixed(2)} y cobra ${cobra.toFixed(2)}` }
+  // LA RESTA DEL RECIBO ANTERIOR SALE POR BANCO Y NO ES DE ESTA QUINCENA (dueño, 02/10/2026): el banco la trae sumada y
+  // `cobra` no. La fila cierra contra cobra + esa resta; sin esto, marcar la última pagada no podía cerrar la quincena.
+  const resta = l.arrastre?.estado === 'aplicado' ? l.arrastre.importe : 0
+  const esperado = r2(cobra + resta)
+  if (Math.abs(total - esperado) > TOLERANCIA) {
+    return { ok: false, motivo: `su fila no cierra: banco + efectivo da ${total.toFixed(2)} y cobra ${esperado.toFixed(2)}` }
   }
   return { ok: true, liquida: true, plata: { cobra, porBanco: banco, enEfectivo: efectivo, total } }
 }

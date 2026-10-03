@@ -29,6 +29,9 @@ import {
 const loteSchema = z.object({
   fecha: z.string().max(10),
   concepto: z.string().max(400),
+  // La quincena del cuadro: con ella el servidor busca la línea de cada persona y el recibo ANOTA el pago en su
+  // «Pagado efectivo» (migración 20261002T2345). Sin línea única no se emite: un recibo que no anota es sólo papel.
+  quincenaDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   recibos: z.array(z.object({
     id: z.string().uuid(),
     personaId: z.string().uuid(),
@@ -47,6 +50,13 @@ export async function emitirRecibosPorLaDiferenciaAction(
     const supabase = await createClient()
     const personas = await leerPersonasParaRecibo(p.data.recibos.map((r) => r.personaId))
     const hoy = diaAR(new Date().toISOString())
+    const { data: lineas, error: errLineas } = await supabase.from('liquidacion_linea')
+      .select('id, liquidacion_id, persona_id, liquidacion_quincena!inner(desde)')
+      .eq('liquidacion_quincena.desde', p.data.quincenaDesde)
+      .in('persona_id', p.data.recibos.map((r) => r.personaId))
+    if (errLineas) return { ok: false, error: mensajeDeError(errLineas) }
+    const lineasDe = new Map<string, { id: string; liquidacion_id: string }[]>()
+    for (const l of lineas ?? []) lineasDe.set(l.persona_id, [...(lineasDe.get(l.persona_id) ?? []), { id: l.id, liquidacion_id: l.liquidacion_id }])
     const resultados: ResultadoDelRecibo[] = []
     for (const r of p.data.recibos) {
       const base = { personaId: r.personaId, id: r.id }
@@ -57,10 +67,13 @@ export async function emitirRecibosPorLaDiferenciaAction(
         fecha: p.data.fecha, concepto: p.data.concepto, obra: '',
       }, hoy)
       if (!v.ok) { resultados.push({ ...base, ok: false, error: v.error }); continue }
+      const suyas = lineasDe.get(r.personaId) ?? []
+      if (suyas.length !== 1) { resultados.push({ ...base, ok: false, error: 'No encontré una única línea de esta persona en la quincena: el recibo no anotaría el pago.' }); continue }
       const { data, error } = await supabase.rpc('emitir_recibo_pago_efectivo', {
         p_id: r.id, p_fecha: v.dato.fecha, p_a_nombre_de: v.dato.aNombreDe, p_documento: v.dato.documento,
         p_importe: v.dato.importe, p_concepto: v.dato.concepto, p_obra: null, p_obra_id: null,
         p_proveedor_id: null, p_persona_id: r.personaId, p_compra_fila: null,
+        p_liquidacion_id: suyas[0].liquidacion_id, p_linea_id: suyas[0].id,
       })
       // Sin la tabla no se emitió ninguno: se corta acá en vez de repetir el mismo motivo once veces.
       if (faltaMigracion(error)) return { ok: false, error: `El recibo de pago todavía no está publicado en la base (migración ${MIGRACION_RECIBO_PAGO}): no se emitió nada.` }
@@ -69,6 +82,7 @@ export async function emitirRecibosPorLaDiferenciaAction(
       else resultados.push({ ...base, ok: true, codigo: data })
     }
     revalidatePath('/administracion/compras')
+    revalidatePath('/administracion/personal')
     return { ok: true, resultados }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
